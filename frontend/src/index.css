@@ -1,0 +1,126 @@
+:root {
+  --bg: #f7f7f8;
+  --surface-1: #ffffff;
+  --surface-2: #fbfbfc;
+  --border: #e2e2e6;
+  --border-strong: #c9c9d1;
+  --text-primary: #1a1a1f;
+  --text-secondary: #6b6b74;
+  --text-danger: #b3261e;
+  --text-success: #146c2e;
+  --text-warning: #8a5a00;
+  --bg-danger: #fbe9e7;
+  --bg-success: #e6f4ea;
+  --bg-warning: #fff4e0;
+  --bg-accent: #e8edff;
+  --text-accent: #2f4bd1;
+  --border-accent: #b7c2f7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+a { color: inherit; }
+
+button {
+  font: inherit;
+  border-radius: 8px;
+  border: 0.5px solid var(--border-strong);
+  background: var(--surface-1);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+button:hover { background: var(--surface-2); }
+button.primary { background: var(--text-accent); color: white; border-color: var(--text-accent); }
+button.danger { color: var(--text-danger); border-color: var(--text-danger); }
+
+input, select, textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 0.5px solid var(--border-strong);
+  background: var(--surface-1);
+  width: 100%;
+}
+
+.app-shell { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 0.5px solid var(--border);
+  flex-wrap: wrap;
+}
+.top-nav .brand { font-weight: 600; font-size: 15px; margin-right: 0.5rem; }
+.top-nav a { font-size: 13px; color: var(--text-secondary); text-decoration: none; padding: 6px 2px; }
+.top-nav a.active, .top-nav a:hover { color: var(--text-primary); }
+.top-nav .spacer { flex: 1; }
+.top-nav .user-label { font-size: 12px; color: var(--text-secondary); }
+
+.card {
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 6px;
+  border-bottom: 0.5px solid var(--border);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: var(--surface-1); }
+
+.field { margin-bottom: 0.75rem; }
+.field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.875rem; }
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+.badge.pass { background: var(--bg-success); color: var(--text-success); }
+.badge.fail { background: var(--bg-danger); color: var(--text-danger); }
+.badge.warn { background: var(--bg-warning); color: var(--text-warning); }
+
+.error-text { color: var(--text-danger); font-size: 13px; margin-top: 0.5rem; }
+
+.login-shell { max-width: 340px; margin: 4rem auto; }
+
+.tick-btn {
+  min-width: 32px;
+  height: 32px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  cursor: pointer;
+  font-weight: 600;
+}
+.tick-btn.active-pass { background: var(--bg-success); color: var(--text-success); border-color: var(--text-success); }
+.tick-btn.active-fail { background: var(--bg-danger); color: var(--text-danger); border-color: var(--text-danger); }

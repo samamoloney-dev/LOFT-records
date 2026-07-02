@@ -1,0 +1,186 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api/client';
+
+const CA_CHECK_ITEMS = [
+  'Personal Presentation',
+  'On Time Performance',
+  'Pre Flight Duties and Pre Flight Checks',
+  'Pre Embarkation and Passenger Boarding',
+  'Passenger Briefings and Passenger Announcements',
+  'In-Flight Service',
+  'Management and Communication',
+  'Post Flight Duties',
+  'General Knowledge of Skippers Regulations',
+  'Knowledge of how to manage Restricted, Unruly and Passengers with reduced mobility',
+];
+const CA_NTS_MARKERS = ['Communication and Teamwork', 'Leadership and Workload Management', 'Situational Awareness', 'Decision Making Process'];
+
+const emptyDetails = () => ({ name: '', date: '', assessor: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
+
+export function CaChecks() {
+  const [checks, setChecks] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [newForm, setNewForm] = useState(emptyDetails());
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/checks?checkType=CABIN_ATTENDANT_LINE_CHECK').then(setChecks).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  const selected = checks.find((c) => c.id === selectedId);
+
+  async function createCheck(e) {
+    e.preventDefault();
+    setError(null);
+    if (!newForm.name.trim()) return;
+    try {
+      await api.post('/api/checks', { checkType: 'CABIN_ATTENDANT_LINE_CHECK', appliesTo: 'CABIN_ATTENDANT', details: newForm });
+      setCreating(false);
+      setNewForm(emptyDetails());
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function patchDetails(check, patch) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
+  async function setResult(check, result) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: new Date().toISOString() });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
+  if (selected) {
+    const d = selected.details || {};
+    return (
+      <div>
+        <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
+        <div className="card">
+          <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Cabin Attendant Line Check</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'}</div>
+        </div>
+
+        <div className="card">
+          <div className="section-tag" style={{ fontWeight: 500, marginBottom: 8 }}>ASSESSMENT</div>
+          {CA_CHECK_ITEMS.map((item, i) => (
+            <div key={i} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ flex: 1, fontSize: 13 }}>{item}</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {['S', 'X', 'N'].map((v) => (
+                    <button
+                      key={v}
+                      className={`tick-btn ${d.items?.[i] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
+                      onClick={() => patchDetails(selected, { items: { ...d.items, [i]: d.items?.[i] === v ? undefined : v } })}
+                    >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N/A'}</button>
+                  ))}
+                </div>
+              </div>
+              {item === 'In-Flight Service' && (
+                <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 12 }}>
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+                    <input type="radio" checked={d.serviceMode === 'demo'} onChange={() => patchDetails(selected, { serviceMode: 'demo' })} /> Demonstrated
+                  </label>
+                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+                    <input type="radio" checked={d.serviceMode === 'desc'} onChange={() => patchDetails(selected, { serviceMode: 'desc' })} /> Described
+                  </label>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="card">
+          <div style={{ fontWeight: 500, marginBottom: 8 }}>NON TECHNICAL SKILL ASSESSMENT</div>
+          <div className="grid2">
+            {CA_NTS_MARKERS.map((m, i) => (
+              <div key={i} style={{ padding: '6px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{m}</div>
+                <div className="grid2" style={{ gap: 6 }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Score</label>
+                    <input defaultValue={d.nts?.[`score${i}`] || ''} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`score${i}`]: e.target.value } })} />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Code</label>
+                    <input defaultValue={d.nts?.[`code${i}`] || ''} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`code${i}`]: e.target.value } })} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="field">
+            <label>Comments</label>
+            <textarea defaultValue={d.comments} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 70 }} />
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>Overall assessment</label>
+              <select value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+                <option value="">—</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Overall score (1–5)</label>
+              <input type="number" min="1" max="5" defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
+            </div>
+          </div>
+          <div className="grid2">
+            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+          </div>
+        </div>
+        {error && <div className="error-text">{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Cabin Attendant Line Check (SA 540) — 12-month cycle, initial and recurrent</div>
+        <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add cabin attendant check'}</button>
+      </div>
+
+      {creating && (
+        <form className="card" onSubmit={createCheck}>
+          <div className="grid2">
+            <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
+            <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
+          </div>
+          <div className="grid2">
+            <div className="field"><label>Assessor</label><input value={newForm.assessor} onChange={(e) => setNewForm({ ...newForm, assessor: e.target.value })} /></div>
+            <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
+          </div>
+          <button type="submit" className="primary">Create check record</button>
+        </form>
+      )}
+      {error && <div className="error-text">{error}</div>}
+
+      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No cabin attendant checks yet.</div>}
+      {checks.map((c) => (
+        <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>{c.details?.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'}</div>
+          </div>
+          {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}

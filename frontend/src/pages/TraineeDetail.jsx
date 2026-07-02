@@ -1,0 +1,110 @@
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { FlightRow } from './FlightRow';
+import { CtlForm } from './CtlForm';
+
+export function TraineeDetail() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const [trainee, setTrainee] = useState(null);
+  const [syllabus, setSyllabus] = useState([]);
+  const [flights, setFlights] = useState([]);
+  const [error, setError] = useState(null);
+  const [newFlightDate, setNewFlightDate] = useState('');
+  const [newFlightHours, setNewFlightHours] = useState('');
+
+  function load() {
+    api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
+    api.get(`/api/syllabus/trainee/${id}`).then(setSyllabus).catch(() => {});
+    api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
+  }
+
+  useEffect(load, [id]);
+
+  async function completeSyllabusItem(itemId) {
+    await api.post(`/api/syllabus/trainee/${id}/complete`, { syllabusItemId: itemId });
+    load();
+  }
+
+  async function createFlight(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.post('/api/flights', { traineeId: id, date: newFlightDate, hours: Number(newFlightHours) || 0 });
+      setNewFlightDate('');
+      setNewFlightHours('');
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  if (error) return <div className="error-text">{error}</div>;
+  if (!trainee) return <div>Loading…</div>;
+
+  const outstanding = syllabus.filter((s) => s.outstandingForPhase);
+  const canCreateFlight = user.role === 'TRAINING_CAPTAIN';
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {trainee.fleet} · {trainee.role} · Phase {trainee.phase} · {trainee.totalHours}h total
+          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus — Phase {trainee.phase}</div>
+        {outstanding.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No outstanding required items for this phase.</div>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text-warning)', marginBottom: 8 }}>
+            {outstanding.length} required item(s) outstanding to complete this phase.
+          </div>
+        )}
+        {syllabus.map((item) => (
+          <div key={item.id} className="row" style={{ cursor: 'default' }}>
+            <button
+              className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
+              onClick={() => completeSyllabusItem(item.id)}
+            >
+              {item.completedAt ? '✓' : ''}
+            </button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13 }}>{item.description}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Phase {item.phase}{item.required ? ' · required' : ''}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontWeight: 500 }}>Flights</div>
+        </div>
+        {canCreateFlight && (
+          <form onSubmit={createFlight} style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
+            <div className="field" style={{ margin: 0, flex: 1 }}>
+              <label>Date</label>
+              <input type="date" value={newFlightDate} onChange={(e) => setNewFlightDate(e.target.value)} required />
+            </div>
+            <div className="field" style={{ margin: 0, width: 100 }}>
+              <label>Hours</label>
+              <input type="number" step="0.1" value={newFlightHours} onChange={(e) => setNewFlightHours(e.target.value)} required />
+            </div>
+            <button type="submit" className="primary">Add flight</button>
+          </form>
+        )}
+        {flights.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
+        {flights.map((f) => (
+          <FlightRow key={f.id} flight={f} onChange={(updated) => setFlights((fs) => fs.map((x) => (x.id === updated.id ? updated : x)))} />
+        ))}
+        {error && <div className="error-text">{error}</div>}
+      </div>
+
+      <CtlForm traineeId={id} onCompleted={load} />
+    </div>
+  );
+}

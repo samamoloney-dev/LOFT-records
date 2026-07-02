@@ -7,7 +7,7 @@ See `docs/project-brief.md` for the full background and data model this was buil
 
 ## Stack
 
-- **Backend**: Node.js + Express + PostgreSQL (Prisma ORM)
+- **Backend**: Node.js + Express + PostgreSQL (`pg` driver, hand-written SQL migrations)
 - **Frontend**: React (Vite)
 - **Auth**: email/password (bcrypt) + JWT session cookie
 
@@ -19,7 +19,7 @@ See `docs/project-brief.md` for the full background and data model this was buil
 cd backend
 cp .env.example .env   # set DATABASE_URL and JWT_SECRET
 npm install
-npx prisma migrate dev
+npm run migrate
 npm run seed
 npm run dev             # http://localhost:4000
 ```
@@ -34,6 +34,9 @@ npm run dev              # http://localhost:5173
 
 The frontend expects the backend at `http://localhost:4000` (see `frontend/.env.example`).
 
+`npm run seed` creates a few staff accounts (HOTC, Examiner, Training Captain, CA Trainer,
+CA Checker) all with password `password123`, plus a handful of demo trainees.
+
 ### Tests
 
 ```bash
@@ -45,7 +48,7 @@ npm test
 
 ```
 loft-records/
-├── backend/         Express API, Prisma schema/migrations, seed script, tests
+├── backend/         Express API, SQL migrations, seed script, tests
 ├── frontend/        React (Vite) app
 └── docs/            Project brief and data model notes
 ```

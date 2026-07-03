@@ -50,6 +50,11 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     expect(ratingUpdate.status).toBe(200);
     expect(ratingUpdate.body.debriefComments).toBe('good sector work');
     expect(Number(ratingUpdate.body.hours)).toBe(3);
+
+    const nextSortieUpdate = await tcAgent.patch(`/api/flights/${created.body.id}`).send({ nextSortieNotes: 'Focus on crosswind landings' });
+    expect(nextSortieUpdate.status).toBe(200);
+    expect(nextSortieUpdate.body.debriefComments).toBe('good sector work');
+    expect(nextSortieUpdate.body.nextSortieNotes).toBe('Focus on crosswind landings');
   });
 
   it('lets a trainee acknowledge only their own finalized flight, without erasing data', async () => {
@@ -178,6 +183,35 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
 
     const deleted = await hotcAgent.delete(`/api/syllabus/items/${created.body.id}`);
     expect(deleted.status).toBe(204);
+  });
+
+  it('requires and records a name when signing off a syllabus item', async () => {
+    await createUser({ email: 'tc.signoff@test.local', role: 'TRAINING_CAPTAIN' });
+    const trainee = await createTrainee({});
+    const syllabusItem = await pool.query(
+      `INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, required)
+       VALUES ('DASH_8', 'BOTH', 1, 'General', 'SYLLABUS', 'Test item', true) RETURNING *`,
+    );
+
+    const agent = request.agent(app);
+    await loginAgent(agent, 'tc.signoff@test.local');
+
+    const missingName = await agent.post(`/api/syllabus/trainee/${trainee.id}/complete`).send({
+      syllabusItemId: syllabusItem.rows[0].id,
+    });
+    expect(missingName.status).toBe(400);
+
+    const signedOff = await agent.post(`/api/syllabus/trainee/${trainee.id}/complete`).send({
+      syllabusItemId: syllabusItem.rows[0].id,
+      signedOffByName: 'TC Jones',
+    });
+    expect(signedOff.status).toBe(200);
+    expect(signedOff.body.signedOffByName).toBe('TC Jones');
+
+    const forTrainee = await agent.get(`/api/syllabus/trainee/${trainee.id}`);
+    const found = forTrainee.body.find((i) => i.id === syllabusItem.rows[0].id);
+    expect(found.signedOffByName).toBe('TC Jones');
+    expect(found.completedAt).not.toBeNull();
   });
 
   it('advances a trainee to the next phase only once both signatures are present', async () => {

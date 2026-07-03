@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { FlightRow } from './FlightRow';
 import { CtlForm } from './CtlForm';
-import { SyllabusPanel } from './SyllabusPanel';
+import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -13,50 +13,34 @@ const FLIGHT_CREATOR_ROLES = [
   'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
 ];
 
-export function TraineeDetail() {
-  const { id } = useParams();
+const TABS = [
+  { key: 'syllabus', label: 'Syllabus' },
+  { key: 'discussion', label: 'Line Training Discussion' },
+  { key: 'flights', label: 'Flights' },
+  { key: 'phase', label: 'Phase Completion' },
+  { key: 'ctl', label: 'Check to Line' },
+];
+
+function FlightsTab({ traineeId, flights, onFlightsChange }) {
   const { user } = useAuth();
-  const [trainee, setTrainee] = useState(null);
-  const [flights, setFlights] = useState([]);
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
   const [newFlightHours, setNewFlightHours] = useState('');
-
-  function load() {
-    api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
-    api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
-  }
-
-  useEffect(load, [id]);
+  const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
 
   async function createFlight(e) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/flights', { traineeId: id, date: newFlightDate, hours: Number(newFlightHours) || 0 });
+      const created = await api.post('/api/flights', { traineeId, date: newFlightDate, hours: Number(newFlightHours) || 0 });
       setNewFlightDate('');
       setNewFlightHours('');
-      load();
+      onFlightsChange([created, ...flights]);
     } catch (err) { setError(err.message); }
   }
 
-  if (error) return <div className="error-text">{error}</div>;
-  if (!trainee) return <div>Loading…</div>;
-
-  const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
-
   return (
     <div>
-      <div className="card">
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {trainee.fleet} · {trainee.role} · Phase {trainee.phase} · {trainee.totalHours}h total
-          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
-        </div>
-      </div>
-
-      <SyllabusPanel trainee={trainee} onTraineeChange={load} />
-
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontWeight: 500 }}>Flights</div>
@@ -74,14 +58,63 @@ export function TraineeDetail() {
             <button type="submit" className="primary">Add flight</button>
           </form>
         )}
-        {flights.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
-        {flights.map((f) => (
-          <FlightRow key={f.id} flight={f} onChange={(updated) => setFlights((fs) => fs.map((x) => (x.id === updated.id ? updated : x)))} />
-        ))}
         {error && <div className="error-text">{error}</div>}
       </div>
+      {flights.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
+      {flights.map((f, i) => (
+        <FlightRow
+          key={f.id}
+          flight={f}
+          previousFlight={flights[i + 1]}
+          onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
+        />
+      ))}
+    </div>
+  );
+}
 
-      <CtlForm traineeId={id} onCompleted={load} />
+export function TraineeDetail() {
+  const { id } = useParams();
+  const [trainee, setTrainee] = useState(null);
+  const [flights, setFlights] = useState([]);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('syllabus');
+
+  function load() {
+    api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
+    api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
+  }
+
+  useEffect(load, [id]);
+
+  if (error) return <div className="error-text">{error}</div>;
+  if (!trainee) return <div>Loading…</div>;
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {trainee.fleet} · {trainee.role} · Phase {trainee.phase} · {trainee.totalHours}h total
+          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: tab === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: tab === t.key ? 500 : 400 }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'syllabus' && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
+      {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
+      {tab === 'flights' && <FlightsTab traineeId={id} flights={flights} onFlightsChange={setFlights} />}
+      {tab === 'phase' && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
+      {tab === 'ctl' && <CtlForm traineeId={id} onCompleted={load} />}
     </div>
   );
 }

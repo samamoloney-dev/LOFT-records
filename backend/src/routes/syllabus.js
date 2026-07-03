@@ -89,6 +89,7 @@ router.get('/trainee/:traineeId', async (req, res) => {
       ...item,
       completedAt: p ? p.completedAt : null,
       signedOffById: p ? p.signedOffById : null,
+      signedOffByName: p ? p.signedOffByName : null,
       outstandingForPhase: item.required && item.phase === trainee.phase && !p?.completedAt,
     };
   });
@@ -96,7 +97,10 @@ router.get('/trainee/:traineeId', async (req, res) => {
   res.json(annotated);
 });
 
-const completeSchema = z.object({ syllabusItemId: z.string().uuid() });
+const completeSchema = z.object({
+  syllabusItemId: z.string().uuid(),
+  signedOffByName: z.string().min(1),
+});
 
 router.post('/trainee/:traineeId/complete', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
@@ -107,12 +111,12 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { rows } = await pool.query(
-    `INSERT INTO syllabus_progress (trainee_id, syllabus_item_id, completed_at, signed_off_by)
-     VALUES ($1, $2, now(), $3)
+    `INSERT INTO syllabus_progress (trainee_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
+     VALUES ($1, $2, now(), $3, $4)
      ON CONFLICT (trainee_id, syllabus_item_id)
-     DO UPDATE SET completed_at = now(), signed_off_by = $3
+     DO UPDATE SET completed_at = now(), signed_off_by = $3, signed_off_by_name = $4
      RETURNING *`,
-    [trainee.id, parsed.data.syllabusItemId, req.user.id],
+    [trainee.id, parsed.data.syllabusItemId, req.user.id, parsed.data.signedOffByName],
   );
 
   const progress = rowToCamel(rows[0]);

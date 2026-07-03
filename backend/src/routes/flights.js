@@ -157,7 +157,7 @@ router.post('/:id/acknowledge', async (req, res) => {
   const flight = await findFlight(req.params.id);
   if (!flight) return res.status(404).json({ error: 'Not found' });
   if (!canAcknowledgeFlight(req.user, flight)) return res.status(403).json({ error: 'Forbidden' });
-  if (!flight.locked) return res.status(409).json({ error: 'Flight has not been finalized yet' });
+  if (!flight.locked) return res.status(409).json({ error: 'Flight has not been finalised yet' });
 
   const { rows } = await pool.query(
     'UPDATE flights SET acknowledged_by_trainee = true, acknowledged_at = now() WHERE id = $1 RETURNING *',

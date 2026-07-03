@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { FlightRow, APPROACH_TYPES } from './FlightRow';
 import { CtlForm } from './CtlForm';
 import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
+import { Phase4Form } from './Phase4Form';
+import { GroundSchoolPanel } from './GroundSchoolPanel';
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -14,9 +16,11 @@ const FLIGHT_CREATOR_ROLES = [
 ];
 
 const PILOT_TABS = [
+  { key: 'groundSchool', label: 'Ground School' },
   { key: 'flights', label: 'Flights' },
   { key: 'syllabus', label: 'Syllabus' },
   { key: 'discussion', label: 'Line Training Discussion' },
+  { key: 'phase4', label: 'Phase 4' },
   { key: 'phase', label: 'Phase Completion' },
   { key: 'ctl', label: 'Check to Line' },
 ];
@@ -62,6 +66,14 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
   const totalHours = flights.reduce((sum, f) => sum + Number(f.hours), 0);
   const tally = approachTally(flights);
 
+  // LOFT numbers count up chronologically (LOFT 1 = earliest flight),
+  // independent of the display order (flights are listed newest first).
+  const loftNumberById = new Map(
+    [...flights]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map((f, i) => [f.id, i + 1]),
+  );
+
   return (
     <div>
       <div className="card">
@@ -105,6 +117,7 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
           key={f.id}
           flight={f}
           trainee={trainee}
+          loftNumber={loftNumberById.get(f.id)}
           onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
         />
       ))}
@@ -156,7 +169,9 @@ export function TraineeDetail() {
 
       {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
+      {tab === 'groundSchool' && !isCabinAttendant && <GroundSchoolPanel trainee={trainee} />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} />}
+      {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} onCompleted={load} />}
     </div>

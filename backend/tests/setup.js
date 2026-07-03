@@ -29,7 +29,8 @@ async function resetDatabase() {
   } else {
     await pool.query(`
       TRUNCATE TABLE audit_log, checks, check_to_line_forms, phase_completions,
-        flight_syllabus_progress, syllabus_category_notes,
+        flight_syllabus_progress, syllabus_category_notes, phase4_assessments,
+        ground_school_progress, ground_school_items,
         flights, syllabus_progress, syllabus_items, trainees, users
       RESTART IDENTITY CASCADE;
     `);

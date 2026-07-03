@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { formatDate } from '../lib/format';
 
 // Binary pass/fail only - no N/A / not-assessed option, and no non-technical
 // skills scoring section, per docs/project-brief.md Section 5.
@@ -71,7 +72,7 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
         <div style={{ fontWeight: 500 }}>Check-to-Line Form</div>
         <button onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Open'}</button>
       </div>
-      {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {new Date(form.completedAt).toLocaleDateString()}</div>}
+      {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
 
       {open && (
         <div style={{ marginTop: '0.75rem' }}>

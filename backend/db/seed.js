@@ -5,6 +5,7 @@ const dash8Syllabus = require('./dash8-syllabus');
 const metro23Syllabus = require('./metro23-syllabus');
 const f100Syllabus = require('./f100-syllabus');
 const caDash8Syllabus = require('./ca-dash8-syllabus');
+const groundSchoolItems = require('./ground-school-items');
 
 const DEMO_PASSWORD = 'password123';
 
@@ -62,6 +63,20 @@ async function main() {
        )`,
       [s.fleet, s.roleScope, s.phase, s.category, s.section, s.description, s.notes || null, s.required ?? true],
     );
+  }
+
+  for (const [fleet, fleetItems] of Object.entries(groundSchoolItems.ITEMS_BY_FLEET)) {
+    for (const s of fleetItems) {
+      await pool.query(
+        `INSERT INTO ground_school_items (fleet, category, description, notes, required)
+         SELECT $1, $2, $3, $4, $5
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ground_school_items
+           WHERE fleet = $1 AND category = $2 AND description = $3
+         )`,
+        [fleet, s.category, s.description, s.notes || null, s.required ?? true],
+      );
+    }
   }
 
   if (trainees[0]) {

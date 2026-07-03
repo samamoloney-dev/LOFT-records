@@ -50,6 +50,32 @@ router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
   res.status(201).json(item);
 });
 
+router.patch('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const parsed = createItemSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const columnMap = {
+    fleet: 'fleet', roleScope: 'role_scope', phase: 'phase', category: 'category',
+    section: 'section', description: 'description', notes: 'notes', required: 'required',
+  };
+  const entries = Object.entries(parsed.data);
+  if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+  const setClauses = entries.map(([key], i) => `${columnMap[key]} = $${i + 1}`);
+  const values = entries.map(([, value]) => value);
+  values.push(req.params.id);
+
+  const { rows } = await pool.query(
+    `UPDATE syllabus_items SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+    values,
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+  const item = rowToCamel(rows[0]);
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_items', targetId: item.id });
+  res.json(item);
+});
+
 router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   await pool.query('DELETE FROM syllabus_items WHERE id = $1', [req.params.id]);
   await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: req.params.id });
@@ -299,6 +325,20 @@ router.post('/trainee/:traineeId/phase-completions/:phase/complete', requireRole
   const completion = rows[0] ? rowToCamel(rows[0]) : null;
   if (!completion?.trainingCaptainSignature || !completion?.applicantSignature) {
     return res.status(400).json({ error: 'Both signatures are required before completing this phase' });
+  }
+
+  // Every required syllabus/discussion item for this phase must be signed
+  // off before the phase itself can be signed off.
+  const scope = roleScopeFor(trainee.role);
+  const { rows: outstandingRows } = await pool.query(
+    `SELECT si.id FROM syllabus_items si
+     LEFT JOIN syllabus_progress sp ON sp.syllabus_item_id = si.id AND sp.trainee_id = $1
+     WHERE si.fleet = $2 AND (si.role_scope = 'BOTH' OR si.role_scope = $3)
+       AND si.phase = $4 AND si.required = true AND sp.completed_at IS NULL`,
+    [trainee.id, trainee.fleet, scope, phase],
+  );
+  if (outstandingRows.length > 0) {
+    return res.status(400).json({ error: `${outstandingRows.length} required item(s) for this phase are not yet signed off` });
   }
 
   const client = await pool.connect();

@@ -3,7 +3,7 @@
 //
 // roleScope follows each document's Captain/FO distinction (the applicant's
 // assigned seat), not the PF/MP (or PF/PNF) in-flight role - every applicant,
-// Captain or FO track, practices both roles across different legs, so
+// Captain or FO track, practises both roles across different legs, so
 // PF/MP-labelled items are role_scope BOTH. A few items genuinely differ by
 // phase depending on the applicant's seat (e.g. "1CAPT | 3FO" in the
 // document) - those are modelled as two separate rows via splitItem, one

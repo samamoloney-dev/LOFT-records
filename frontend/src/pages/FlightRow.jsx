@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { formatDate } from '../lib/format';
 import { FlightSyllabusList } from './SyllabusPanel';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
@@ -9,7 +10,7 @@ const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 // Line Training Records - no circling approaches are conducted.
 export const APPROACH_TYPES = ['ILS', 'LLZ', 'RNP LNAV', 'NDB', 'VOR', 'DGA'];
 
-export function FlightRow({ flight, trainee, onChange }) {
+export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   const { user } = useAuth();
   const isCabinAttendant = trainee?.type === 'CABIN_ATTENDANT';
   const [editing, setEditing] = useState(false);
@@ -121,15 +122,16 @@ export function FlightRow({ flight, trainee, onChange }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontWeight: 500 }}>{new Date(flight.date).toLocaleDateString()}{!isCabinAttendant && ` · ${Number(flight.hours)}h`}</div>
+          <div style={{ fontWeight: 500 }}>
+            {!isCabinAttendant && loftNumber ? `LOFT ${loftNumber} · ` : ''}
+            {formatDate(flight.date)}{!isCabinAttendant && ` · ${Number(flight.hours)}h`}
+          </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {flight.locked ? 'Finalized' : 'Draft'}
+            {flight.locked ? 'Finalised' : 'Draft'}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
           </div>
         </div>
-        {(canEdit || canAcknowledge) && (
-          <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
-        )}
+        <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
       </div>
 
       {isCabinAttendant ? (
@@ -239,7 +241,6 @@ export function FlightRow({ flight, trainee, onChange }) {
                       value={route}
                       onChange={(e) => setRoute(e.target.value)}
                       onBlur={() => saveSectorDetails({ route })}
-                      placeholder="e.g. YSSY - YMML"
                     />
                   </div>
 
@@ -303,7 +304,7 @@ export function FlightRow({ flight, trainee, onChange }) {
                 </div>
               </div>
 
-              {canEdit && <button className="primary" onClick={finalize}>Finalize flight</button>}
+              {canEdit && <button className="primary" onClick={finalize}>Finalise flight</button>}
               {canAcknowledge && <button className="primary" onClick={acknowledge}>Acknowledge debrief</button>}
             </>
           )}

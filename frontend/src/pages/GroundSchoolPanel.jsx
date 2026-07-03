@@ -15,47 +15,42 @@ function groupByCategory(items) {
 // Which extra fields a category needs beyond the standard tick/name/date
 // sign-off, per SA_632: Course needs a completed date; the Dash 8 Ground
 // School modules need a completed date and pass mark %; Observation
-// Flights need a date and route.
+// Flights need a date and route. Rendered as aligned table columns
+// alongside the description, rather than a separate labelled box per item.
 function extraFieldsForCategory(category) {
   if (category === 'Course') {
-    return [{ key: 'completedDate', label: 'Completed date', type: 'date' }];
+    return [{ key: 'completedDate', label: 'Completed', type: 'date', width: 150 }];
   }
   if (category === 'Dash 8 Ground School (Module CBT)' || category === 'Dash 8 Ground School (Instructor-led)') {
     return [
-      { key: 'completedDate', label: 'Completed date', type: 'date' },
-      { key: 'passMark', label: 'Pass mark %', type: 'number' },
+      { key: 'completedDate', label: 'Completed', type: 'date', width: 150 },
+      { key: 'passMark', label: 'Pass mark %', type: 'number', width: 100 },
     ];
   }
   if (category === 'Observation Flights') {
     return [
-      { key: 'date', label: 'Date', type: 'date' },
-      { key: 'route', label: 'Route', type: 'text' },
+      { key: 'date', label: 'Date', type: 'date', width: 150 },
+      { key: 'route', label: 'Route', type: 'text', width: 130 },
     ];
   }
   return [];
 }
 
-function ItemDetailFields({ item, fields, onSave }) {
-  const [values, setValues] = useState(item.details || {});
+function DetailInput({ item, field, onSave }) {
+  const [value, setValue] = useState(item.details?.[field.key] || '');
 
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 6, marginLeft: 32, flexWrap: 'wrap' }}>
-      {fields.map((f) => (
-        <div key={f.key} className="field" style={{ margin: 0, width: 160 }}>
-          <label>{f.label}</label>
-          <input
-            type={f.type}
-            value={values[f.key] || ''}
-            onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-            onBlur={() => onSave(item.id, { ...item.details, ...values })}
-          />
-        </div>
-      ))}
-    </div>
+    <input
+      type={field.type}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onSave(item.id, { ...item.details, [field.key]: value })}
+      style={{ fontSize: 13, padding: '6px 8px' }}
+    />
   );
 }
 
-function GroundSchoolItemRow({ item, fields, onSignOff, onSaveDetails }) {
+function GroundSchoolItemRow({ item, fields, gridTemplate, onSignOff, onSaveDetails }) {
   const { user } = useAuth();
   const [signing, setSigning] = useState(false);
   const [name, setName] = useState(item.signedOffByName || user.name);
@@ -71,25 +66,29 @@ function GroundSchoolItemRow({ item, fields, onSignOff, onSaveDetails }) {
   }
 
   return (
-    <div className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <button
-          className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
-          onClick={() => setSigning((v) => !v)}
-        >{item.completedAt ? '✓' : ''}</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13 }}>{item.description}</div>
-          {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
-          {item.completedAt && (
-            <div style={{ fontSize: 11, color: 'var(--text-success)' }}>
-              Signed off by {item.signedOffByName} on {formatDate(item.completedAt)}
-            </div>
-          )}
+    <div style={{ borderBottom: '0.5px solid var(--border)', padding: '8px 6px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <button
+            className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
+            onClick={() => setSigning((v) => !v)}
+          >{item.completedAt ? '✓' : ''}</button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13 }}>{item.description}</div>
+            {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
+            {item.completedAt && (
+              <div style={{ fontSize: 11, color: 'var(--text-success)' }}>
+                Signed off by {item.signedOffByName} on {formatDate(item.completedAt)}
+              </div>
+            )}
+          </div>
         </div>
+        {fields.map((f) => (
+          <DetailInput key={f.key} item={item} field={f} onSave={onSaveDetails} />
+        ))}
       </div>
-      {fields.length > 0 && <ItemDetailFields item={item} fields={fields} onSave={onSaveDetails} />}
       {signing && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 6, marginLeft: 32, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8, marginLeft: 44, alignItems: 'center' }}>
           <input
             style={{ maxWidth: 220 }}
             placeholder="Signed off by (name)"
@@ -118,10 +117,44 @@ function CategoryNoteField({ traineeId, category, initialNotes }) {
   }
 
   return (
-    <div className="field" style={{ marginTop: 10 }}>
+    <div className="field" style={{ marginTop: 12 }}>
       <label>Additional notes</label>
       <textarea value={value} onChange={(e) => setValue(e.target.value)} onBlur={save} style={{ minHeight: 60 }} />
       {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
+
+function GroundSchoolCategoryCard({ category, items, traineeId, noteFor, onSignOff, onSaveDetails }) {
+  const fields = extraFieldsForCategory(category);
+  const gridTemplate = fields.length > 0 ? `1fr ${fields.map((f) => `${f.width}px`).join(' ')}` : '1fr';
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: fields.length > 0 ? 4 : 6 }}>{category}</div>
+      {fields.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: 10, padding: '0 6px 4px' }}>
+          <div />
+          {fields.map((f) => (
+            <div key={f.key} style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {f.label}
+            </div>
+          ))}
+        </div>
+      )}
+      {items.map((item) => (
+        <GroundSchoolItemRow
+          key={item.id}
+          item={item}
+          fields={fields}
+          gridTemplate={gridTemplate}
+          onSignOff={onSignOff}
+          onSaveDetails={onSaveDetails}
+        />
+      ))}
+      {category === 'Pre-Simulator Assessment' && (
+        <CategoryNoteField traineeId={traineeId} category={category} initialNotes={noteFor(category)} />
+      )}
     </div>
   );
 }
@@ -170,20 +203,17 @@ export function GroundSchoolPanel({ trainee }) {
 
       {error && <div className="error-text">{error}</div>}
 
-      {[...grouped.entries()].map(([category, categoryItems]) => {
-        const fields = extraFieldsForCategory(category);
-        return (
-          <div key={category} className="card">
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
-            {categoryItems.map((item) => (
-              <GroundSchoolItemRow key={item.id} item={item} fields={fields} onSignOff={signOff} onSaveDetails={saveDetails} />
-            ))}
-            {category === 'Pre-Simulator Assessment' && (
-              <CategoryNoteField traineeId={trainee.id} category={category} initialNotes={noteFor(category)} />
-            )}
-          </div>
-        );
-      })}
+      {[...grouped.entries()].map(([category, categoryItems]) => (
+        <GroundSchoolCategoryCard
+          key={category}
+          category={category}
+          items={categoryItems}
+          traineeId={trainee.id}
+          noteFor={noteFor}
+          onSignOff={signOff}
+          onSaveDetails={saveDetails}
+        />
+      ))}
     </div>
   );
 }

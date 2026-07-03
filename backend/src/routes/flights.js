@@ -98,6 +98,8 @@ const updateSchema = z.object({
   debriefComments: z.string().nullable().optional(),
   hours: z.number().nonnegative().optional(),
   date: z.string().optional(),
+  assessorSignature: z.string().nullable().optional(),
+  candidateSignature: z.string().nullable().optional(),
 });
 
 const UPDATE_COLUMN_MAP = {
@@ -106,6 +108,8 @@ const UPDATE_COLUMN_MAP = {
   debriefComments: { column: 'debrief_comments' },
   hours: { column: 'hours' },
   date: { column: 'date' },
+  assessorSignature: { column: 'assessor_signature' },
+  candidateSignature: { column: 'candidate_signature' },
 };
 
 router.patch('/:id', async (req, res) => {

@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -13,6 +13,45 @@ router.use(requireAuth);
 function roleScopeFor(traineeRole) {
   return traineeRole === 'CAPTAIN' ? 'CAPTAIN_ONLY' : traineeRole === 'FIRST_OFFICER' ? 'FO_ONLY' : 'BOTH';
 }
+
+// Syllabus curriculum management - who gets to define what's on the syllabus
+// in the first place, as opposed to /trainee/:id which is for viewing and
+// ticking off progress against it.
+router.get('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT * FROM syllabus_items ORDER BY fleet ASC, phase ASC, description ASC',
+  );
+  res.json(rows.map(rowToCamel));
+});
+
+const createItemSchema = z.object({
+  fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']),
+  roleScope: z.enum(['CAPTAIN_ONLY', 'FO_ONLY', 'BOTH']),
+  phase: z.number().int().min(1),
+  description: z.string().min(1),
+  required: z.boolean().optional(),
+});
+
+router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const parsed = createItemSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { fleet, roleScope, phase, description, required } = parsed.data;
+  const { rows } = await pool.query(
+    `INSERT INTO syllabus_items (fleet, role_scope, phase, description, required)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [fleet, roleScope, phase, description, required ?? true],
+  );
+  const item = rowToCamel(rows[0]);
+  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'syllabus_items', targetId: item.id });
+  res.status(201).json(item);
+});
+
+router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+  await pool.query('DELETE FROM syllabus_items WHERE id = $1', [req.params.id]);
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: req.params.id });
+  res.status(204).end();
+});
 
 async function findTrainee(id) {
   const { rows } = await pool.query('SELECT * FROM trainees WHERE id = $1', [id]);

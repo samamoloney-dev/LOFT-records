@@ -152,4 +152,31 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     const allowed = await hofoAgent.get(`/api/trainees/${archived.id}`);
     expect(allowed.status).toBe(200);
   });
+
+  it('lets HOTC manage syllabus curriculum items, and a new item shows up for a matching trainee', async () => {
+    await createUser({ email: 'hotc.syllabus@test.local', role: 'HOTC' });
+    await createUser({ email: 'tc.syllabus@test.local', role: 'TRAINING_CAPTAIN' });
+    const trainee = await createTrainee({ type: 'CABIN_ATTENDANT', role: 'CABIN_ATTENDANT', fleet: 'CA_DASH_8', phase: 1 });
+
+    const hotcAgent = request.agent(app);
+    await loginAgent(hotcAgent, 'hotc.syllabus@test.local');
+
+    const forbidden = request.agent(app);
+    await loginAgent(forbidden, 'tc.syllabus@test.local');
+    const tcAttempt = await forbidden.post('/api/syllabus/items').send({
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, description: 'Should not be allowed',
+    });
+    expect(tcAttempt.status).toBe(403);
+
+    const created = await hotcAgent.post('/api/syllabus/items').send({
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, description: 'Cabin emergency drill',
+    });
+    expect(created.status).toBe(201);
+
+    const forTrainee = await hotcAgent.get(`/api/syllabus/trainee/${trainee.id}`);
+    expect(forTrainee.body.some((item) => item.description === 'Cabin emergency drill')).toBe(true);
+
+    const deleted = await hotcAgent.delete(`/api/syllabus/items/${created.body.id}`);
+    expect(deleted.status).toBe(204);
+  });
 });

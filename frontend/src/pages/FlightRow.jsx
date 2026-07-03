@@ -4,11 +4,19 @@ import { api } from '../api/client';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
+const APPROACH_TYPES = ['ILS', 'RNAV', 'VOR', 'NDB', 'Visual', 'Circling'];
+
 export function FlightRow({ flight, onChange }) {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [comments, setComments] = useState(flight.debriefComments || '');
   const [rating, setRating] = useState(flight.loftPerformanceRating || '');
+  const [route, setRoute] = useState(flight.sectorDetails?.route || '');
+  const [approaches, setApproaches] = useState(
+    flight.sectorDetails?.approaches?.length ? flight.sectorDetails.approaches : [{ type: '' }, { type: '' }],
+  );
+  const [assessorSig, setAssessorSig] = useState(flight.assessorSignature || '');
+  const [candidateSig, setCandidateSig] = useState(flight.candidateSignature || '');
   const [error, setError] = useState(null);
 
   // Only whoever created the flight may edit it - no role check here, this
@@ -29,6 +37,30 @@ export function FlightRow({ flight, onChange }) {
     setRating(value);
     try {
       const updated = await api.patch(`/api/flights/${flight.id}`, { loftPerformanceRating: value });
+      onChange(updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function saveSectorDetails(patch) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/flights/${flight.id}`, {
+        sectorDetails: { ...flight.sectorDetails, route, approaches, ...patch },
+      });
+      onChange(updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  function updateApproachType(index, value) {
+    const next = approaches.map((a, i) => (i === index ? { type: value } : a));
+    setApproaches(next);
+    saveSectorDetails({ approaches: next });
+  }
+
+  async function saveSignature(field, value) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/flights/${flight.id}`, { [field]: value });
       onChange(updated);
     } catch (err) { setError(err.message); }
   }
@@ -63,6 +95,27 @@ export function FlightRow({ flight, onChange }) {
       {editing && (
         <div style={{ marginTop: '0.75rem' }}>
           <div className="field">
+            <label>Route</label>
+            <input
+              disabled={!canEdit}
+              value={route}
+              onChange={(e) => setRoute(e.target.value)}
+              onBlur={() => saveSectorDetails({ route })}
+              placeholder="e.g. YSSY - YMML"
+            />
+          </div>
+
+          <div className="field"><label>Approaches flown</label></div>
+          <div className="grid2" style={{ marginBottom: '0.875rem' }}>
+            {approaches.map((a, i) => (
+              <select key={i} disabled={!canEdit} value={a.type || ''} onChange={(e) => updateApproachType(i, e.target.value)}>
+                <option value="">Approach {i + 1} — none</option>
+                {APPROACH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            ))}
+          </div>
+
+          <div className="field">
             <label>Debrief comments</label>
             <textarea
               disabled={!canEdit}
@@ -79,6 +132,33 @@ export function FlightRow({ flight, onChange }) {
               {RATINGS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
+
+          <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
+            We, the undersigned, do hereby mutually agree upon and accept the comment written in
+            this document as being a correct and honest account of the performance of the
+            Applicant in each and every procedure carried out.
+          </div>
+          <div className="grid2">
+            <div className="field">
+              <label>Assessor signature</label>
+              <input
+                disabled={!canEdit}
+                value={assessorSig}
+                onChange={(e) => setAssessorSig(e.target.value)}
+                onBlur={() => saveSignature('assessorSignature', assessorSig)}
+              />
+            </div>
+            <div className="field">
+              <label>Candidate signature</label>
+              <input
+                disabled={!canEdit}
+                value={candidateSig}
+                onChange={(e) => setCandidateSig(e.target.value)}
+                onBlur={() => saveSignature('candidateSignature', candidateSig)}
+              />
+            </div>
+          </div>
+
           {canEdit && <button className="primary" onClick={finalize}>Finalize flight</button>}
           {canAcknowledge && <button className="primary" onClick={acknowledge}>Acknowledge debrief</button>}
           {error && <div className="error-text">{error}</div>}

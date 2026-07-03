@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { FlightRow } from './FlightRow';
 import { CtlForm } from './CtlForm';
+import { SyllabusPanel } from './SyllabusPanel';
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -16,7 +17,6 @@ export function TraineeDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const [trainee, setTrainee] = useState(null);
-  const [syllabus, setSyllabus] = useState([]);
   const [flights, setFlights] = useState([]);
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
@@ -24,16 +24,10 @@ export function TraineeDetail() {
 
   function load() {
     api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
-    api.get(`/api/syllabus/trainee/${id}`).then(setSyllabus).catch(() => {});
     api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
   }
 
   useEffect(load, [id]);
-
-  async function completeSyllabusItem(itemId) {
-    await api.post(`/api/syllabus/trainee/${id}/complete`, { syllabusItemId: itemId });
-    load();
-  }
 
   async function createFlight(e) {
     e.preventDefault();
@@ -49,7 +43,6 @@ export function TraineeDetail() {
   if (error) return <div className="error-text">{error}</div>;
   if (!trainee) return <div>Loading…</div>;
 
-  const outstanding = syllabus.filter((s) => s.outstandingForPhase);
   const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
 
   return (
@@ -62,30 +55,7 @@ export function TraineeDetail() {
         </div>
       </div>
 
-      <div className="card">
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus — Phase {trainee.phase}</div>
-        {outstanding.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No outstanding required items for this phase.</div>
-        ) : (
-          <div style={{ fontSize: 13, color: 'var(--text-warning)', marginBottom: 8 }}>
-            {outstanding.length} required item(s) outstanding to complete this phase.
-          </div>
-        )}
-        {syllabus.map((item) => (
-          <div key={item.id} className="row" style={{ cursor: 'default' }}>
-            <button
-              className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
-              onClick={() => completeSyllabusItem(item.id)}
-            >
-              {item.completedAt ? '✓' : ''}
-            </button>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13 }}>{item.description}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Phase {item.phase}{item.required ? ' · required' : ''}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <SyllabusPanel trainee={trainee} onTraineeChange={load} />
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

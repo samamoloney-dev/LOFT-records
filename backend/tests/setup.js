@@ -9,10 +9,8 @@ import fs from 'fs';
 import { beforeEach } from 'vitest';
 import pool from '../db/pool.js';
 
-const migrationSql = fs.readFileSync(
-  path.join(__dirname, '..', 'db', 'migrations', '0001_init.sql'),
-  'utf8',
-);
+const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
+const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 
 let migrated = false;
 
@@ -22,13 +20,16 @@ async function resetDatabase() {
       SELECT 1 FROM information_schema.tables WHERE table_name = 'users'
     `);
     if (rows.length === 0) {
-      await pool.query(migrationSql);
+      for (const file of migrationFiles) {
+        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+        await pool.query(sql);
+      }
     }
     migrated = true;
   } else {
     await pool.query(`
-      TRUNCATE TABLE audit_log, checks, check_to_line_forms, flights,
-        syllabus_progress, syllabus_items, trainees, users
+      TRUNCATE TABLE audit_log, checks, check_to_line_forms, phase_completions,
+        flights, syllabus_progress, syllabus_items, trainees, users
       RESTART IDENTITY CASCADE;
     `);
   }

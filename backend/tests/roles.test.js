@@ -164,12 +164,12 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     const forbidden = request.agent(app);
     await loginAgent(forbidden, 'tc.syllabus@test.local');
     const tcAttempt = await forbidden.post('/api/syllabus/items').send({
-      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, description: 'Should not be allowed',
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, category: 'Emergency', description: 'Should not be allowed',
     });
     expect(tcAttempt.status).toBe(403);
 
     const created = await hotcAgent.post('/api/syllabus/items').send({
-      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, description: 'Cabin emergency drill',
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, category: 'Emergency', description: 'Cabin emergency drill',
     });
     expect(created.status).toBe(201);
 
@@ -178,5 +178,37 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
 
     const deleted = await hotcAgent.delete(`/api/syllabus/items/${created.body.id}`);
     expect(deleted.status).toBe(204);
+  });
+
+  it('advances a trainee to the next phase only once both signatures are present', async () => {
+    await createUser({ email: 'tc.phase@test.local', role: 'TRAINING_CAPTAIN' });
+    const traineeUser = await createUser({ email: 'trainee.phase@test.local', role: 'TRAINEE' });
+    const trainee = await createTrainee({ phase: 1 });
+    await pool.query('UPDATE trainees SET user_id = $1 WHERE id = $2', [traineeUser.id, trainee.id]);
+
+    const tcAgent = request.agent(app);
+    await loginAgent(tcAgent, 'tc.phase@test.local');
+    const traineeAgent = request.agent(app);
+    await loginAgent(traineeAgent, 'trainee.phase@test.local');
+
+    const tooSoon = await tcAgent.post(`/api/syllabus/trainee/${trainee.id}/phase-completions/1/complete`);
+    expect(tooSoon.status).toBe(400);
+
+    const tcSign = await tcAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ trainingCaptainSignature: 'TC Jones' });
+    expect(tcSign.status).toBe(200);
+
+    // A trainee may only sign their own applicant signature, not the TC's.
+    const forbidden = await traineeAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ trainingCaptainSignature: 'hijacked' });
+    expect(forbidden.status).toBe(403);
+
+    const applicantSign = await traineeAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ applicantSignature: 'J. Carter' });
+    expect(applicantSign.status).toBe(200);
+
+    const completed = await tcAgent.post(`/api/syllabus/trainee/${trainee.id}/phase-completions/1/complete`);
+    expect(completed.status).toBe(200);
+    expect(completed.body.completedAt).not.toBeNull();
+
+    const updatedTrainee = await tcAgent.get(`/api/trainees/${trainee.id}`);
+    expect(updatedTrainee.body.phase).toBe(2);
   });
 });

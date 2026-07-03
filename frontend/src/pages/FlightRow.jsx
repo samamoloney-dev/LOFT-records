@@ -11,7 +11,9 @@ export function FlightRow({ flight, onChange }) {
   const [rating, setRating] = useState(flight.loftPerformanceRating || '');
   const [error, setError] = useState(null);
 
-  const canEdit = user.role === 'TRAINING_CAPTAIN' && user.id === flight.trainingCaptainId && !flight.locked;
+  // Only whoever created the flight may edit it - no role check here, this
+  // is an ownership lock (mirrors backend canEditFlight).
+  const canEdit = user.id === flight.trainingCaptainId && !flight.locked;
   const canAcknowledge = user.role === 'TRAINEE' && user.traineeId === flight.traineeId && flight.locked && !flight.acknowledgedByTrainee;
 
   async function saveComments() {

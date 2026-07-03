@@ -5,6 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import { FlightRow } from './FlightRow';
 import { CtlForm } from './CtlForm';
 
+// Anyone who trains or checks trainees (pilot or cabin crew side) can log a
+// flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
+const FLIGHT_CREATOR_ROLES = [
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
+];
+
 export function TraineeDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -43,7 +50,7 @@ export function TraineeDetail() {
   if (!trainee) return <div>Loading…</div>;
 
   const outstanding = syllabus.filter((s) => s.outstandingForPhase);
-  const canCreateFlight = user.role === 'TRAINING_CAPTAIN';
+  const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
 
   return (
     <div>

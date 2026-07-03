@@ -85,6 +85,57 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     expect(res.status).toBe(403);
   });
 
+  it('lets HOTC, Examiner, CA Trainer, and CA Checker create flights, not just Training Captain', async () => {
+    const roles = ['HOTC', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
+    for (const role of roles) {
+      await createUser({ email: `${role.toLowerCase()}.creator@test.local`, role });
+    }
+    const pilot = await createTrainee({ type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+    const cabinAttendant = await createTrainee({ type: 'CABIN_ATTENDANT', role: 'CABIN_ATTENDANT', fleet: 'CA_DASH_8' });
+
+    for (const role of ['HOTC', 'EXAMINER']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, `${role.toLowerCase()}.creator@test.local`);
+      const res = await agent.post('/api/flights').send({ traineeId: pilot.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(201);
+    }
+    for (const role of ['CA_TRAINER', 'CA_CHECKER']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, `${role.toLowerCase()}.creator@test.local`);
+      const res = await agent.post('/api/flights').send({ traineeId: cabinAttendant.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(201);
+    }
+  });
+
+  it('still blocks Trainee and CC from creating flights', async () => {
+    await createUser({ email: 'trainee.creator@test.local', role: 'TRAINEE' });
+    await createUser({ email: 'cc.creator@test.local', role: 'CC' });
+    const trainee = await createTrainee({});
+
+    for (const email of ['trainee.creator@test.local', 'cc.creator@test.local']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, email);
+      const res = await agent.post('/api/flights').send({ traineeId: trainee.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it('locks a flight to its creator regardless of role, even against another HOTC', async () => {
+    await createUser({ email: 'hotc.owner@test.local', role: 'HOTC' });
+    await createUser({ email: 'hotc.other@test.local', role: 'HOTC' });
+    const trainee = await createTrainee({});
+
+    const ownerAgent = request.agent(app);
+    await loginAgent(ownerAgent, 'hotc.owner@test.local');
+    const created = await ownerAgent.post('/api/flights').send({ traineeId: trainee.id, date: '2026-01-01', hours: 1 });
+    expect(created.status).toBe(201);
+
+    const otherAgent = request.agent(app);
+    await loginAgent(otherAgent, 'hotc.other@test.local');
+    const res = await otherAgent.patch(`/api/flights/${created.body.id}`).send({ debriefComments: 'not mine to edit' });
+    expect(res.status).toBe(403);
+  });
+
   it('hides archived trainees from everyone except HOTC/HOFO/Flight Ops Admin', async () => {
     await createUser({ email: 'examiner1@test.local', role: 'EXAMINER' });
     await createUser({ email: 'hofo1@test.local', role: 'HOFO' });

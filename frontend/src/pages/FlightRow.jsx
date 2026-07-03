@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { SyllabusItemsList } from './SyllabusPanel';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
@@ -25,7 +26,20 @@ export function FlightRow({ flight, trainee, onChange }) {
   const [assessorSig, setAssessorSig] = useState(flight.assessorSignature || '');
   const [candidateSig, setCandidateSig] = useState(flight.candidateSignature || '');
   const [nextSortie, setNextSortie] = useState(flight.nextSortieNotes || '');
+  const [otherTasks, setOtherTasks] = useState(flight.otherCompletedTasks || '');
   const [error, setError] = useState(null);
+  const [syllabusItems, setSyllabusItems] = useState([]);
+
+  // Cabin attendants have no phases, so the syllabus is a single running
+  // checklist - every flight shows the same outstanding items until they're
+  // signed off, mirroring the "duty demonstrated" nature of the paper record.
+  useEffect(() => {
+    if (isCabinAttendant && trainee?.id) {
+      api.get(`/api/syllabus/trainee/${trainee.id}`).then(setSyllabusItems).catch(() => {});
+    }
+  }, [isCabinAttendant, trainee?.id]);
+
+  const outstanding = syllabusItems.filter((i) => i.section === 'SYLLABUS' && i.outstandingForPhase);
 
   // Only whoever created the flight may edit it - no role check here, this
   // is an ownership lock (mirrors backend canEditFlight).
@@ -44,6 +58,14 @@ export function FlightRow({ flight, trainee, onChange }) {
     setError(null);
     try {
       const updated = await api.patch(`/api/flights/${flight.id}`, { nextSortieNotes: nextSortie });
+      onChange(updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function saveOtherTasks() {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/flights/${flight.id}`, { otherCompletedTasks: otherTasks });
       onChange(updated);
     } catch (err) { setError(err.message); }
   }
@@ -110,28 +132,68 @@ export function FlightRow({ flight, trainee, onChange }) {
         )}
       </div>
 
-      {flight.debriefComments && (
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
-          <strong>Flight Comments:</strong> {flight.debriefComments}
-        </div>
-      )}
-      {flight.nextSortieNotes && (
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-          <strong>Next sortie:</strong> {flight.nextSortieNotes}
-        </div>
+      {isCabinAttendant ? (
+        <>
+          {flight.otherCompletedTasks && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+              <strong>Other Completed Tasks:</strong> {flight.otherCompletedTasks}
+            </div>
+          )}
+          {flight.debriefComments && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <strong>Development Required:</strong> {flight.debriefComments}
+            </div>
+          )}
+          {flight.nextSortieNotes && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <strong>Homework:</strong> {flight.nextSortieNotes}
+            </div>
+          )}
+          {outstanding.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-warning)', marginTop: 4 }}>
+              <strong>Not yet signed off ({outstanding.length}):</strong>{' '}
+              {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
+              {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {flight.debriefComments && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+              <strong>Flight Comments:</strong> {flight.debriefComments}
+            </div>
+          )}
+          {flight.nextSortieNotes && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <strong>Next sortie:</strong> {flight.nextSortieNotes}
+            </div>
+          )}
+        </>
       )}
 
       {editing && (
         <div style={{ marginTop: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: 0, marginBottom: '0.875rem', borderBottom: '0.5px solid var(--border)' }}>
-            <button
-              onClick={() => setSubTab('details')}
-              style={{ border: 'none', background: 'none', padding: '6px 12px', borderBottom: subTab === 'details' ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: subTab === 'details' ? 500 : 400 }}
-            >Flight Details</button>
-            <button
-              onClick={() => setSubTab('nextSortie')}
-              style={{ border: 'none', background: 'none', padding: '6px 12px', borderBottom: subTab === 'nextSortie' ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: subTab === 'nextSortie' ? 500 : 400 }}
-            >Next Sortie</button>
+          <div style={{ display: 'flex', gap: 0, marginBottom: '0.875rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
+            {(isCabinAttendant
+              ? [
+                { key: 'details', label: 'Flight Details' },
+                { key: 'syllabus', label: 'Syllabus' },
+                { key: 'other', label: 'Other Completed Tasks' },
+                { key: 'development', label: 'Development Required' },
+                { key: 'homework', label: 'Homework' },
+              ]
+              : [
+                { key: 'details', label: 'Flight Details' },
+                { key: 'nextSortie', label: 'Next Sortie' },
+              ]
+            ).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setSubTab(t.key)}
+                style={{ border: 'none', background: 'none', padding: '6px 12px', borderBottom: subTab === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: subTab === t.key ? 500 : 400 }}
+              >{t.label}</button>
+            ))}
           </div>
 
           {subTab === 'details' && (
@@ -193,24 +255,26 @@ export function FlightRow({ flight, trainee, onChange }) {
                 </>
               )}
 
-              <div className="field">
-                <label>Flight Comments</label>
-                <textarea
-                  disabled={!canEdit}
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  onBlur={saveComments}
-                  style={{ minHeight: 70 }}
-                />
-              </div>
               {!isCabinAttendant && (
-                <div className="field">
-                  <label>LOFT performance rating</label>
-                  <select disabled={!canEdit} value={rating} onChange={(e) => saveRating(e.target.value)}>
-                    <option value="">—</option>
-                    {RATINGS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
+                <>
+                  <div className="field">
+                    <label>Flight Comments</label>
+                    <textarea
+                      disabled={!canEdit}
+                      value={comments}
+                      onChange={(e) => setComments(e.target.value)}
+                      onBlur={saveComments}
+                      style={{ minHeight: 70 }}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>LOFT performance rating</label>
+                    <select disabled={!canEdit} value={rating} onChange={(e) => saveRating(e.target.value)}>
+                      <option value="">—</option>
+                      {RATINGS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </>
               )}
 
               <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
@@ -244,7 +308,7 @@ export function FlightRow({ flight, trainee, onChange }) {
             </>
           )}
 
-          {subTab === 'nextSortie' && (
+          {subTab === 'nextSortie' && !isCabinAttendant && (
             <div className="field">
               <label>Notes for the next sortie</label>
               <textarea
@@ -254,6 +318,52 @@ export function FlightRow({ flight, trainee, onChange }) {
                 onBlur={saveNextSortie}
                 style={{ minHeight: 100 }}
                 placeholder="What should the next Training Captain focus on?"
+              />
+            </div>
+          )}
+
+          {subTab === 'syllabus' && isCabinAttendant && (
+            <SyllabusItemsList trainee={trainee} section="SYLLABUS" />
+          )}
+
+          {subTab === 'other' && isCabinAttendant && (
+            <div className="field">
+              <label>Other Completed Tasks</label>
+              <textarea
+                disabled={!canEdit}
+                value={otherTasks}
+                onChange={(e) => setOtherTasks(e.target.value)}
+                onBlur={saveOtherTasks}
+                style={{ minHeight: 100 }}
+                placeholder="Anything else the trainee completed on this flight"
+              />
+            </div>
+          )}
+
+          {subTab === 'development' && isCabinAttendant && (
+            <div className="field">
+              <label>Development Required</label>
+              <textarea
+                disabled={!canEdit}
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                onBlur={saveComments}
+                style={{ minHeight: 100 }}
+                placeholder="Areas the trainee needs to work on"
+              />
+            </div>
+          )}
+
+          {subTab === 'homework' && isCabinAttendant && (
+            <div className="field">
+              <label>Homework</label>
+              <textarea
+                disabled={!canEdit}
+                value={nextSortie}
+                onChange={(e) => setNextSortie(e.target.value)}
+                onBlur={saveNextSortie}
+                style={{ minHeight: 100 }}
+                placeholder="What should the trainee prepare/study before the next flight?"
               />
             </div>
           )}

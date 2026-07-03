@@ -65,7 +65,8 @@ service, and the frontend as a static site.
    know these until the other service exists yet):
    - On **loft-records-backend**: set `CORS_ORIGIN` to the frontend's URL (e.g. `https://loft-records-frontend.onrender.com`).
    - On **loft-records-frontend**: set `VITE_API_URL` to the backend's URL, then trigger a manual redeploy of the frontend (Vite bakes env vars in at build time, so this won't take effect until it rebuilds).
-4. Open a shell on the backend service (or run locally against the same `DATABASE_URL`) and run `npm run seed` once, to create the initial staff logins.
+4. The backend's start command runs migrations and the seed script automatically, so the
+   initial staff logins (see below) exist as soon as it's live — no shell access needed.
 
 The free Postgres and web service tiers work for trying this out, but free web services
 spin down when idle — expect a slow first request after inactivity. Upgrade the plan in

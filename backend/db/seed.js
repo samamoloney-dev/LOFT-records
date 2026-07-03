@@ -59,7 +59,8 @@ async function main() {
   if (trainees[0]) {
     await pool.query(
       `INSERT INTO flights (trainee_id, training_captain_id, date, sector_details, hours)
-       VALUES ($1, $2, CURRENT_DATE, $3, $4)`,
+       SELECT $1, $2, CURRENT_DATE, $3, $4
+       WHERE NOT EXISTS (SELECT 1 FROM flights WHERE trainee_id = $1)`,
       [trainees[0].id, tc.id, JSON.stringify({ departure: 'YSSY', arrival: 'YMML' }), 2.5],
     );
   }

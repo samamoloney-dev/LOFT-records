@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { FlightRow } from './FlightRow';
+import { FlightRow, APPROACH_TYPES } from './FlightRow';
 import { CtlForm } from './CtlForm';
 import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
 
@@ -14,12 +14,22 @@ const FLIGHT_CREATOR_ROLES = [
 ];
 
 const TABS = [
+  { key: 'flights', label: 'Flights' },
   { key: 'syllabus', label: 'Syllabus' },
   { key: 'discussion', label: 'Line Training Discussion' },
-  { key: 'flights', label: 'Flights' },
   { key: 'phase', label: 'Phase Completion' },
   { key: 'ctl', label: 'Check to Line' },
 ];
+
+function approachTally(flights) {
+  const counts = Object.fromEntries(APPROACH_TYPES.map((t) => [t, 0]));
+  for (const f of flights) {
+    for (const a of f.sectorDetails?.approaches || []) {
+      if (a.type && counts[a.type] !== undefined) counts[a.type] += 1;
+    }
+  }
+  return counts;
+}
 
 function FlightsTab({ traineeId, flights, onFlightsChange }) {
   const { user } = useAuth();
@@ -39,11 +49,24 @@ function FlightsTab({ traineeId, flights, onFlightsChange }) {
     } catch (err) { setError(err.message); }
   }
 
+  const totalHours = flights.reduce((sum, f) => sum + Number(f.hours), 0);
+  const tally = approachTally(flights);
+
   return (
     <div>
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontWeight: 500 }}>Flights</div>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+          {flights.length} flight{flights.length === 1 ? '' : 's'} · {totalHours.toFixed(1)}h total
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {APPROACH_TYPES.map((t) => (
+            <span key={t} className="badge" style={{ background: 'var(--surface-1)', color: 'var(--text-secondary)' }}>
+              {t}: {tally[t]}
+            </span>
+          ))}
         </div>
         {canCreateFlight && (
           <form onSubmit={createFlight} style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
@@ -61,11 +84,10 @@ function FlightsTab({ traineeId, flights, onFlightsChange }) {
         {error && <div className="error-text">{error}</div>}
       </div>
       {flights.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
-      {flights.map((f, i) => (
+      {flights.map((f) => (
         <FlightRow
           key={f.id}
           flight={f}
-          previousFlight={flights[i + 1]}
           onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
         />
       ))}
@@ -78,7 +100,7 @@ export function TraineeDetail() {
   const [trainee, setTrainee] = useState(null);
   const [flights, setFlights] = useState([]);
   const [error, setError] = useState(null);
-  const [tab, setTab] = useState('syllabus');
+  const [tab, setTab] = useState('flights');
 
   function load() {
     api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));

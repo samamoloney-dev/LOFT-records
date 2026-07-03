@@ -2,6 +2,8 @@ require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const pool = require('./pool');
 const dash8Syllabus = require('./dash8-syllabus');
+const metro23Syllabus = require('./metro23-syllabus');
+const f100Syllabus = require('./f100-syllabus');
 
 const DEMO_PASSWORD = 'password123';
 
@@ -42,19 +44,19 @@ async function main() {
     if (rows[0]) trainees.push(rows[0]);
   }
 
-  // A placeholder item so the (non-Dash-8) demo trainee still has something
-  // to see, since the full curriculum below is Dash 8 specific.
-  const otherFleetSeeds = [
-    { fleet: 'FOKKER_100', roleScope: 'CAPTAIN_ONLY', phase: 2, category: 'General', section: 'SYLLABUS', description: 'Command decision-making assessment' },
+  const allSyllabusSeeds = [
+    ...dash8Syllabus.map((s) => ({ ...s, fleet: 'DASH_8' })),
+    ...metro23Syllabus.map((s) => ({ ...s, fleet: 'METRO_23' })),
+    ...f100Syllabus.map((s) => ({ ...s, fleet: 'FOKKER_100' })),
   ];
 
-  for (const s of [...dash8Syllabus.map((s) => ({ ...s, fleet: 'DASH_8' })), ...otherFleetSeeds]) {
+  for (const s of allSyllabusSeeds) {
     await pool.query(
       `INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, notes, required)
        SELECT $1, $2, $3, $4, $5, $6, $7, $8
        WHERE NOT EXISTS (
          SELECT 1 FROM syllabus_items
-         WHERE fleet = $1 AND role_scope = $2 AND phase = $3 AND description = $6
+         WHERE fleet = $1 AND role_scope = $2 AND phase = $3 AND category = $4 AND description = $6
        )`,
       [s.fleet, s.roleScope, s.phase, s.category, s.section, s.description, s.notes || null, s.required ?? true],
     );

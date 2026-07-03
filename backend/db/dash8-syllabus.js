@@ -1,31 +1,9 @@
 // Full Dash 8 Line Training Record syllabus, transcribed from
 // SA_503_Dash_8_Line_Training_Record. All items are fleet: DASH_8.
-//
-// roleScope follows the document's Captain/FO distinction (the applicant's
-// assigned seat), not the PF/MP (Pilot Flying/Monitoring Pilot) in-flight
-// role - every applicant, Captain or FO track, practices both PF and MP
-// across different legs, so PF/MP-labelled items are role_scope BOTH.
-// A few items genuinely differ by phase depending on the applicant's seat
-// (e.g. "1CAPT | 3FO" in the document) - those are modelled as two separate
-// rows, one CAPTAIN_ONLY and one FO_ONLY, each with its own phase.
+// See syllabus-helpers.js for the shared conventions (role scope vs PF/MP,
+// splitItem for seat-dependent phases).
 
-const SYLLABUS = 'SYLLABUS';
-const DISCUSSION = 'DISCUSSION';
-const BOTH = 'BOTH';
-const CAPTAIN_ONLY = 'CAPTAIN_ONLY';
-const FO_ONLY = 'FO_ONLY';
-
-function item(category, roleScope, phase, description, notes, section = SYLLABUS) {
-  return { category, section, roleScope, phase, description, notes: notes || null, required: true };
-}
-
-// Items that split 1CAPT / nFO - same description, two rows.
-function splitItem(category, description, captainPhase, foPhase, notes) {
-  return [
-    item(category, CAPTAIN_ONLY, captainPhase, description, notes),
-    item(category, FO_ONLY, foPhase, description, notes),
-  ];
-}
+const { SYLLABUS, DISCUSSION, BOTH, CAPTAIN_ONLY, FO_ONLY, item, splitItem } = require('./syllabus-helpers');
 
 const items = [
   // Flight Planning

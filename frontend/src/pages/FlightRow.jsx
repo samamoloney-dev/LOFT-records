@@ -4,9 +4,11 @@ import { api } from '../api/client';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
-const APPROACH_TYPES = ['ILS', 'RNAV', 'VOR', 'NDB', 'Visual', 'Circling'];
+// Matches the approach tally table in the Dash 8 / Metro 23 / Fokker 100
+// Line Training Records - no circling approaches are conducted.
+export const APPROACH_TYPES = ['ILS', 'LLZ', 'RNP LNAV', 'NDB', 'VOR', 'DGA'];
 
-export function FlightRow({ flight, previousFlight, onChange }) {
+export function FlightRow({ flight, onChange }) {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [subTab, setSubTab] = useState('details');
@@ -102,9 +104,9 @@ export function FlightRow({ flight, previousFlight, onChange }) {
         )}
       </div>
 
-      {previousFlight?.debriefComments && (
+      {flight.debriefComments && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
-          <strong>Previous flight comments:</strong> {previousFlight.debriefComments}
+          <strong>Flight Comments:</strong> {flight.debriefComments}
         </div>
       )}
       {flight.nextSortieNotes && (
@@ -150,7 +152,7 @@ export function FlightRow({ flight, previousFlight, onChange }) {
               </div>
 
               <div className="field">
-                <label>Debrief comments</label>
+                <label>Flight Comments</label>
                 <textarea
                   disabled={!canEdit}
                   value={comments}

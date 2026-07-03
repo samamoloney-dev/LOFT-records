@@ -53,6 +53,24 @@ loft-records/
 └── docs/            Project brief and data model notes
 ```
 
+## Deploying
+
+`render.yaml` at the repo root is a [Render Blueprint](https://render.com/docs/blueprint-spec)
+that provisions everything this app needs: a Postgres database, the backend as a web
+service, and the frontend as a static site.
+
+1. On [Render](https://render.com), **New > Blueprint**, and point it at this repo.
+2. Render creates all three resources and asks you to confirm — accept the defaults.
+3. Once the backend and frontend both have URLs, set two env vars manually (Render can't
+   know these until the other service exists yet):
+   - On **loft-records-backend**: set `CORS_ORIGIN` to the frontend's URL (e.g. `https://loft-records-frontend.onrender.com`).
+   - On **loft-records-frontend**: set `VITE_API_URL` to the backend's URL, then trigger a manual redeploy of the frontend (Vite bakes env vars in at build time, so this won't take effect until it rebuilds).
+4. Open a shell on the backend service (or run locally against the same `DATABASE_URL`) and run `npm run seed` once, to create the initial staff logins.
+
+The free Postgres and web service tiers work for trying this out, but free web services
+spin down when idle — expect a slow first request after inactivity. Upgrade the plan in
+`render.yaml` (or in the Render dashboard) once this is more than a demo.
+
 ## Roles
 
 | Role | Access |

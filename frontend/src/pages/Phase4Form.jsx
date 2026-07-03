@@ -65,7 +65,7 @@ export function Phase4Form({ traineeId }) {
   if (error) return <div className="error-text">{error}</div>;
   if (!data) return null;
 
-  const assessment = data.assessment || { sectorDetails: {}, itemResults: {}, ntsScores: {}, comments: '' };
+  const assessment = data.assessment || { sectorDetails: {}, itemResults: {}, categoryRemarks: {}, ntsScores: {}, comments: '' };
   const isTrainee = user.role === 'TRAINEE';
   const canEdit = CAN_EDIT_ROLES.includes(user.role) && !assessment.completedAt;
   const canSignApplicant = isTrainee ? user.traineeId === traineeId && !assessment.completedAt : !assessment.completedAt;
@@ -89,9 +89,12 @@ export function Phase4Form({ traineeId }) {
     save({ itemResults: next });
   }
 
-  function updateNts(marker, field, value) {
-    const next = { ...assessment.ntsScores, [marker]: { ...assessment.ntsScores[marker], [field]: value } };
-    save({ ntsScores: next });
+  function updateCategoryRemarks(category, value) {
+    save({ categoryRemarks: { ...assessment.categoryRemarks, [category]: value } });
+  }
+
+  function updateNts(marker, value) {
+    save({ ntsScores: { ...assessment.ntsScores, [marker]: value } });
   }
 
   async function complete() {
@@ -135,53 +138,48 @@ export function Phase4Form({ traineeId }) {
             const key = itemKey(item);
             const result = assessment.itemResults?.[key] || {};
             return (
-              <div key={key} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13 }}>{item.description}</div>
-                    {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {STATUSES.map((s) => (
-                      <button
-                        key={s.value}
-                        disabled={!canEdit}
-                        className={`tick-btn ${result.status === s.value ? (s.value === 'UNSATISFACTORY' ? 'active-fail' : 'active-pass') : ''}`}
-                        onClick={() => updateItemResult(item, 'status', s.value)}
-                      >{s.label}</button>
-                    ))}
-                  </div>
+              <div key={key} className="row" style={{ cursor: 'default' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13 }}>{item.description}</div>
+                  {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
                 </div>
-                <input
-                  disabled={!canEdit}
-                  placeholder="Remarks"
-                  value={result.remarks || ''}
-                  onChange={(e) => updateItemResult(item, 'remarks', e.target.value)}
-                  style={{ marginTop: 4 }}
-                />
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {STATUSES.map((s) => (
+                    <button
+                      key={s.value}
+                      disabled={!canEdit}
+                      className={`tick-btn ${result.status === s.value ? (s.value === 'UNSATISFACTORY' ? 'active-fail' : 'active-pass') : ''}`}
+                      onClick={() => updateItemResult(item, 'status', s.value)}
+                    >{s.label}</button>
+                  ))}
+                </div>
               </div>
             );
           })}
+          <div className="field" style={{ marginTop: 10 }}>
+            <label>Remarks — {category}</label>
+            <textarea
+              disabled={!canEdit}
+              value={assessment.categoryRemarks?.[category] || ''}
+              onChange={(e) => setData((d) => ({ ...d, assessment: { ...d.assessment, categoryRemarks: { ...d.assessment.categoryRemarks, [category]: e.target.value } } }))}
+              onBlur={() => updateCategoryRemarks(category, assessment.categoryRemarks?.[category] || '')}
+              style={{ minHeight: 50 }}
+            />
+          </div>
         </div>
       ))}
 
       <div className="card">
         <div style={{ fontWeight: 500, marginBottom: 6 }}>Non Technical Skill Assessment</div>
-        {data.ntsMarkers.map((marker) => {
-          const score = assessment.ntsScores?.[marker] || {};
-          return (
-            <div key={marker} className="grid2" style={{ marginBottom: 8 }}>
-              <div className="field" style={{ margin: 0 }}>
-                <label>{marker} — Score</label>
-                <input disabled={!canEdit} value={score.score || ''} onChange={(e) => updateNts(marker, 'score', e.target.value)} />
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>{marker} — Code</label>
-                <input disabled={!canEdit} value={score.code || ''} onChange={(e) => updateNts(marker, 'code', e.target.value)} />
-              </div>
-            </div>
-          );
-        })}
+        {data.ntsMarkers.map((marker) => (
+          <div key={marker} className="row" style={{ cursor: 'default' }}>
+            <div style={{ flex: 1, fontSize: 13 }}>{marker}</div>
+            <select disabled={!canEdit} value={assessment.ntsScores?.[marker] || ''} onChange={(e) => updateNts(marker, e.target.value)} style={{ width: 100 }}>
+              <option value="">—</option>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        ))}
       </div>
 
       <div className="card">

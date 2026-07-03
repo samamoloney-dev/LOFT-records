@@ -40,6 +40,7 @@ router.get('/:traineeId', async (req, res) => {
 const upsertSchema = z.object({
   sectorDetails: z.record(z.any()).optional(),
   itemResults: z.record(z.any()).optional(),
+  categoryRemarks: z.record(z.any()).optional(),
   ntsScores: z.record(z.any()).optional(),
   comments: z.string().nullable().optional(),
   trainingCaptainSignature: z.string().nullable().optional(),
@@ -63,21 +64,23 @@ router.put('/:traineeId', async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO phase4_assessments
-       (trainee_id, sector_details, item_results, nts_scores, comments,
+       (trainee_id, sector_details, item_results, category_remarks, nts_scores, comments,
         training_captain_signature, applicant_signature)
-     VALUES ($1, COALESCE($2, '{}'::jsonb), COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), $5, $6, $7)
+     VALUES ($1, COALESCE($2, '{}'::jsonb), COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8)
      ON CONFLICT (trainee_id) DO UPDATE SET
        sector_details = COALESCE($2, phase4_assessments.sector_details),
        item_results = COALESCE($3, phase4_assessments.item_results),
-       nts_scores = COALESCE($4, phase4_assessments.nts_scores),
-       comments = COALESCE($5, phase4_assessments.comments),
-       training_captain_signature = COALESCE($6, phase4_assessments.training_captain_signature),
-       applicant_signature = COALESCE($7, phase4_assessments.applicant_signature)
+       category_remarks = COALESCE($4, phase4_assessments.category_remarks),
+       nts_scores = COALESCE($5, phase4_assessments.nts_scores),
+       comments = COALESCE($6, phase4_assessments.comments),
+       training_captain_signature = COALESCE($7, phase4_assessments.training_captain_signature),
+       applicant_signature = COALESCE($8, phase4_assessments.applicant_signature)
      RETURNING *`,
     [
       trainee.id,
       d.sectorDetails ? JSON.stringify(d.sectorDetails) : null,
       d.itemResults ? JSON.stringify(d.itemResults) : null,
+      d.categoryRemarks ? JSON.stringify(d.categoryRemarks) : null,
       d.ntsScores ? JSON.stringify(d.ntsScores) : null,
       d.comments ?? null,
       d.trainingCaptainSignature ?? null,

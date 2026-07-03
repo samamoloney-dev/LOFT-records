@@ -99,9 +99,8 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
     save({ sectorDetails: { ...form.sectorDetails, [key]: value } });
   }
 
-  function updateNts(marker, field, value) {
-    const next = { ...form.ntsScores, [marker]: { ...form.ntsScores[marker], [field]: value } };
-    save({ ntsScores: next });
+  function updateNts(marker, value) {
+    save({ ntsScores: { ...form.ntsScores, [marker]: value } });
   }
 
   async function setResult(overallResult) {
@@ -210,21 +209,15 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
 
               <div className="card">
                 <div style={{ fontWeight: 500, marginBottom: 6 }}>Non Technical Skill Assessment</div>
-                {data.ntsMarkers.map((marker) => {
-                  const score = form.ntsScores?.[marker] || {};
-                  return (
-                    <div key={marker} className="grid2" style={{ marginBottom: 8 }}>
-                      <div className="field" style={{ margin: 0 }}>
-                        <label>{marker} — Score</label>
-                        <input disabled={locked} value={score.score || ''} onChange={(e) => updateNts(marker, 'score', e.target.value)} />
-                      </div>
-                      <div className="field" style={{ margin: 0 }}>
-                        <label>{marker} — Code</label>
-                        <input disabled={locked} value={score.code || ''} onChange={(e) => updateNts(marker, 'code', e.target.value)} />
-                      </div>
-                    </div>
-                  );
-                })}
+                {data.ntsMarkers.map((marker) => (
+                  <div key={marker} className="row" style={{ cursor: 'default' }}>
+                    <div style={{ flex: 1, fontSize: 13 }}>{marker}</div>
+                    <select disabled={locked} value={form.ntsScores?.[marker] || ''} onChange={(e) => updateNts(marker, e.target.value)} style={{ width: 100 }}>
+                      <option value="">—</option>
+                      {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                ))}
               </div>
 
               <div className="field">

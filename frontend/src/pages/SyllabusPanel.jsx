@@ -11,6 +11,34 @@ function groupByCategory(items) {
   return groups;
 }
 
+// Trainer comments at the subject (category) level, not per individual
+// topic - one box per category card, shared by pilots and cabin crew.
+function CategoryNoteField({ traineeId, category, section, initialNotes }) {
+  const [value, setValue] = useState(initialNotes || '');
+  const [error, setError] = useState(null);
+
+  async function save() {
+    setError(null);
+    try {
+      await api.put(`/api/syllabus/trainee/${traineeId}/category-notes`, { category, section, notes: value });
+    } catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div className="field" style={{ marginTop: 10 }}>
+      <label>Comments — {category}</label>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        style={{ minHeight: 50 }}
+        placeholder="Notes on this subject"
+      />
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
+
 function SyllabusItemRow({ item, onSignOff, showPhase }) {
   const { user } = useAuth();
   const [signing, setSigning] = useState(false);
@@ -71,12 +99,16 @@ function SyllabusItemRow({ item, onSignOff, showPhase }) {
 
 export function SyllabusItemsList({ trainee, section }) {
   const [items, setItems] = useState([]);
+  const [categoryNotes, setCategoryNotes] = useState([]);
   const [error, setError] = useState(null);
 
   function load() {
     api.get(`/api/syllabus/trainee/${trainee.id}`).then(setItems).catch((e) => setError(e.message));
   }
   useEffect(load, [trainee.id]);
+  useEffect(() => {
+    api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
+  }, [trainee.id]);
 
   async function signOff(itemId, signedOffByName) {
     await api.post(`/api/syllabus/trainee/${trainee.id}/complete`, { syllabusItemId: itemId, signedOffByName });
@@ -88,6 +120,7 @@ export function SyllabusItemsList({ trainee, section }) {
   const outstanding = sectionItems.filter((i) => i.outstandingForPhase);
   const label = section === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion';
   const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
+  const noteFor = (category) => categoryNotes.find((n) => n.category === category && n.section === section)?.notes || '';
 
   return (
     <div>
@@ -114,11 +147,124 @@ export function SyllabusItemsList({ trainee, section }) {
           {categoryItems.map((item) => (
             <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={!isCabinAttendant} />
           ))}
+          <CategoryNoteField traineeId={trainee.id} category={category} section={section} initialNotes={noteFor(category)} />
         </div>
       ))}
       {sectionItems.length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
           No {label.toLowerCase()} items for this fleet yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Cabin crew "Required Tasks" syllabus, embedded within a specific flight -
+// re-signed on every flight rather than carried over, per the paper record
+// where each flight has its own copy of the required-tasks table.
+export function FlightSyllabusList({ flightId, trainee, onChange }) {
+  const [items, setItems] = useState([]);
+  const [categoryNotes, setCategoryNotes] = useState([]);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get(`/api/syllabus/flight/${flightId}`).then(setItems).catch((e) => setError(e.message));
+  }
+  useEffect(load, [flightId]);
+  useEffect(() => {
+    api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
+  }, [trainee.id]);
+
+  async function signOff(itemId, signedOffByName) {
+    await api.post(`/api/syllabus/flight/${flightId}/complete`, { syllabusItemId: itemId, signedOffByName });
+    load();
+    onChange?.();
+  }
+
+  const grouped = groupByCategory(items);
+  const outstanding = items.filter((i) => !i.completedAt);
+  const noteFor = (category) => categoryNotes.find((n) => n.category === category && n.section === 'SYLLABUS')?.notes || '';
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus for this flight</div>
+        {outstanding.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>All required tasks signed off for this flight.</div>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text-warning)' }}>
+            {outstanding.length} required task(s) not yet signed off for this flight.
+          </div>
+        )}
+      </div>
+
+      {error && <div className="error-text">{error}</div>}
+
+      {[...grouped.entries()].map(([category, categoryItems]) => (
+        <div key={category} className="card">
+          <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
+          {categoryItems.map((item) => (
+            <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} />
+          ))}
+          <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} />
+        </div>
+      ))}
+      {items.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+          No syllabus items for this fleet yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Read-only overview for the top-level trainee "Syllabus" tab, cabin crew
+// only - actual sign-off happens per flight (see FlightSyllabusList above),
+// so this just shows the curriculum structure and subject-level comments.
+export function CaSyllabusOverview({ trainee }) {
+  const [items, setItems] = useState([]);
+  const [categoryNotes, setCategoryNotes] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.get(`/api/syllabus/trainee/${trainee.id}`).then(setItems).catch((e) => setError(e.message));
+  }, [trainee.id]);
+  useEffect(() => {
+    api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
+  }, [trainee.id]);
+
+  const sectionItems = items.filter((i) => i.section === 'SYLLABUS');
+  const grouped = groupByCategory(sectionItems);
+  const noteFor = (category) => categoryNotes.find((n) => n.category === category && n.section === 'SYLLABUS')?.notes || '';
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Required tasks are signed off individually on each training flight — open a flight under the Flights tab to record sign-offs.
+        </div>
+      </div>
+
+      {error && <div className="error-text">{error}</div>}
+
+      {[...grouped.entries()].map(([category, categoryItems]) => (
+        <div key={category} className="card">
+          <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
+          {categoryItems.map((item) => (
+            <div key={item.id} className="row" style={{ cursor: 'default' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13 }}>{item.description}</div>
+                {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
+              </div>
+            </div>
+          ))}
+          <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} />
+        </div>
+      ))}
+      {sectionItems.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+          No syllabus items for this fleet yet.
         </div>
       )}
     </div>

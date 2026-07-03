@@ -61,6 +61,116 @@ async function findTrainee(id) {
   return rows[0] ? rowToCamel(rows[0]) : null;
 }
 
+async function findFlight(id) {
+  const { rows } = await pool.query('SELECT * FROM flights WHERE id = $1', [id]);
+  return rows[0] ? rowToCamel(rows[0]) : null;
+}
+
+// Trainer comments at the subject (category) level - one box per category,
+// not per individual topic. Shared by pilots and cabin crew, syllabus and
+// discussion alike.
+router.get('/trainee/:traineeId/category-notes', async (req, res) => {
+  const trainee = await findTrainee(req.params.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows } = await pool.query('SELECT * FROM syllabus_category_notes WHERE trainee_id = $1', [trainee.id]);
+  res.json(rows.map(rowToCamel));
+});
+
+const categoryNoteSchema = z.object({
+  category: z.string().min(1),
+  section: z.enum(['SYLLABUS', 'DISCUSSION']),
+  notes: z.string().nullable().optional(),
+});
+
+router.put('/trainee/:traineeId/category-notes', async (req, res) => {
+  const trainee = await findTrainee(req.params.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const parsed = categoryNoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { category, section, notes } = parsed.data;
+  const { rows } = await pool.query(
+    `INSERT INTO syllabus_category_notes (trainee_id, category, section, notes, updated_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (trainee_id, category, section) DO UPDATE SET notes = $4, updated_at = now()
+     RETURNING *`,
+    [trainee.id, category, section, notes ?? null],
+  );
+  res.json(rowToCamel(rows[0]));
+});
+
+// Cabin crew "Required Tasks" syllabus, scoped to one specific training
+// flight - re-signed on every flight, unlike the trainee-level view above
+// which stays a one-time list (used for Line Training Discussion, and for
+// pilots' phase-gated syllabus).
+router.get('/flight/:flightId', async (req, res) => {
+  const flight = await findFlight(req.params.flightId);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+  const trainee = await findTrainee(flight.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const scope = roleScopeFor(trainee.role);
+  const { rows: itemRows } = await pool.query(
+    `SELECT * FROM syllabus_items
+     WHERE fleet = $1 AND section = 'SYLLABUS' AND (role_scope = 'BOTH' OR role_scope = $2)
+     ORDER BY category ASC, description ASC`,
+    [trainee.fleet, scope],
+  );
+
+  const { rows: progressRows } = await pool.query(
+    'SELECT * FROM flight_syllabus_progress WHERE flight_id = $1',
+    [flight.id],
+  );
+  const progressByItem = new Map(progressRows.map((p) => [p.syllabus_item_id, rowToCamel(p)]));
+
+  const annotated = itemRows.map((row) => {
+    const item = rowToCamel(row);
+    const p = progressByItem.get(item.id);
+    return {
+      ...item,
+      completedAt: p ? p.completedAt : null,
+      signedOffById: p ? p.signedOffById : null,
+      signedOffByName: p ? p.signedOffByName : null,
+    };
+  });
+
+  res.json(annotated);
+});
+
+const flightCompleteSchema = z.object({
+  syllabusItemId: z.string().uuid(),
+  signedOffByName: z.string().min(1),
+});
+
+router.post('/flight/:flightId/complete', async (req, res) => {
+  const flight = await findFlight(req.params.flightId);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+  const trainee = await findTrainee(flight.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const parsed = flightCompleteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows } = await pool.query(
+    `INSERT INTO flight_syllabus_progress (flight_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
+     VALUES ($1, $2, now(), $3, $4)
+     ON CONFLICT (flight_id, syllabus_item_id)
+     DO UPDATE SET completed_at = now(), signed_off_by = $3, signed_off_by_name = $4
+     RETURNING *`,
+    [flight.id, parsed.data.syllabusItemId, req.user.id, parsed.data.signedOffByName],
+  );
+
+  const progress = rowToCamel(rows[0]);
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'flight_syllabus_progress', targetId: progress.syllabusItemId });
+  res.json(progress);
+});
+
 // Syllabus items for a fleet, annotated with the trainee's progress and
 // whether each required item is still outstanding for their current phase.
 router.get('/trainee/:traineeId', async (req, res) => {

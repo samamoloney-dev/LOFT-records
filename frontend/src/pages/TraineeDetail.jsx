@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { FlightRow, APPROACH_TYPES } from './FlightRow';
 import { CtlForm } from './CtlForm';
-import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
+import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -154,7 +154,7 @@ export function TraineeDetail() {
         ))}
       </div>
 
-      {tab === 'syllabus' && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
+      {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}

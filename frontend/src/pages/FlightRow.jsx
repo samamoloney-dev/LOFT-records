@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
-import { SyllabusItemsList } from './SyllabusPanel';
+import { FlightSyllabusList } from './SyllabusPanel';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
@@ -30,16 +30,16 @@ export function FlightRow({ flight, trainee, onChange }) {
   const [error, setError] = useState(null);
   const [syllabusItems, setSyllabusItems] = useState([]);
 
-  // Cabin attendants have no phases, so the syllabus is a single running
-  // checklist - every flight shows the same outstanding items until they're
-  // signed off, mirroring the "duty demonstrated" nature of the paper record.
-  useEffect(() => {
-    if (isCabinAttendant && trainee?.id) {
-      api.get(`/api/syllabus/trainee/${trainee.id}`).then(setSyllabusItems).catch(() => {});
+  // Cabin crew syllabus items are re-signed on every flight (not carried
+  // over), so this is scoped to this specific flight's own sign-off state.
+  function loadSyllabusItems() {
+    if (isCabinAttendant) {
+      api.get(`/api/syllabus/flight/${flight.id}`).then(setSyllabusItems).catch(() => {});
     }
-  }, [isCabinAttendant, trainee?.id]);
+  }
+  useEffect(loadSyllabusItems, [isCabinAttendant, flight.id]);
 
-  const outstanding = syllabusItems.filter((i) => i.section === 'SYLLABUS' && i.outstandingForPhase);
+  const outstanding = syllabusItems.filter((i) => !i.completedAt);
 
   // Only whoever created the flight may edit it - no role check here, this
   // is an ownership lock (mirrors backend canEditFlight).
@@ -151,7 +151,7 @@ export function FlightRow({ flight, trainee, onChange }) {
           )}
           {outstanding.length > 0 && (
             <div style={{ fontSize: 12, color: 'var(--text-warning)', marginTop: 4 }}>
-              <strong>Not yet signed off ({outstanding.length}):</strong>{' '}
+              <strong>Not yet signed off for this flight ({outstanding.length}):</strong>{' '}
               {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
               {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''}
             </div>
@@ -323,7 +323,7 @@ export function FlightRow({ flight, trainee, onChange }) {
           )}
 
           {subTab === 'syllabus' && isCabinAttendant && (
-            <SyllabusItemsList trainee={trainee} section="SYLLABUS" />
+            <FlightSyllabusList flightId={flight.id} trainee={trainee} onChange={loadSyllabusItems} />
           )}
 
           {subTab === 'other' && isCabinAttendant && (

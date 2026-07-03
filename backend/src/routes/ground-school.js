@@ -99,10 +99,74 @@ router.get('/trainee/:traineeId', async (req, res) => {
       completedAt: p ? p.completedAt : null,
       signedOffById: p ? p.signedOffById : null,
       signedOffByName: p ? p.signedOffByName : null,
+      details: p ? p.details : {},
     };
   });
 
   res.json(annotated);
+});
+
+// Subject-level comments for the whole category (e.g. Pre-Simulator
+// Assessment) - same pattern as syllabus_category_notes.
+router.get('/trainee/:traineeId/category-notes', async (req, res) => {
+  const trainee = await findTrainee(req.params.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows } = await pool.query('SELECT * FROM ground_school_category_notes WHERE trainee_id = $1', [trainee.id]);
+  res.json(rows.map(rowToCamel));
+});
+
+const categoryNoteSchema = z.object({
+  category: z.string().min(1),
+  notes: z.string().nullable().optional(),
+});
+
+router.put('/trainee/:traineeId/category-notes', async (req, res) => {
+  const trainee = await findTrainee(req.params.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const parsed = categoryNoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { category, notes } = parsed.data;
+  const { rows } = await pool.query(
+    `INSERT INTO ground_school_category_notes (trainee_id, category, notes, updated_at)
+     VALUES ($1, $2, $3, now())
+     ON CONFLICT (trainee_id, category) DO UPDATE SET notes = $3, updated_at = now()
+     RETURNING *`,
+    [trainee.id, category, notes ?? null],
+  );
+  res.json(rowToCamel(rows[0]));
+});
+
+// Extra per-item fields (completed date, pass mark %, route) that some
+// categories need beyond the tick/name/date sign-off - independent of
+// whether the item has actually been signed off yet.
+const detailsSchema = z.object({
+  details: z.record(z.any()),
+});
+
+router.put('/trainee/:traineeId/items/:itemId/details', async (req, res) => {
+  const trainee = await findTrainee(req.params.traineeId);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const parsed = detailsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows } = await pool.query(
+    `INSERT INTO ground_school_progress (trainee_id, ground_school_item_id, details)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (trainee_id, ground_school_item_id) DO UPDATE SET details = $3
+     RETURNING *`,
+    [trainee.id, req.params.itemId, JSON.stringify(parsed.data.details)],
+  );
+
+  const progress = rowToCamel(rows[0]);
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_progress', targetId: progress.groundSchoolItemId });
+  res.json(progress);
 });
 
 const completeSchema = z.object({

@@ -11,7 +11,7 @@ function groupByCategory(items) {
   return groups;
 }
 
-function SyllabusItemRow({ item, onSignOff }) {
+function SyllabusItemRow({ item, onSignOff, showPhase }) {
   const { user } = useAuth();
   const [signing, setSigning] = useState(false);
   const [name, setName] = useState(item.signedOffByName || user.name);
@@ -35,10 +35,15 @@ function SyllabusItemRow({ item, onSignOff }) {
         >{item.completedAt ? '✓' : ''}</button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13 }}>{item.description}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            Phase {item.phase}{item.roleScope !== 'BOTH' ? ` · ${item.roleScope === 'CAPTAIN_ONLY' ? 'Captain' : 'FO'}` : ''}
-            {item.notes ? ` · ${item.notes}` : ''}
-          </div>
+          {(() => {
+            const parts = [];
+            if (showPhase) parts.push(`Phase ${item.phase}`);
+            if (item.roleScope !== 'BOTH') parts.push(item.roleScope === 'CAPTAIN_ONLY' ? 'Captain' : 'FO');
+            if (item.notes) parts.push(item.notes);
+            return parts.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{parts.join(' · ')}</div>
+            );
+          })()}
           {item.completedAt && (
             <div style={{ fontSize: 11, color: 'var(--text-success)' }}>
               Signed off by {item.signedOffByName} on {new Date(item.completedAt).toLocaleDateString()}
@@ -82,16 +87,21 @@ export function SyllabusItemsList({ trainee, section }) {
   const grouped = groupByCategory(sectionItems);
   const outstanding = sectionItems.filter((i) => i.outstandingForPhase);
   const label = section === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion';
+  const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
 
   return (
     <div>
       <div className="card">
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>{label} — Phase {trainee.phase}</div>
+        <div style={{ fontWeight: 500, marginBottom: 6 }}>{label}{!isCabinAttendant && ` — Phase ${trainee.phase}`}</div>
         {outstanding.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No outstanding required items for this phase.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            {isCabinAttendant ? 'No outstanding required items.' : 'No outstanding required items for this phase.'}
+          </div>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--text-warning)' }}>
-            {outstanding.length} required item(s) outstanding to complete this phase.
+            {isCabinAttendant
+              ? `${outstanding.length} required item(s) outstanding.`
+              : `${outstanding.length} required item(s) outstanding to complete this phase.`}
           </div>
         )}
       </div>
@@ -102,7 +112,7 @@ export function SyllabusItemsList({ trainee, section }) {
         <div key={category} className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
           {categoryItems.map((item) => (
-            <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} />
+            <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={!isCabinAttendant} />
           ))}
         </div>
       ))}

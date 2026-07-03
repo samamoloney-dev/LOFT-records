@@ -8,8 +8,9 @@ const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 // Line Training Records - no circling approaches are conducted.
 export const APPROACH_TYPES = ['ILS', 'LLZ', 'RNP LNAV', 'NDB', 'VOR', 'DGA'];
 
-export function FlightRow({ flight, onChange }) {
+export function FlightRow({ flight, trainee, onChange }) {
   const { user } = useAuth();
+  const isCabinAttendant = trainee?.type === 'CABIN_ATTENDANT';
   const [editing, setEditing] = useState(false);
   const [subTab, setSubTab] = useState('details');
   const [comments, setComments] = useState(flight.debriefComments || '');
@@ -18,6 +19,9 @@ export function FlightRow({ flight, onChange }) {
   const [approaches, setApproaches] = useState(
     flight.sectorDetails?.approaches?.length ? flight.sectorDetails.approaches : [{ type: '' }, { type: '' }],
   );
+  const [position, setPosition] = useState(flight.sectorDetails?.position || '');
+  const [aircraft, setAircraft] = useState(flight.sectorDetails?.aircraft || '');
+  const [destination, setDestination] = useState(flight.sectorDetails?.destination || '');
   const [assessorSig, setAssessorSig] = useState(flight.assessorSignature || '');
   const [candidateSig, setCandidateSig] = useState(flight.candidateSignature || '');
   const [nextSortie, setNextSortie] = useState(flight.nextSortieNotes || '');
@@ -57,7 +61,9 @@ export function FlightRow({ flight, onChange }) {
     setError(null);
     try {
       const updated = await api.patch(`/api/flights/${flight.id}`, {
-        sectorDetails: { ...flight.sectorDetails, route, approaches, ...patch },
+        sectorDetails: isCabinAttendant
+          ? { ...flight.sectorDetails, position, aircraft, destination, ...patch }
+          : { ...flight.sectorDetails, route, approaches, ...patch },
       });
       onChange(updated);
     } catch (err) { setError(err.message); }
@@ -93,7 +99,7 @@ export function FlightRow({ flight, onChange }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontWeight: 500 }}>{new Date(flight.date).toLocaleDateString()} · {Number(flight.hours)}h</div>
+          <div style={{ fontWeight: 500 }}>{new Date(flight.date).toLocaleDateString()}{!isCabinAttendant && ` · ${Number(flight.hours)}h`}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {flight.locked ? 'Finalized' : 'Draft'}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
@@ -130,26 +136,62 @@ export function FlightRow({ flight, onChange }) {
 
           {subTab === 'details' && (
             <>
-              <div className="field">
-                <label>Route</label>
-                <input
-                  disabled={!canEdit}
-                  value={route}
-                  onChange={(e) => setRoute(e.target.value)}
-                  onBlur={() => saveSectorDetails({ route })}
-                  placeholder="e.g. YSSY - YMML"
-                />
-              </div>
+              {isCabinAttendant ? (
+                <div className="grid2" style={{ marginBottom: '0.875rem' }}>
+                  <div className="field">
+                    <label>Position</label>
+                    <input
+                      disabled={!canEdit}
+                      value={position}
+                      onChange={(e) => setPosition(e.target.value)}
+                      onBlur={() => saveSectorDetails({ position })}
+                      placeholder="e.g. CA1"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Aircraft</label>
+                    <input
+                      disabled={!canEdit}
+                      value={aircraft}
+                      onChange={(e) => setAircraft(e.target.value)}
+                      onBlur={() => saveSectorDetails({ aircraft })}
+                      placeholder="e.g. Dash 8-300"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Destination</label>
+                    <input
+                      disabled={!canEdit}
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      onBlur={() => saveSectorDetails({ destination })}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="field">
+                    <label>Route</label>
+                    <input
+                      disabled={!canEdit}
+                      value={route}
+                      onChange={(e) => setRoute(e.target.value)}
+                      onBlur={() => saveSectorDetails({ route })}
+                      placeholder="e.g. YSSY - YMML"
+                    />
+                  </div>
 
-              <div className="field"><label>Approaches flown</label></div>
-              <div className="grid2" style={{ marginBottom: '0.875rem' }}>
-                {approaches.map((a, i) => (
-                  <select key={i} disabled={!canEdit} value={a.type || ''} onChange={(e) => updateApproachType(i, e.target.value)}>
-                    <option value="">Approach {i + 1} — none</option>
-                    {APPROACH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                ))}
-              </div>
+                  <div className="field"><label>Approaches flown</label></div>
+                  <div className="grid2" style={{ marginBottom: '0.875rem' }}>
+                    {approaches.map((a, i) => (
+                      <select key={i} disabled={!canEdit} value={a.type || ''} onChange={(e) => updateApproachType(i, e.target.value)}>
+                        <option value="">Approach {i + 1} — none</option>
+                        {APPROACH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    ))}
+                  </div>
+                </>
+              )}
 
               <div className="field">
                 <label>Flight Comments</label>
@@ -161,13 +203,15 @@ export function FlightRow({ flight, onChange }) {
                   style={{ minHeight: 70 }}
                 />
               </div>
-              <div className="field">
-                <label>LOFT performance rating</label>
-                <select disabled={!canEdit} value={rating} onChange={(e) => saveRating(e.target.value)}>
-                  <option value="">—</option>
-                  {RATINGS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
+              {!isCabinAttendant && (
+                <div className="field">
+                  <label>LOFT performance rating</label>
+                  <select disabled={!canEdit} value={rating} onChange={(e) => saveRating(e.target.value)}>
+                    <option value="">—</option>
+                    {RATINGS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
                 We, the undersigned, do hereby mutually agree upon and accept the comment written in

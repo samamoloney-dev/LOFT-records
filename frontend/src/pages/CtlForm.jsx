@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 // Binary pass/fail only - no N/A / not-assessed option, and no non-technical
 // skills scoring section, per docs/project-brief.md Section 5.
-const ASSESSMENT_ITEMS = [
+const PILOT_ASSESSMENT_ITEMS = [
   'Pre-flight preparation',
   'Normal procedures',
   'Abnormal / emergency procedures',
@@ -13,11 +13,23 @@ const ASSESSMENT_ITEMS = [
   'Overall handling',
 ];
 
-export function CtlForm({ traineeId, onCompleted }) {
+// Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
+// Training Record.
+const CA_ASSESSMENT_ITEMS = [
+  'Competent on all duties and procedures from sign on to sign off without any assistance',
+  'Knowledge on all Rules and Regulations is up to standard',
+  'Knowledge on all Emergency Procedures is up to standard',
+  'Knowledge on all Emergency and Survival Equipment is up to standard',
+  'Knowledge on Aviation Medicine and First Aid is up to standard',
+  'Satisfactorily completed all items of the training record and discussion list; recommended for a Check to Line',
+];
+
+export function CtlForm({ traineeId, traineeType, onCompleted }) {
   const { user } = useAuth();
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
+  const ASSESSMENT_ITEMS = traineeType === 'CABIN_ATTENDANT' ? CA_ASSESSMENT_ITEMS : PILOT_ASSESSMENT_ITEMS;
 
   function load() {
     api.get(`/api/ctl/${traineeId}`).then((data) => setForm(data || { assessmentItems: {}, overallResult: null, overallScore: null })).catch((e) => setError(e.message));

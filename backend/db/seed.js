@@ -4,6 +4,7 @@ const pool = require('./pool');
 const dash8Syllabus = require('./dash8-syllabus');
 const metro23Syllabus = require('./metro23-syllabus');
 const f100Syllabus = require('./f100-syllabus');
+const caDash8Syllabus = require('./ca-dash8-syllabus');
 
 const DEMO_PASSWORD = 'password123';
 
@@ -48,6 +49,7 @@ async function main() {
     ...dash8Syllabus.map((s) => ({ ...s, fleet: 'DASH_8' })),
     ...metro23Syllabus.map((s) => ({ ...s, fleet: 'METRO_23' })),
     ...f100Syllabus.map((s) => ({ ...s, fleet: 'FOKKER_100' })),
+    ...caDash8Syllabus.map((s) => ({ ...s, fleet: 'CA_DASH_8' })),
   ];
 
   for (const s of allSyllabusSeeds) {

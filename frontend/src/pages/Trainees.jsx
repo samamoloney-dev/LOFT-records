@@ -75,7 +75,9 @@ export function Trainees() {
         <div key={t.id} className="card row" onClick={() => navigate(`/trainees/${t.id}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.fleet} · {t.role} · Phase {t.phase} · {t.totalHours}h total</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {t.fleet} · {t.role}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
+            </div>
           </div>
         </div>
       ))}

@@ -13,11 +13,20 @@ const FLIGHT_CREATOR_ROLES = [
   'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
 ];
 
-const TABS = [
+const PILOT_TABS = [
   { key: 'flights', label: 'Flights' },
   { key: 'syllabus', label: 'Syllabus' },
   { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'phase', label: 'Phase Completion' },
+  { key: 'ctl', label: 'Check to Line' },
+];
+
+// Cabin attendants have no phase concept - the syllabus is signed off
+// cumulatively across training flights rather than gated by phase.
+const CA_TABS = [
+  { key: 'flights', label: 'Flights' },
+  { key: 'syllabus', label: 'Syllabus' },
+  { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'ctl', label: 'Check to Line' },
 ];
 
@@ -31,12 +40,13 @@ function approachTally(flights) {
   return counts;
 }
 
-function FlightsTab({ traineeId, flights, onFlightsChange }) {
+function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
   const { user } = useAuth();
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
   const [newFlightHours, setNewFlightHours] = useState('');
   const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
+  const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
 
   async function createFlight(e) {
     e.preventDefault();
@@ -59,25 +69,31 @@ function FlightsTab({ traineeId, flights, onFlightsChange }) {
           <div style={{ fontWeight: 500 }}>Flights</div>
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-          {flights.length} flight{flights.length === 1 ? '' : 's'} · {totalHours.toFixed(1)}h total
+          {isCabinAttendant
+            ? `${flights.length} flight${flights.length === 1 ? '' : 's'}`
+            : `${flights.length} flight${flights.length === 1 ? '' : 's'} · ${totalHours.toFixed(1)}h total`}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-          {APPROACH_TYPES.map((t) => (
-            <span key={t} className="badge" style={{ background: 'var(--surface-1)', color: 'var(--text-secondary)' }}>
-              {t}: {tally[t]}
-            </span>
-          ))}
-        </div>
+        {!isCabinAttendant && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {APPROACH_TYPES.map((t) => (
+              <span key={t} className="badge" style={{ background: 'var(--surface-1)', color: 'var(--text-secondary)' }}>
+                {t}: {tally[t]}
+              </span>
+            ))}
+          </div>
+        )}
         {canCreateFlight && (
           <form onSubmit={createFlight} style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
             <div className="field" style={{ margin: 0, flex: 1 }}>
               <label>Date</label>
               <input type="date" value={newFlightDate} onChange={(e) => setNewFlightDate(e.target.value)} required />
             </div>
-            <div className="field" style={{ margin: 0, width: 100 }}>
-              <label>Hours</label>
-              <input type="number" step="0.1" value={newFlightHours} onChange={(e) => setNewFlightHours(e.target.value)} required />
-            </div>
+            {!isCabinAttendant && (
+              <div className="field" style={{ margin: 0, width: 100 }}>
+                <label>Hours</label>
+                <input type="number" step="0.1" value={newFlightHours} onChange={(e) => setNewFlightHours(e.target.value)} required />
+              </div>
+            )}
             <button type="submit" className="primary">Add flight</button>
           </form>
         )}
@@ -88,6 +104,7 @@ function FlightsTab({ traineeId, flights, onFlightsChange }) {
         <FlightRow
           key={f.id}
           flight={f}
+          trainee={trainee}
           onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
         />
       ))}
@@ -112,18 +129,23 @@ export function TraineeDetail() {
   if (error) return <div className="error-text">{error}</div>;
   if (!trainee) return <div>Loading…</div>;
 
+  const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
+  const tabs = isCabinAttendant ? CA_TABS : PILOT_TABS;
+
   return (
     <div>
       <div className="card">
         <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {trainee.fleet} · {trainee.role} · Phase {trainee.phase} · {trainee.totalHours}h total
+          {trainee.fleet} · {trainee.role}
+          {!isCabinAttendant && ` · Phase ${trainee.phase}`}
+          {!isCabinAttendant && ` · ${trainee.totalHours}h total`}
           {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -134,9 +156,9 @@ export function TraineeDetail() {
 
       {tab === 'syllabus' && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
-      {tab === 'flights' && <FlightsTab traineeId={id} flights={flights} onFlightsChange={setFlights} />}
-      {tab === 'phase' && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
-      {tab === 'ctl' && <CtlForm traineeId={id} onCompleted={load} />}
+      {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} />}
+      {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
+      {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} onCompleted={load} />}
     </div>
   );
 }

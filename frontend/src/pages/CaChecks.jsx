@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 
 const CA_CHECK_ITEMS = [
   'Personal Presentation',
@@ -97,18 +99,46 @@ export function CaChecks({ archived = false }) {
     catch (err) { setError(err.message); }
   }
 
+  function printCheck(check) {
+    const d = check.details || {};
+    const itemRows = CA_CHECK_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N/A' : '']);
+    const ntsRows = CA_NTS_MARKERS.map((m, i) => [m, `Score ${d.nts?.[`score${i}`] || '—'} · Code ${d.nts?.[`code${i}`] || '—'}`]);
+    const html = `
+      <h1>Cabin Attendant Line Check (SA 540)</h1>
+      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
+      ${section('Details', [
+        ['Assessor', d.assessor],
+        ['Assessor ARN', d.assessorArn],
+        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+        ['In-flight service', d.serviceMode === 'demo' ? 'Demonstrated' : d.serviceMode === 'desc' ? 'Described' : ''],
+      ])}
+      ${section('Assessment', itemRows)}
+      ${section('Non Technical Skill Assessment', ntsRows)}
+      ${section('Result', [
+        ['Comments', d.comments],
+        ['Overall assessment', resultBadge(check.result)],
+        ['Overall score', check.score],
+      ])}
+      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+    `;
+    openPrintWindow(`CA Line Check - ${d.name || ''}`, html);
+  }
+
   if (selected) {
     const d = selected.details || {};
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
-          <ArchiveButton
-            archived={selected.archived}
-            canArchive={!!selected.result}
-            onArchive={() => archiveCheck(selected)}
-            onUnarchive={() => unarchiveCheck(selected)}
-          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            <ArchiveButton
+              archived={selected.archived}
+              canArchive={!!selected.result}
+              onArchive={() => archiveCheck(selected)}
+              onUnarchive={() => unarchiveCheck(selected)}
+            />
+          </div>
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Cabin Attendant Line Check</div>

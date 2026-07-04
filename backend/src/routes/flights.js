@@ -184,27 +184,41 @@ router.post('/:id/acknowledge', async (req, res) => {
   res.json(await findFlight(flight.id));
 });
 
-router.post('/:id/archive', async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive flights' });
+// LOFT flights archive as one package per trainee, not individually - and
+// only once their Check to Line is complete (mirrors how their whole
+// training record comes together on their own trainee page).
+router.post('/trainee/:traineeId/archive-package', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive a LOFT package' });
 
-  const flight = await findFlight(req.params.id);
-  if (!flight) return res.status(404).json({ error: 'Not found' });
-  if (!flight.locked) return res.status(400).json({ error: 'Flight must be finalised before it can be archived' });
+  const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
+  if (!trainee) return;
 
-  await pool.query('UPDATE flights SET archived = true, archived_at = now() WHERE id = $1', [flight.id]);
-  await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlight(flight.id));
+  const { rows: ctlRows } = await pool.query('SELECT completed_at FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  if (ctlRows.length === 0 || !ctlRows[0].completed_at) {
+    return res.status(400).json({ error: 'Check to Line must be completed before this LOFT package can be archived' });
+  }
+
+  await pool.query(
+    `UPDATE flights SET archived = true, archived_at = now() WHERE trainee_id = $1 AND locked = true AND archived = false`,
+    [trainee.id],
+  );
+  await logAction({ userId: req.user.id, action: 'ARCHIVE_PACKAGE', targetTable: 'flights', targetId: trainee.id });
+
+  const { rows } = await pool.query('SELECT * FROM flights WHERE trainee_id = $1 ORDER BY date DESC', [trainee.id]);
+  res.json(rows.map(rowToCamel));
 });
 
-router.post('/:id/unarchive', async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can unarchive flights' });
+router.post('/trainee/:traineeId/unarchive-package', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can unarchive a LOFT package' });
 
-  const flight = await findFlight(req.params.id);
-  if (!flight) return res.status(404).json({ error: 'Not found' });
+  const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
+  if (!trainee) return;
 
-  await pool.query('UPDATE flights SET archived = false, archived_at = null WHERE id = $1', [flight.id]);
-  await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlight(flight.id));
+  await pool.query('UPDATE flights SET archived = false, archived_at = null WHERE trainee_id = $1', [trainee.id]);
+  await logAction({ userId: req.user.id, action: 'UNARCHIVE_PACKAGE', targetTable: 'flights', targetId: trainee.id });
+
+  const { rows } = await pool.query('SELECT * FROM flights WHERE trainee_id = $1 ORDER BY date DESC', [trainee.id]);
+  res.json(rows.map(rowToCamel));
 });
 
 module.exports = router;

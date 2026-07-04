@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -97,6 +99,32 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
     catch (err) { setError(err.message); }
   }
 
+  function printCheck(check) {
+    const d = check.details || {};
+    const itemRows = EP_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N (Not Tested)' : '']);
+    const html = `
+      <h1>Emergency Procedures Check</h1>
+      <div class="meta">${d.name || ''} · ${d.date || ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
+      ${section('Details', [
+        ['Aircraft type', d.actype],
+        ['Assessor', d.assessor],
+        ['Assessor ARN', d.assessorArn],
+        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+      ])}
+      ${section('Assessment items', itemRows)}
+      ${section('Assessment', [
+        ['Life Jacket Training (Wet Drill) date', d.lifeJacketDate],
+        ['Scenarios selected', d.scenarios],
+        ['Comments', d.comments],
+        ['Overall assessment', resultBadge(check.result)],
+        ['Overall score', check.score],
+      ])}
+      <div class="disclaimer">We, the undersigned, do hereby mutually agree upon and accept the comment written in this document as being a correct and honest account of the performance of the Applicant in each and every procedure carried out.</div>
+      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+    `;
+    openPrintWindow(`EP Check - ${d.name || ''}`, html);
+  }
+
   function toggleType(type) {
     setNewForm((f) => ({
       ...f,
@@ -110,12 +138,15 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
-          <ArchiveButton
-            archived={selected.archived}
-            canArchive={!!selected.result}
-            onArchive={() => archiveCheck(selected)}
-            onUnarchive={() => unarchiveCheck(selected)}
-          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            <ArchiveButton
+              archived={selected.archived}
+              canArchive={!!selected.result}
+              onArchive={() => archiveCheck(selected)}
+              onUnarchive={() => unarchiveCheck(selected)}
+            />
+          </div>
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>

@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -132,6 +134,64 @@ export function ProficiencyChecks({ variant, label, archived = false }) {
     catch (err) { setError(err.message); }
   }
 
+  function resultMark(v) {
+    return v === 'S' ? '✓' : v === 'X' ? '✗' : v === 'N' ? 'N/A' : '';
+  }
+
+  // IPC and PC print as two pages: page 1 is the training/knowledge/flight
+  // assessment, page 2 is applicant/FSTD/examiner admin details and result.
+  function printCheck(check) {
+    const d = check.details || {};
+    const isIpc = d.variant === 'IPC_PC';
+    const results = d.results || {};
+    const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : (d.seatCheck ? [d.seatCheck] : []);
+    const flightSections = FLIGHT_COMPONENT_SECTIONS.map((s) => ({
+      ...s,
+      allItems: isIpc && s.ipcOnlyItems ? [...s.ipcOnlyItems, ...s.items] : s.items,
+    }));
+
+    const recurrentRows = RECURRENT_TRAINING_ITEMS.map((item, i) => [item.description, resultMark(results[`rt-${i}`])]);
+    const knowledgeRows = isIpc ? KNOWLEDGE_ITEMS.map((item, i) => [item.description, resultMark(results[`kn-${i}`])]) : [];
+    const flightHtml = flightSections
+      .map((s) => section(`${s.section} (Flight Component)`, s.allItems.map((item, i) => [item.description, resultMark(results[`fc-${s.section}-${i}`])])))
+      .join('');
+
+    const html = `
+      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'}</h1>
+      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''} · Assessor: ${d.assessor || '—'}</div>
+      ${section('Assignment', [
+        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+      ])}
+      ${section('Recurrent Training (121.50 (1B))', recurrentRows)}
+      ${isIpc ? section('Knowledge requirements (Ground Component)', knowledgeRows) : ''}
+      ${flightHtml}
+      ${section('Seat check conducted in', [['Seats', seatCheck.join(', ') || '—']])}
+
+      <div class="page-break"></div>
+      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
+      ${section('Applicant', [
+        ['Test number', d.testNumber],
+        ['Applicant ARN', d.applicantArn],
+        ['Applicant name', d.applicantName],
+      ])}
+      ${section('FSTD', [
+        ['Date', d.fstdDate],
+        ['FSTD number', d.fstdNumber],
+        ['FSTD type', d.fstdType],
+        ['Ground time', d.groundTime],
+        ['Simulator time', d.simulatorTime],
+      ])}
+      ${section('Examiner', [
+        ['Examiner ARN', d.examinerArn],
+        ['Examiner name', d.examinerName],
+        ["Examiner's comments", d.examinerComments],
+      ])}
+      ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
+      ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
+    `;
+    openPrintWindow(`${VARIANT_LABELS[d.variant] || 'Proficiency Check'} - ${d.name || ''}`, html);
+  }
+
   if (selected) {
     const d = selected.details || {};
     const isIpc = d.variant === 'IPC_PC';
@@ -152,12 +212,15 @@ export function ProficiencyChecks({ variant, label, archived = false }) {
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
-          <ArchiveButton
-            archived={selected.archived}
-            canArchive={!!selected.result}
-            onArchive={() => archiveCheck(selected)}
-            onUnarchive={() => unarchiveCheck(selected)}
-          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            <ArchiveButton
+              archived={selected.archived}
+              canArchive={!!selected.result}
+              onArchive={() => archiveCheck(selected)}
+              onUnarchive={() => unarchiveCheck(selected)}
+            />
+          </div>
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANT_LABELS[d.variant]}</div>

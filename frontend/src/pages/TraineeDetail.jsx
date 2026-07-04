@@ -7,6 +7,7 @@ import { CtlForm } from './CtlForm';
 import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
+import { ArchiveButton } from '../components/ArchiveButton';
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -44,7 +45,7 @@ function approachTally(flights) {
   return counts;
 }
 
-function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
+function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted }) {
   const { user } = useAuth();
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
@@ -63,8 +64,22 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
     } catch (err) { setError(err.message); }
   }
 
+  async function archivePackage() {
+    setError(null);
+    try { onFlightsChange(await api.post(`/api/flights/trainee/${traineeId}/archive-package`)); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function unarchivePackage() {
+    setError(null);
+    try { onFlightsChange(await api.post(`/api/flights/trainee/${traineeId}/unarchive-package`)); }
+    catch (err) { setError(err.message); }
+  }
+
   const totalHours = flights.reduce((sum, f) => sum + Number(f.hours), 0);
   const tally = approachTally(flights);
+  const finalisedFlights = flights.filter((f) => f.locked);
+  const packageArchived = finalisedFlights.length > 0 && finalisedFlights.every((f) => f.archived);
 
   // LOFT numbers count up chronologically (LOFT 1 = earliest flight),
   // independent of the display order (flights are listed newest first).
@@ -79,7 +94,18 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontWeight: 500 }}>Flights</div>
+          <ArchiveButton
+            archived={packageArchived}
+            canArchive={ctlCompleted}
+            onArchive={archivePackage}
+            onUnarchive={unarchivePackage}
+          />
         </div>
+        {!ctlCompleted && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            This LOFT package can be archived as a whole once Check to Line is complete.
+          </div>
+        )}
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
           {isCabinAttendant
             ? `${flights.length} flight${flights.length === 1 ? '' : 's'}`
@@ -129,12 +155,14 @@ export function TraineeDetail() {
   const { id } = useParams();
   const [trainee, setTrainee] = useState(null);
   const [flights, setFlights] = useState([]);
+  const [ctlCompleted, setCtlCompleted] = useState(false);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('flights');
 
   function load() {
     api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
     api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
+    api.get(`/api/ctl/${id}`).then((d) => setCtlCompleted(!!d.form?.completedAt)).catch(() => {});
   }
 
   useEffect(load, [id]);
@@ -170,7 +198,7 @@ export function TraineeDetail() {
       {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
       {tab === 'groundSchool' && !isCabinAttendant && <GroundSchoolPanel trainee={trainee} />}
-      {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} />}
+      {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}
       {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} onCompleted={load} />}

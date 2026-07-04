@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
 import { FlightSyllabusList } from './SyllabusPanel';
-import { ArchiveButton } from '../components/ArchiveButton';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
@@ -119,18 +118,6 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
     catch (err) { setError(err.message); }
   }
 
-  async function archiveFlight() {
-    setError(null);
-    try { onChange(await api.post(`/api/flights/${flight.id}/archive`)); }
-    catch (err) { setError(err.message); }
-  }
-
-  async function unarchiveFlight() {
-    setError(null);
-    try { onChange(await api.post(`/api/flights/${flight.id}/unarchive`)); }
-    catch (err) { setError(err.message); }
-  }
-
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -143,17 +130,10 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
             {flight.locked ? 'Finalised' : 'Draft'}
             {flight.locked && flight.trainingCaptainName ? ` · Trainer: ${flight.trainingCaptainName}` : ''}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
+            {flight.archived ? ' · Archived' : ''}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <ArchiveButton
-            archived={flight.archived}
-            canArchive={!!flight.locked}
-            onArchive={archiveFlight}
-            onUnarchive={unarchiveFlight}
-          />
-          <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
-        </div>
+        <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
       </div>
 
       {isCabinAttendant ? (

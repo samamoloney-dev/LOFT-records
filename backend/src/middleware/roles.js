@@ -4,6 +4,14 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 
+// Anyone who trains or checks trainees (pilot or cabin crew side) can log a
+// flight. Combined with canAccessTraineeRecord below, CA Trainer/CA Checker
+// are still limited to Cabin Attendant trainees only.
+const FLIGHT_CREATOR_ROLES = [
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
+];
+
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -39,10 +47,11 @@ function canAccessArchived(user) {
   return isAdmin(user);
 }
 
-// Training Captain can only edit flight records where they are the named TC.
-// This lock applies even to admin roles - there is no override.
+// Only whoever created a flight record may edit it - this lock applies
+// regardless of role (even HOTC), and does not transfer if someone else
+// with a flight-creator role tries to edit it.
 function canEditFlight(user, flight) {
-  return user.role === 'TRAINING_CAPTAIN' && flight.trainingCaptainId === user.id;
+  return flight.trainingCaptainId === user.id;
 }
 
 // Trainee may acknowledge only their own flight debrief.
@@ -54,6 +63,7 @@ module.exports = {
   ADMIN_ROLES,
   CHECK_ROLES,
   CA_ONLY_ROLES,
+  FLIGHT_CREATOR_ROLES,
   requireRole,
   isAdmin,
   canAccessChecks,

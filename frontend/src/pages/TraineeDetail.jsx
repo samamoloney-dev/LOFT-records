@@ -2,109 +2,178 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { FlightRow } from './FlightRow';
+import { FlightRow, APPROACH_TYPES } from './FlightRow';
 import { CtlForm } from './CtlForm';
+import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
+import { Phase4Form } from './Phase4Form';
+import { GroundSchoolPanel } from './GroundSchoolPanel';
 
-export function TraineeDetail() {
-  const { id } = useParams();
+// Anyone who trains or checks trainees (pilot or cabin crew side) can log a
+// flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
+const FLIGHT_CREATOR_ROLES = [
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
+];
+
+const PILOT_TABS = [
+  { key: 'groundSchool', label: 'Ground School' },
+  { key: 'flights', label: 'Flights' },
+  { key: 'syllabus', label: 'Syllabus' },
+  { key: 'discussion', label: 'Line Training Discussion' },
+  { key: 'phase4', label: 'Phase 4' },
+  { key: 'phase', label: 'Phase Completion' },
+  { key: 'ctl', label: 'Check to Line' },
+];
+
+// Cabin attendants have no phase concept - the syllabus is signed off
+// cumulatively across training flights rather than gated by phase.
+const CA_TABS = [
+  { key: 'flights', label: 'Flights' },
+  { key: 'syllabus', label: 'Syllabus' },
+  { key: 'discussion', label: 'Line Training Discussion' },
+  { key: 'ctl', label: 'Check to Line' },
+];
+
+function approachTally(flights) {
+  const counts = Object.fromEntries(APPROACH_TYPES.map((t) => [t, 0]));
+  for (const f of flights) {
+    for (const a of f.sectorDetails?.approaches || []) {
+      if (a.type && counts[a.type] !== undefined) counts[a.type] += 1;
+    }
+  }
+  return counts;
+}
+
+function FlightsTab({ traineeId, trainee, flights, onFlightsChange }) {
   const { user } = useAuth();
-  const [trainee, setTrainee] = useState(null);
-  const [syllabus, setSyllabus] = useState([]);
-  const [flights, setFlights] = useState([]);
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
   const [newFlightHours, setNewFlightHours] = useState('');
-
-  function load() {
-    api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
-    api.get(`/api/syllabus/trainee/${id}`).then(setSyllabus).catch(() => {});
-    api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
-  }
-
-  useEffect(load, [id]);
-
-  async function completeSyllabusItem(itemId) {
-    await api.post(`/api/syllabus/trainee/${id}/complete`, { syllabusItemId: itemId });
-    load();
-  }
+  const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
+  const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
 
   async function createFlight(e) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/flights', { traineeId: id, date: newFlightDate, hours: Number(newFlightHours) || 0 });
+      const created = await api.post('/api/flights', { traineeId, date: newFlightDate, hours: Number(newFlightHours) || 0 });
       setNewFlightDate('');
       setNewFlightHours('');
-      load();
+      onFlightsChange([created, ...flights]);
     } catch (err) { setError(err.message); }
   }
 
-  if (error) return <div className="error-text">{error}</div>;
-  if (!trainee) return <div>Loading…</div>;
+  const totalHours = flights.reduce((sum, f) => sum + Number(f.hours), 0);
+  const tally = approachTally(flights);
 
-  const outstanding = syllabus.filter((s) => s.outstandingForPhase);
-  const canCreateFlight = user.role === 'TRAINING_CAPTAIN';
+  // LOFT numbers count up chronologically (LOFT 1 = earliest flight),
+  // independent of the display order (flights are listed newest first).
+  const loftNumberById = new Map(
+    [...flights]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map((f, i) => [f.id, i + 1]),
+  );
 
   return (
     <div>
       <div className="card">
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {trainee.fleet} · {trainee.role} · Phase {trainee.phase} · {trainee.totalHours}h total
-          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
-        </div>
-      </div>
-
-      <div className="card">
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus — Phase {trainee.phase}</div>
-        {outstanding.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No outstanding required items for this phase.</div>
-        ) : (
-          <div style={{ fontSize: 13, color: 'var(--text-warning)', marginBottom: 8 }}>
-            {outstanding.length} required item(s) outstanding to complete this phase.
-          </div>
-        )}
-        {syllabus.map((item) => (
-          <div key={item.id} className="row" style={{ cursor: 'default' }}>
-            <button
-              className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
-              onClick={() => completeSyllabusItem(item.id)}
-            >
-              {item.completedAt ? '✓' : ''}
-            </button>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13 }}>{item.description}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Phase {item.phase}{item.required ? ' · required' : ''}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontWeight: 500 }}>Flights</div>
         </div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+          {isCabinAttendant
+            ? `${flights.length} flight${flights.length === 1 ? '' : 's'}`
+            : `${flights.length} flight${flights.length === 1 ? '' : 's'} · ${totalHours.toFixed(1)}h total`}
+        </div>
+        {!isCabinAttendant && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {APPROACH_TYPES.map((t) => (
+              <span key={t} className="badge" style={{ background: 'var(--surface-1)', color: 'var(--text-secondary)' }}>
+                {t}: {tally[t]}
+              </span>
+            ))}
+          </div>
+        )}
         {canCreateFlight && (
           <form onSubmit={createFlight} style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
             <div className="field" style={{ margin: 0, flex: 1 }}>
               <label>Date</label>
               <input type="date" value={newFlightDate} onChange={(e) => setNewFlightDate(e.target.value)} required />
             </div>
-            <div className="field" style={{ margin: 0, width: 100 }}>
-              <label>Hours</label>
-              <input type="number" step="0.1" value={newFlightHours} onChange={(e) => setNewFlightHours(e.target.value)} required />
-            </div>
+            {!isCabinAttendant && (
+              <div className="field" style={{ margin: 0, width: 100 }}>
+                <label>Hours</label>
+                <input type="number" step="0.1" value={newFlightHours} onChange={(e) => setNewFlightHours(e.target.value)} required />
+              </div>
+            )}
             <button type="submit" className="primary">Add flight</button>
           </form>
         )}
-        {flights.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
-        {flights.map((f) => (
-          <FlightRow key={f.id} flight={f} onChange={(updated) => setFlights((fs) => fs.map((x) => (x.id === updated.id ? updated : x)))} />
-        ))}
         {error && <div className="error-text">{error}</div>}
       </div>
+      {flights.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No flights recorded yet.</div>}
+      {flights.map((f) => (
+        <FlightRow
+          key={f.id}
+          flight={f}
+          trainee={trainee}
+          loftNumber={loftNumberById.get(f.id)}
+          onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
+        />
+      ))}
+    </div>
+  );
+}
 
-      <CtlForm traineeId={id} onCompleted={load} />
+export function TraineeDetail() {
+  const { id } = useParams();
+  const [trainee, setTrainee] = useState(null);
+  const [flights, setFlights] = useState([]);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('flights');
+
+  function load() {
+    api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
+    api.get(`/api/flights?traineeId=${id}`).then(setFlights).catch(() => {});
+  }
+
+  useEffect(load, [id]);
+
+  if (error) return <div className="error-text">{error}</div>;
+  if (!trainee) return <div>Loading…</div>;
+
+  const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
+  const tabs = isCabinAttendant ? CA_TABS : PILOT_TABS;
+
+  return (
+    <div>
+      <div className="card">
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {trainee.fleet} · {trainee.role}
+          {!isCabinAttendant && ` · Phase ${trainee.phase}`}
+          {!isCabinAttendant && ` · ${trainee.totalHours}h total`}
+          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: tab === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: tab === t.key ? 500 : 400 }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
+      {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
+      {tab === 'groundSchool' && !isCabinAttendant && <GroundSchoolPanel trainee={trainee} />}
+      {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} />}
+      {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
+      {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
+      {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} onCompleted={load} />}
     </div>
   );
 }

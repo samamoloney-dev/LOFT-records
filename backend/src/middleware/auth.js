@@ -9,17 +9,24 @@ function issueToken(user) {
   return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '12h' });
 }
 
+// Frontend and backend live on different subdomains in deployment (e.g. two
+// separate *.onrender.com hosts), which browsers treat as cross-site. Cross-site
+// fetch/XHR only sends cookies marked SameSite=None; Secure - Lax would silently
+// drop the cookie on every request after login. Secure cookies require HTTPS
+// though, which local dev/tests don't have, so this only applies in production.
+const COOKIE_OPTIONS = process.env.NODE_ENV === 'production'
+  ? { httpOnly: true, sameSite: 'none', secure: true }
+  : { httpOnly: true, sameSite: 'lax', secure: false };
+
 function setSessionCookie(res, user) {
   res.cookie(COOKIE_NAME, issueToken(user), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    ...COOKIE_OPTIONS,
     maxAge: 12 * 60 * 60 * 1000,
   });
 }
 
 function clearSessionCookie(res) {
-  res.clearCookie(COOKIE_NAME);
+  res.clearCookie(COOKIE_NAME, COOKIE_OPTIONS);
 }
 
 async function requireAuth(req, res, next) {

@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, canAccessArchived, canEditFlight, canAcknowledgeFlight, requireRole } = require('../middleware/roles');
+const { canAccessTraineeRecord, canAccessArchived, canEditFlight, canAcknowledgeFlight, requireRole, FLIGHT_CREATOR_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -66,7 +66,7 @@ const createSchema = z.object({
   hours: z.number().nonnegative().optional(),
 });
 
-router.post('/', requireRole('TRAINING_CAPTAIN'), async (req, res) => {
+router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -96,16 +96,24 @@ const updateSchema = z.object({
   sectorDetails: z.record(z.any()).optional(),
   loftPerformanceRating: z.string().nullable().optional(),
   debriefComments: z.string().nullable().optional(),
+  nextSortieNotes: z.string().nullable().optional(),
+  otherCompletedTasks: z.string().nullable().optional(),
   hours: z.number().nonnegative().optional(),
   date: z.string().optional(),
+  assessorSignature: z.string().nullable().optional(),
+  candidateSignature: z.string().nullable().optional(),
 });
 
 const UPDATE_COLUMN_MAP = {
   sectorDetails: { column: 'sector_details', json: true },
   loftPerformanceRating: { column: 'loft_performance_rating' },
   debriefComments: { column: 'debrief_comments' },
+  nextSortieNotes: { column: 'next_sortie_notes' },
+  otherCompletedTasks: { column: 'other_completed_tasks' },
   hours: { column: 'hours' },
   date: { column: 'date' },
+  assessorSignature: { column: 'assessor_signature' },
+  candidateSignature: { column: 'candidate_signature' },
 };
 
 router.patch('/:id', async (req, res) => {
@@ -149,7 +157,7 @@ router.post('/:id/acknowledge', async (req, res) => {
   const flight = await findFlight(req.params.id);
   if (!flight) return res.status(404).json({ error: 'Not found' });
   if (!canAcknowledgeFlight(req.user, flight)) return res.status(403).json({ error: 'Forbidden' });
-  if (!flight.locked) return res.status(409).json({ error: 'Flight has not been finalized yet' });
+  if (!flight.locked) return res.status(409).json({ error: 'Flight has not been finalised yet' });
 
   const { rows } = await pool.query(
     'UPDATE flights SET acknowledged_by_trainee = true, acknowledged_at = now() WHERE id = $1 RETURNING *',

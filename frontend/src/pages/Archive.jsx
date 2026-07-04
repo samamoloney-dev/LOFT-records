@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { formatDate } from '../lib/format';
 
 export function Archive() {
   const [trainees, setTrainees] = useState([]);
@@ -20,7 +21,7 @@ export function Archive() {
         <div key={t.id} className="card row" onClick={() => navigate(`/trainees/${t.id}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.fleet} · Archived {t.archivedAt ? new Date(t.archivedAt).toLocaleDateString() : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.fleet} · Archived {t.archivedAt ? formatDate(t.archivedAt) : ''}</div>
           </div>
         </div>
       ))}

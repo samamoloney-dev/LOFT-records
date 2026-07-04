@@ -1,6 +1,11 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const pool = require('./pool');
+const dash8Syllabus = require('./dash8-syllabus');
+const metro23Syllabus = require('./metro23-syllabus');
+const f100Syllabus = require('./f100-syllabus');
+const caDash8Syllabus = require('./ca-dash8-syllabus');
+const groundSchoolItems = require('./ground-school-items');
 
 const DEMO_PASSWORD = 'password123';
 
@@ -41,19 +46,37 @@ async function main() {
     if (rows[0]) trainees.push(rows[0]);
   }
 
-  const syllabusSeeds = [
-    { fleet: 'DASH_8', roleScope: 'BOTH', phase: 1, description: 'Normal procedures walkthrough' },
-    { fleet: 'DASH_8', roleScope: 'BOTH', phase: 1, description: 'Abnormal procedures briefing' },
-    { fleet: 'DASH_8', roleScope: 'FO_ONLY', phase: 2, description: 'PF/PM handover drills' },
-    { fleet: 'FOKKER_100', roleScope: 'CAPTAIN_ONLY', phase: 2, description: 'Command decision-making assessment' },
+  const allSyllabusSeeds = [
+    ...dash8Syllabus.map((s) => ({ ...s, fleet: 'DASH_8' })),
+    ...metro23Syllabus.map((s) => ({ ...s, fleet: 'METRO_23' })),
+    ...f100Syllabus.map((s) => ({ ...s, fleet: 'FOKKER_100' })),
+    ...caDash8Syllabus.map((s) => ({ ...s, fleet: 'CA_DASH_8' })),
   ];
-  for (const s of syllabusSeeds) {
+
+  for (const s of allSyllabusSeeds) {
     await pool.query(
-      `INSERT INTO syllabus_items (fleet, role_scope, phase, description, required)
-       SELECT $1, $2, $3, $4, true
-       WHERE NOT EXISTS (SELECT 1 FROM syllabus_items WHERE fleet = $1 AND description = $4)`,
-      [s.fleet, s.roleScope, s.phase, s.description],
+      `INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, notes, required)
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8
+       WHERE NOT EXISTS (
+         SELECT 1 FROM syllabus_items
+         WHERE fleet = $1 AND role_scope = $2 AND phase = $3 AND category = $4 AND description = $6
+       )`,
+      [s.fleet, s.roleScope, s.phase, s.category, s.section, s.description, s.notes || null, s.required ?? true],
     );
+  }
+
+  for (const [fleet, fleetItems] of Object.entries(groundSchoolItems.ITEMS_BY_FLEET)) {
+    for (const s of fleetItems) {
+      await pool.query(
+        `INSERT INTO ground_school_items (fleet, category, description, notes, required)
+         SELECT $1, $2, $3, $4, $5
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ground_school_items
+           WHERE fleet = $1 AND category = $2 AND description = $3
+         )`,
+        [fleet, s.category, s.description, s.notes || null, s.required ?? true],
+      );
+    }
   }
 
   if (trainees[0]) {

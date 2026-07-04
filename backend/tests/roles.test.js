@@ -50,6 +50,11 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     expect(ratingUpdate.status).toBe(200);
     expect(ratingUpdate.body.debriefComments).toBe('good sector work');
     expect(Number(ratingUpdate.body.hours)).toBe(3);
+
+    const nextSortieUpdate = await tcAgent.patch(`/api/flights/${created.body.id}`).send({ nextSortieNotes: 'Focus on crosswind landings' });
+    expect(nextSortieUpdate.status).toBe(200);
+    expect(nextSortieUpdate.body.debriefComments).toBe('good sector work');
+    expect(nextSortieUpdate.body.nextSortieNotes).toBe('Focus on crosswind landings');
   });
 
   it('lets a trainee acknowledge only their own finalized flight, without erasing data', async () => {
@@ -85,6 +90,57 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     expect(res.status).toBe(403);
   });
 
+  it('lets HOTC, Examiner, CA Trainer, and CA Checker create flights, not just Training Captain', async () => {
+    const roles = ['HOTC', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
+    for (const role of roles) {
+      await createUser({ email: `${role.toLowerCase()}.creator@test.local`, role });
+    }
+    const pilot = await createTrainee({ type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+    const cabinAttendant = await createTrainee({ type: 'CABIN_ATTENDANT', role: 'CABIN_ATTENDANT', fleet: 'CA_DASH_8' });
+
+    for (const role of ['HOTC', 'EXAMINER']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, `${role.toLowerCase()}.creator@test.local`);
+      const res = await agent.post('/api/flights').send({ traineeId: pilot.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(201);
+    }
+    for (const role of ['CA_TRAINER', 'CA_CHECKER']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, `${role.toLowerCase()}.creator@test.local`);
+      const res = await agent.post('/api/flights').send({ traineeId: cabinAttendant.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(201);
+    }
+  });
+
+  it('still blocks Trainee and CC from creating flights', async () => {
+    await createUser({ email: 'trainee.creator@test.local', role: 'TRAINEE' });
+    await createUser({ email: 'cc.creator@test.local', role: 'CC' });
+    const trainee = await createTrainee({});
+
+    for (const email of ['trainee.creator@test.local', 'cc.creator@test.local']) {
+      const agent = request.agent(app);
+      await loginAgent(agent, email);
+      const res = await agent.post('/api/flights').send({ traineeId: trainee.id, date: '2026-01-01', hours: 1 });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it('locks a flight to its creator regardless of role, even against another HOTC', async () => {
+    await createUser({ email: 'hotc.owner@test.local', role: 'HOTC' });
+    await createUser({ email: 'hotc.other@test.local', role: 'HOTC' });
+    const trainee = await createTrainee({});
+
+    const ownerAgent = request.agent(app);
+    await loginAgent(ownerAgent, 'hotc.owner@test.local');
+    const created = await ownerAgent.post('/api/flights').send({ traineeId: trainee.id, date: '2026-01-01', hours: 1 });
+    expect(created.status).toBe(201);
+
+    const otherAgent = request.agent(app);
+    await loginAgent(otherAgent, 'hotc.other@test.local');
+    const res = await otherAgent.patch(`/api/flights/${created.body.id}`).send({ debriefComments: 'not mine to edit' });
+    expect(res.status).toBe(403);
+  });
+
   it('hides archived trainees from everyone except HOTC/HOFO/Flight Ops Admin', async () => {
     await createUser({ email: 'examiner1@test.local', role: 'EXAMINER' });
     await createUser({ email: 'hofo1@test.local', role: 'HOFO' });
@@ -100,5 +156,93 @@ describe('role rules (docs/project-brief.md Section 4)', () => {
     await loginAgent(hofoAgent, 'hofo1@test.local');
     const allowed = await hofoAgent.get(`/api/trainees/${archived.id}`);
     expect(allowed.status).toBe(200);
+  });
+
+  it('lets HOTC manage syllabus curriculum items, and a new item shows up for a matching trainee', async () => {
+    await createUser({ email: 'hotc.syllabus@test.local', role: 'HOTC' });
+    await createUser({ email: 'tc.syllabus@test.local', role: 'TRAINING_CAPTAIN' });
+    const trainee = await createTrainee({ type: 'CABIN_ATTENDANT', role: 'CABIN_ATTENDANT', fleet: 'CA_DASH_8', phase: 1 });
+
+    const hotcAgent = request.agent(app);
+    await loginAgent(hotcAgent, 'hotc.syllabus@test.local');
+
+    const forbidden = request.agent(app);
+    await loginAgent(forbidden, 'tc.syllabus@test.local');
+    const tcAttempt = await forbidden.post('/api/syllabus/items').send({
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, category: 'Emergency', description: 'Should not be allowed',
+    });
+    expect(tcAttempt.status).toBe(403);
+
+    const created = await hotcAgent.post('/api/syllabus/items').send({
+      fleet: 'CA_DASH_8', roleScope: 'BOTH', phase: 1, category: 'Emergency', description: 'Cabin emergency drill',
+    });
+    expect(created.status).toBe(201);
+
+    const forTrainee = await hotcAgent.get(`/api/syllabus/trainee/${trainee.id}`);
+    expect(forTrainee.body.some((item) => item.description === 'Cabin emergency drill')).toBe(true);
+
+    const deleted = await hotcAgent.delete(`/api/syllabus/items/${created.body.id}`);
+    expect(deleted.status).toBe(204);
+  });
+
+  it('requires and records a name when signing off a syllabus item', async () => {
+    await createUser({ email: 'tc.signoff@test.local', role: 'TRAINING_CAPTAIN' });
+    const trainee = await createTrainee({});
+    const syllabusItem = await pool.query(
+      `INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, required)
+       VALUES ('DASH_8', 'BOTH', 1, 'General', 'SYLLABUS', 'Test item', true) RETURNING *`,
+    );
+
+    const agent = request.agent(app);
+    await loginAgent(agent, 'tc.signoff@test.local');
+
+    const missingName = await agent.post(`/api/syllabus/trainee/${trainee.id}/complete`).send({
+      syllabusItemId: syllabusItem.rows[0].id,
+    });
+    expect(missingName.status).toBe(400);
+
+    const signedOff = await agent.post(`/api/syllabus/trainee/${trainee.id}/complete`).send({
+      syllabusItemId: syllabusItem.rows[0].id,
+      signedOffByName: 'TC Jones',
+    });
+    expect(signedOff.status).toBe(200);
+    expect(signedOff.body.signedOffByName).toBe('TC Jones');
+
+    const forTrainee = await agent.get(`/api/syllabus/trainee/${trainee.id}`);
+    const found = forTrainee.body.find((i) => i.id === syllabusItem.rows[0].id);
+    expect(found.signedOffByName).toBe('TC Jones');
+    expect(found.completedAt).not.toBeNull();
+  });
+
+  it('advances a trainee to the next phase only once both signatures are present', async () => {
+    await createUser({ email: 'tc.phase@test.local', role: 'TRAINING_CAPTAIN' });
+    const traineeUser = await createUser({ email: 'trainee.phase@test.local', role: 'TRAINEE' });
+    const trainee = await createTrainee({ phase: 1 });
+    await pool.query('UPDATE trainees SET user_id = $1 WHERE id = $2', [traineeUser.id, trainee.id]);
+
+    const tcAgent = request.agent(app);
+    await loginAgent(tcAgent, 'tc.phase@test.local');
+    const traineeAgent = request.agent(app);
+    await loginAgent(traineeAgent, 'trainee.phase@test.local');
+
+    const tooSoon = await tcAgent.post(`/api/syllabus/trainee/${trainee.id}/phase-completions/1/complete`);
+    expect(tooSoon.status).toBe(400);
+
+    const tcSign = await tcAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ trainingCaptainSignature: 'TC Jones' });
+    expect(tcSign.status).toBe(200);
+
+    // A trainee may only sign their own applicant signature, not the TC's.
+    const forbidden = await traineeAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ trainingCaptainSignature: 'hijacked' });
+    expect(forbidden.status).toBe(403);
+
+    const applicantSign = await traineeAgent.put(`/api/syllabus/trainee/${trainee.id}/phase-completions/1`).send({ applicantSignature: 'J. Carter' });
+    expect(applicantSign.status).toBe(200);
+
+    const completed = await tcAgent.post(`/api/syllabus/trainee/${trainee.id}/phase-completions/1/complete`);
+    expect(completed.status).toBe(200);
+    expect(completed.body.completedAt).not.toBeNull();
+
+    const updatedTrainee = await tcAgent.get(`/api/trainees/${trainee.id}`);
+    expect(updatedTrainee.body.phase).toBe(2);
   });
 });

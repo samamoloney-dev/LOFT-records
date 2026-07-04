@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
+import { ProficiencyChecks } from './ProficiencyChecks';
 
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER'];
@@ -42,11 +43,7 @@ export function Checks() {
               style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: checkTab === 'ep' ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: checkTab === 'ep' ? 500 : 400 }}
             >Emergency procedures</button>
           </div>
-          {checkTab === 'ipcpc' && (
-            <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-              IPC and Proficiency Check records — recorded via the Recurrent Simulator check type (not yet built out in this UI).
-            </div>
-          )}
+          {checkTab === 'ipcpc' && <ProficiencyChecks />}
           {checkTab === 'ep' && <EpChecks />}
         </div>
       )}

@@ -3,7 +3,8 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord } = require('../middleware/roles');
+const { canAccessTraineeRecord, isAdmin } = require('../middleware/roles');
+const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
 const { NTS_MARKERS, itemsForFleet } = require('../../db/phase4-items');
 
@@ -30,8 +31,9 @@ router.get('/:traineeId', async (req, res) => {
   if (!trainee) return;
 
   const { rows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  const form = rows[0] ? { ...rowToCamel(rows[0]), ...(await resolveAssignee(rowToCamel(rows[0]).assignedTo)) } : null;
   res.json({
-    form: rows[0] ? rowToCamel(rows[0]) : null,
+    form,
     // The pilot Check to Line Assessment uses the exact same categorised
     // item catalogue as the Phase 4 assessment for that fleet (confirmed
     // identical across the SA_504/SA_512/SA_813 source documents).
@@ -49,6 +51,7 @@ const upsertSchema = z.object({
   overallScore: z.number().int().min(1).max(5).nullable().optional(),
   assessorSignature: z.string().nullable().optional(),
   candidateSignature: z.string().nullable().optional(),
+  assignedTo: z.string().uuid().nullable().optional(),
 });
 
 router.put('/:traineeId', async (req, res) => {
@@ -59,11 +62,18 @@ router.put('/:traineeId', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
+  // Distinguish "assignedTo not sent, leave as-is" from "assignedTo: null,
+  // unassign" - zod would otherwise turn both into undefined.
+  const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');
+  if (hasAssignedTo && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO check_to_line_forms
        (trainee_id, fleet, sector_details, assessment_items, nts_scores, comments,
-        overall_result, overall_score, assessor_signature, candidate_signature)
-     VALUES ($1, $2, COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8, $9, $10)
+        overall_result, overall_score, assessor_signature, candidate_signature, assigned_to)
+     VALUES ($1, $2, COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8, $9, $10, $11)
      ON CONFLICT (trainee_id) DO UPDATE SET
        sector_details = COALESCE($3, check_to_line_forms.sector_details),
        assessment_items = COALESCE($4, check_to_line_forms.assessment_items),
@@ -72,7 +82,8 @@ router.put('/:traineeId', async (req, res) => {
        overall_result = COALESCE($7, check_to_line_forms.overall_result),
        overall_score = COALESCE($8, check_to_line_forms.overall_score),
        assessor_signature = COALESCE($9, check_to_line_forms.assessor_signature),
-       candidate_signature = COALESCE($10, check_to_line_forms.candidate_signature)
+       candidate_signature = COALESCE($10, check_to_line_forms.candidate_signature),
+       assigned_to = CASE WHEN $12 THEN $11::uuid ELSE check_to_line_forms.assigned_to END
      RETURNING *`,
     [
       trainee.id,
@@ -85,12 +96,14 @@ router.put('/:traineeId', async (req, res) => {
       d.overallScore ?? null,
       d.assessorSignature ?? null,
       d.candidateSignature ?? null,
+      d.assignedTo ?? null,
+      hasAssignedTo,
     ],
   );
 
   const form = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'check_to_line_forms', targetId: form.id });
-  res.json(form);
+  res.json({ ...form, ...(await resolveAssignee(form.assignedTo)) });
 });
 
 router.post('/:traineeId/complete', async (req, res) => {

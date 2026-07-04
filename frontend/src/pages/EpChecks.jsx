@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { AssignedToPicker } from '../components/AssignedToPicker';
+
+const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
 const EP_ITEMS = [
@@ -13,13 +16,14 @@ const EP_ITEMS = [
   'Emergency Escape Slide',
 ];
 
-const emptyDetails = () => ({ name: '', date: '', assessor: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
+const emptyDetails = () => ({ name: '', date: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
+const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
 export function EpChecks() {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState(emptyDetails());
+  const [newForm, setNewForm] = useState(emptyNewForm());
   const [error, setError] = useState(null);
 
   function load() {
@@ -34,9 +38,10 @@ export function EpChecks() {
     setError(null);
     if (!newForm.name.trim()) return;
     try {
-      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo: 'CABIN_ATTENDANT', details: newForm });
+      const { assignedTo, ...details } = newForm;
+      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, details });
       setCreating(false);
-      setNewForm(emptyDetails());
+      setNewForm(emptyNewForm());
       load();
     } catch (err) { setError(err.message); }
   }
@@ -57,6 +62,17 @@ export function EpChecks() {
     } catch (err) { setError(err.message); }
   }
 
+  async function reassign(check, staffMember) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/checks/${check.id}`, {
+        assignedTo: staffMember?.id || null,
+        details: { ...check.details, assessor: staffMember?.name || check.details?.assessor, assessorArn: staffMember?.arn || check.details?.assessorArn },
+      });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
   function toggleType(type) {
     setNewForm((f) => ({
       ...f,
@@ -72,6 +88,13 @@ export function EpChecks() {
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(d.types || []).join(', ') || 'No type selected'}</div>
+        </div>
+
+        <div className="card">
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+          </div>
+          <AssignedToPicker value={selected.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
@@ -126,6 +149,9 @@ export function EpChecks() {
             </div>
           </div>
           <div className="grid2">
+            <div className="field"><label>Assessor ARN</label><input defaultValue={d.assessorArn} onBlur={(e) => patchDetails(selected, { assessorArn: e.target.value })} /></div>
+          </div>
+          <div className="grid2">
             <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
             <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
           </div>
@@ -148,6 +174,11 @@ export function EpChecks() {
             <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
             <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
           </div>
+          <AssignedToPicker
+            value={newForm.assignedTo}
+            eligibleRoles={CHECK_ROLES}
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
+          />
           <div className="grid2">
             <div className="field"><label>Assessor</label><input value={newForm.assessor} onChange={(e) => setNewForm({ ...newForm, assessor: e.target.value })} /></div>
             <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>

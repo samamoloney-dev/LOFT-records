@@ -18,6 +18,7 @@ const createSchema = z.object({
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
   ]),
   fleetAccess: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL']).optional(),
+  arn: z.string().optional(),
 });
 
 function serialize(row) {
@@ -28,6 +29,7 @@ function serialize(row) {
     email: u.email,
     role: u.role,
     fleetAccess: u.fleetAccess,
+    arn: u.arn,
     createdAt: u.createdAt,
   };
 }
@@ -43,12 +45,12 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { name, email, password, role, fleetAccess } = parsed.data;
+  const { name, email, password, role, fleetAccess, arn } = parsed.data;
   const passwordHash = await bcrypt.hash(password, 10);
   const { rows } = await pool.query(
-    `INSERT INTO users (name, email, password_hash, role, fleet_access)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [name, email, passwordHash, role, fleetAccess || 'ALL'],
+    `INSERT INTO users (name, email, password_hash, role, fleet_access, arn)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [name, email, passwordHash, role, fleetAccess || 'ALL', arn || null],
   );
   const user = rows[0];
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'users', targetId: user.id });
@@ -62,9 +64,10 @@ const updateSchema = z.object({
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
   ]).optional(),
   fleetAccess: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL']).optional(),
+  arn: z.string().optional(),
 });
 
-const COLUMN_MAP = { name: 'name', role: 'role', fleetAccess: 'fleet_access' };
+const COLUMN_MAP = { name: 'name', role: 'role', fleetAccess: 'fleet_access', arn: 'arn' };
 
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);

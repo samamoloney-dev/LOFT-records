@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
+import { AssignedToPicker } from '../components/AssignedToPicker';
+
+const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 
 const VARIANTS = [
   { value: 'PC', label: 'Proficiency Check' },
   { value: 'IPC_PC', label: 'IPC and Proficiency Check' },
 ];
 
-const emptyForm = () => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant: 'PC' });
+const emptyForm = () => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant: 'PC', assignedTo: '', examinerName: '', examinerArn: '' });
 
 const emptyDetails = (variant) => ({
   variant,
@@ -60,11 +63,26 @@ export function ProficiencyChecks() {
     setError(null);
     if (!newForm.name.trim()) return;
     try {
-      const details = { ...emptyDetails(newForm.variant), name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn };
-      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', details });
+      const details = {
+        ...emptyDetails(newForm.variant),
+        name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn,
+        examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
+      };
+      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, details });
       setCreating(false);
       setNewForm(emptyForm());
       load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function reassign(check, staffMember) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/checks/${check.id}`, {
+        assignedTo: staffMember?.id || null,
+        details: { ...check.details, examinerName: staffMember?.name || check.details?.examinerName, examinerArn: staffMember?.arn || check.details?.examinerArn },
+      });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
   }
 
@@ -104,6 +122,13 @@ export function ProficiencyChecks() {
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANTS.find((v) => v.value === d.variant)?.label}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'} · Assessor: {d.assessor || '—'}</div>
+        </div>
+
+        <div className="card">
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+          </div>
+          <AssignedToPicker value={selected.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -217,6 +242,11 @@ export function ProficiencyChecks() {
             <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
           </div>
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
+          <AssignedToPicker
+            value={newForm.assignedTo}
+            eligibleRoles={CHECK_ROLES}
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
+          />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}

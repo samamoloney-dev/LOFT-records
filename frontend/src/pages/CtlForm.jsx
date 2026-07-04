@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
+import { AssignedToPicker } from '../components/AssignedToPicker';
+
+const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
 // Training Record.
@@ -115,6 +118,10 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
     } catch (err) { setError(err.message); }
   }
 
+  async function assign(staffMember) {
+    await save({ assignedTo: staffMember?.id || null });
+  }
+
   if (!data) return null;
 
   const grouped = new Map();
@@ -134,6 +141,10 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
         <button onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Open'}</button>
       </div>
       {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+        {form.assignedToName ? `Assigned to ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
+      </div>
+      <AssignedToPicker value={form.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={assign} />
 
       {open && (
         <div style={{ marginTop: '0.75rem' }}>

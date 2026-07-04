@@ -4,7 +4,7 @@ import { api } from '../api/client';
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE'];
 const FLEET_ACCESS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL'];
 
-const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleetAccess: 'ALL' });
+const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleetAccess: 'ALL', arn: '' });
 
 export function Staff() {
   const [users, setUsers] = useState([]);
@@ -26,7 +26,7 @@ export function Staff() {
 
   function openEditForm(user) {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, fleetAccess: user.fleetAccess });
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, fleetAccess: user.fleetAccess, arn: user.arn || '' });
     setShowForm(true);
   }
 
@@ -35,7 +35,7 @@ export function Staff() {
     setError(null);
     try {
       if (editingId) {
-        await api.patch(`/api/users/${editingId}`, { name: form.name, role: form.role, fleetAccess: form.fleetAccess });
+        await api.patch(`/api/users/${editingId}`, { name: form.name, role: form.role, fleetAccess: form.fleetAccess, arn: form.arn });
       } else {
         await api.post('/api/users', form);
       }
@@ -79,11 +79,14 @@ export function Staff() {
               </select>
             </div>
           </div>
-          <div className="field">
-            <label>Fleet access</label>
-            <select value={form.fleetAccess} onChange={(e) => setForm({ ...form, fleetAccess: e.target.value })}>
-              {FLEET_ACCESS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+          <div className="grid2">
+            <div className="field">
+              <label>Fleet access</label>
+              <select value={form.fleetAccess} onChange={(e) => setForm({ ...form, fleetAccess: e.target.value })}>
+                {FLEET_ACCESS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} /></div>
           </div>
           <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
         </form>
@@ -94,7 +97,7 @@ export function Staff() {
         <div key={u.id} className="card row" style={{ cursor: 'default' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {u.role}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {u.role}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => openEditForm(u)}>Edit</button>

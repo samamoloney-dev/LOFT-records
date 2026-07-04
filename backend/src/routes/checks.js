@@ -3,7 +3,8 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessChecks } = require('../middleware/roles');
+const { canAccessChecks, isAdmin } = require('../middleware/roles');
+const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -27,17 +28,30 @@ router.get('/', async (req, res) => {
 
   const conditions = [];
   const params = [];
-  if (traineeId) { params.push(traineeId); conditions.push(`trainee_id = $${params.length}`); }
-  if (checkType) { params.push(checkType); conditions.push(`check_type = $${params.length}`); }
+  if (traineeId) { params.push(traineeId); conditions.push(`c.trainee_id = $${params.length}`); }
+  if (checkType) { params.push(checkType); conditions.push(`c.check_type = $${params.length}`); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const { rows } = await pool.query(`SELECT * FROM checks ${where} ORDER BY created_at DESC`, params);
+  const { rows } = await pool.query(
+    `SELECT c.*, au.name AS assigned_to_name, au.arn AS assigned_to_arn
+     FROM checks c
+     LEFT JOIN users au ON au.id = c.assigned_to
+     ${where}
+     ORDER BY c.created_at DESC`,
+    params,
+  );
   const checks = rows.map(rowToCamel);
   res.json(checks.filter((c) => canAccessCheckType(req.user, c.checkType)));
 });
 
 router.get('/:id', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
+  const { rows } = await pool.query(
+    `SELECT c.*, au.name AS assigned_to_name, au.arn AS assigned_to_arn
+     FROM checks c
+     LEFT JOIN users au ON au.id = c.assigned_to
+     WHERE c.id = $1`,
+    [req.params.id],
+  );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   const check = rowToCamel(rows[0]);
   if (!canAccessCheckType(req.user, check.checkType)) return res.status(403).json({ error: 'Forbidden' });
@@ -51,6 +65,7 @@ const createSchema = z.object({
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
   assessorName: z.string().optional(),
+  assignedTo: z.string().uuid().nullable().optional(),
   details: z.record(z.any()).optional(),
 });
 
@@ -58,11 +73,14 @@ router.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   if (!canAccessCheckType(req.user, parsed.data.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  if (parsed.data.assignedTo && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
+  }
 
   const d = parsed.data;
   const { rows } = await pool.query(
-    `INSERT INTO checks (trainee_id, check_type, fleet, applies_to, due_date, assessor_name, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    `INSERT INTO checks (trainee_id, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       d.traineeId || null,
       d.checkType,
@@ -70,12 +88,13 @@ router.post('/', async (req, res) => {
       d.appliesTo,
       d.dueDate || null,
       d.assessorName || null,
+      d.assignedTo || null,
       JSON.stringify(d.details || {}),
     ],
   );
   const check = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });
-  res.status(201).json(check);
+  res.status(201).json({ ...check, ...(await resolveAssignee(check.assignedTo)) });
 });
 
 const updateSchema = z.object({
@@ -84,6 +103,7 @@ const updateSchema = z.object({
   score: z.number().int().min(1).max(5).nullable().optional(),
   completedAt: z.string().nullable().optional(),
   assessorName: z.string().nullable().optional(),
+  assignedTo: z.string().uuid().nullable().optional(),
 });
 
 router.patch('/:id', async (req, res) => {
@@ -96,6 +116,13 @@ router.patch('/:id', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
+  // Distinguish "assignedTo not sent, leave as-is" from "assignedTo: null,
+  // unassign" - zod would otherwise turn both into undefined.
+  const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');
+  if (hasAssignedTo && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
+  }
+
   const { rows } = await pool.query(
     `UPDATE checks SET
        details = COALESCE($1, details),
@@ -103,21 +130,24 @@ router.patch('/:id', async (req, res) => {
        score = COALESCE($3, score),
        completed_at = COALESCE($4, completed_at),
        assessor_name = COALESCE($5, assessor_name),
-       completed_by = $6
-     WHERE id = $7 RETURNING *`,
+       assigned_to = CASE WHEN $6 THEN $7::uuid ELSE assigned_to END,
+       completed_by = $8
+     WHERE id = $9 RETURNING *`,
     [
       d.details ? JSON.stringify(d.details) : null,
       d.result ?? null,
       d.score ?? null,
       d.completedAt ? new Date(d.completedAt) : null,
       d.assessorName ?? null,
+      hasAssignedTo,
+      d.assignedTo ?? null,
       req.user.id,
       req.params.id,
     ],
   );
   const updated = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
-  res.json(updated);
+  res.json({ ...updated, ...(await resolveAssignee(updated.assignedTo)) });
 });
 
 module.exports = router;

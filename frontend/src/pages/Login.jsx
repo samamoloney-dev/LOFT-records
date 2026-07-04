@@ -28,7 +28,7 @@ export function Login() {
   return (
     <div className="login-shell">
       <div className="card">
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>LOFT Records</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Flight Standards System</div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Sign in to continue</div>
         <form onSubmit={handleSubmit}>
           <div className="field">

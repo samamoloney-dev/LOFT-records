@@ -17,7 +17,7 @@ function Shell({ children }) {
   return (
     <div className="app-shell">
       <nav className="top-nav">
-        <span className="brand">LOFT Records</span>
+        <span className="brand">Flight Standards System</span>
         <NavLink to="/" end>Trainees</NavLink>
         {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}

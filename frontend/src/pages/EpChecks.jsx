@@ -19,7 +19,7 @@ const EP_ITEMS = [
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
-export function EpChecks() {
+export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -27,9 +27,11 @@ export function EpChecks() {
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/checks?checkType=EMERGENCY_PROCEDURES').then(setChecks).catch((e) => setError(e.message));
+    api.get('/api/checks?checkType=EMERGENCY_PROCEDURES')
+      .then((all) => setChecks(all.filter((c) => c.appliesTo === appliesTo)))
+      .catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [appliesTo]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -39,7 +41,7 @@ export function EpChecks() {
     if (!newForm.name.trim()) return;
     try {
       const { assignedTo, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, details });
+      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo, assignedTo: assignedTo || undefined, details });
       setCreating(false);
       setNewForm(emptyNewForm());
       load();

@@ -3,11 +3,9 @@ import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 
-const VARIANTS = [
-  { value: 'PC', label: 'Proficiency Check' },
-  { value: 'IPC_PC', label: 'IPC and Proficiency Check' },
-];
+const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
 
 // IPC and Proficiency Check draw from different check-access ticks even
 // though they're the same underlying record type.
@@ -15,12 +13,12 @@ function variantAccessType(variant) {
   return variant === 'IPC_PC' ? 'IPC' : 'PC';
 }
 
-const emptyForm = () => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant: 'PC', assignedTo: '', examinerName: '', examinerArn: '' });
+const emptyForm = (variant) => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant, assignedTo: '', examinerName: '', examinerArn: '' });
 
 const emptyDetails = (variant) => ({
   variant,
   results: {},
-  seatCheck: '',
+  seatCheck: [],
   testNumber: '',
   applicantArn: '', applicantName: '', applicantSig: '',
   fstdDate: '', fstdNumber: '', fstdType: '', groundTime: '', simulatorTime: '',
@@ -49,17 +47,21 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
   );
 }
 
-export function ProficiencyChecks() {
+// variant is fixed per tab ('PC' or 'IPC_PC') - the IPC and PC subtabs each
+// render this with their own variant rather than letting the user pick one.
+export function ProficiencyChecks({ variant, label }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState(emptyForm());
+  const [newForm, setNewForm] = useState(emptyForm(variant));
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/checks?checkType=RECURRENT_SIMULATOR').then(setChecks).catch((e) => setError(e.message));
+    api.get('/api/checks?checkType=RECURRENT_SIMULATOR')
+      .then((all) => setChecks(all.filter((c) => c.details?.variant === variant)))
+      .catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [variant]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -69,13 +71,13 @@ export function ProficiencyChecks() {
     if (!newForm.name.trim()) return;
     try {
       const details = {
-        ...emptyDetails(newForm.variant),
+        ...emptyDetails(variant),
         name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn,
         examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
       };
       await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, details });
       setCreating(false);
-      setNewForm(emptyForm());
+      setNewForm(emptyForm(variant));
       load();
     } catch (err) { setError(err.message); }
   }
@@ -85,7 +87,12 @@ export function ProficiencyChecks() {
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, {
         assignedTo: staffMember?.id || null,
-        details: { ...check.details, examinerName: staffMember?.name || check.details?.examinerName, examinerArn: staffMember?.arn || check.details?.examinerArn },
+        details: {
+          ...check.details,
+          assessor: staffMember?.name || check.details?.assessor,
+          examinerName: staffMember?.name || check.details?.examinerName,
+          examinerArn: staffMember?.arn || check.details?.examinerArn,
+        },
       });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
@@ -107,10 +114,17 @@ export function ProficiencyChecks() {
     } catch (err) { setError(err.message); }
   }
 
+  function toggleSeat(check, currentSeats, seat) {
+    const next = currentSeats.includes(seat) ? currentSeats.filter((s) => s !== seat) : [...currentSeats, seat];
+    patchDetails(check, { seatCheck: next });
+  }
+
   if (selected) {
     const d = selected.details || {};
     const isIpc = d.variant === 'IPC_PC';
     const results = d.results || {};
+    // seatCheck used to be a single string - normalize old records to an array.
+    const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : (d.seatCheck ? [d.seatCheck] : []);
 
     function setItemResult(id, value) {
       patchDetails(selected, { results: { ...results, [id]: value } });
@@ -125,7 +139,7 @@ export function ProficiencyChecks() {
       <div>
         <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
         <div className="card">
-          <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANTS.find((v) => v.value === d.variant)?.label}</div>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANT_LABELS[d.variant]}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'} · Assessor: {d.assessor || '—'}</div>
         </div>
 
@@ -163,14 +177,14 @@ export function ProficiencyChecks() {
 
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>Seat check conducted in</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Training captains in LHS and Other, F.O. in RHS, Captains in LHS</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Training captains in LHS and Other, F.O. in RHS, Captains in LHS (select all that apply)</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {['LHS', 'RHS', 'Other Seat'].map((seat) => (
+            {SEAT_OPTIONS.map((seat) => (
               <button
                 key={seat}
                 disabled={!!selected.completedAt}
-                className={d.seatCheck === seat ? 'primary' : ''}
-                onClick={() => patchDetails(selected, { seatCheck: d.seatCheck === seat ? '' : seat })}
+                className={seatCheck.includes(seat) ? 'primary' : ''}
+                onClick={() => toggleSeat(selected, seatCheck, seat)}
               >{seat}</button>
             ))}
           </div>
@@ -226,18 +240,12 @@ export function ProficiencyChecks() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Part 121 Proficiency Check / IPC and Proficiency Check</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</div>
         <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>
       </div>
 
       {creating && (
         <form className="card" onSubmit={createCheck}>
-          <div className="field">
-            <label>Check type</label>
-            <select value={newForm.variant} onChange={(e) => setNewForm({ ...newForm, variant: e.target.value })}>
-              {VARIANTS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </select>
-          </div>
           <div className="grid2">
             <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
             <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
@@ -255,22 +263,20 @@ export function ProficiencyChecks() {
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
           <AssignedToPicker
             value={newForm.assignedTo}
-            accessType={variantAccessType(newForm.variant)}
-            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
+            accessType={variantAccessType(variant)}
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
           />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No proficiency checks yet.</div>}
+      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {label.toLowerCase()} records yet.</div>}
       {checks.map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {VARIANTS.find((v) => v.value === c.details?.variant)?.label || 'Proficiency Check'} · {c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'}</div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
         </div>

@@ -24,9 +24,9 @@ DELETE FROM crew_members;
 -- operator out entirely. Abort the whole migration instead.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'sam.a.moloney@gmail.com') THEN
-    RAISE EXCEPTION 'Wipe aborted: no user found with email sam.a.moloney@gmail.com - refusing to delete all users';
+  IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'sam.moloney@skippers.com.au') THEN
+    RAISE EXCEPTION 'Wipe aborted: no user found with email sam.moloney@skippers.com.au - refusing to delete all users';
   END IF;
 END $$;
 
-DELETE FROM users WHERE email <> 'sam.a.moloney@gmail.com';
+DELETE FROM users WHERE email <> 'sam.moloney@skippers.com.au';

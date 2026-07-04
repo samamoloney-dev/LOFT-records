@@ -123,14 +123,18 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
 
   async function archiveForm() {
     setError(null);
-    try { setData((d) => ({ ...d, form: { ...d.form, ...(await api.post(`/api/ctl/${traineeId}/archive`)) } })); }
-    catch (err) { setError(err.message); }
+    try {
+      const updated = await api.post(`/api/ctl/${traineeId}/archive`);
+      setData((d) => ({ ...d, form: { ...d.form, ...updated } }));
+    } catch (err) { setError(err.message); }
   }
 
   async function unarchiveForm() {
     setError(null);
-    try { setData((d) => ({ ...d, form: { ...d.form, ...(await api.post(`/api/ctl/${traineeId}/unarchive`)) } })); }
-    catch (err) { setError(err.message); }
+    try {
+      const updated = await api.post(`/api/ctl/${traineeId}/unarchive`);
+      setData((d) => ({ ...d, form: { ...d.form, ...updated } }));
+    } catch (err) { setError(err.message); }
   }
 
   if (!data) return null;

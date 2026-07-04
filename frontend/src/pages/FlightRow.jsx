@@ -128,6 +128,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {flight.locked ? 'Finalised' : 'Draft'}
+            {flight.locked && flight.trainingCaptainName ? ` · Trainer: ${flight.trainingCaptainName}` : ''}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
           </div>
         </div>

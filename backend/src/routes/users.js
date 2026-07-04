@@ -105,7 +105,18 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
 });
 
 router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  try {
+    const { rowCount } = await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
+  } catch (err) {
+    // Foreign key violation - this staff member still owns records that
+    // can't be orphaned (e.g. flights they flew as training captain, or a
+    // trainee account linked to them).
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete this staff member - they still have flights, checks, or a linked trainee account. Remove or reassign those first.' });
+    }
+    throw err;
+  }
   await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'users', targetId: req.params.id });
   res.status(204).end();
 });

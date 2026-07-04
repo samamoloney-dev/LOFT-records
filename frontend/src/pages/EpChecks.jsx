@@ -4,6 +4,7 @@ import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
+const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const EP_ITEMS = [
   'Emergency Equipment Knowledge — location, duration, operation, precaution and post use',
   'Emergency Equipment Practical Demonstration',
@@ -160,6 +161,11 @@ export function EpChecks() {
             <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
+          <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
+            We, the undersigned, do hereby mutually agree upon and accept the comment written in
+            this document as being a correct and honest account of the performance of the
+            Applicant in each and every procedure carried out.
+          </div>
           <div className="grid2">
             <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
             <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
@@ -190,7 +196,13 @@ export function EpChecks() {
           />
           <div className="grid2">
             <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
-            <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
+            <div className="field">
+              <label>Aircraft type</label>
+              <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>
+                <option value="">—</option>
+                {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
           <div className="field"><label>Check type (select all that apply)</label></div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '0.875rem' }}>

@@ -16,6 +16,7 @@ const CA_CHECK_ITEMS = [
   'Knowledge of how to manage Restricted, Unruly and Passengers with reduced mobility',
 ];
 const CA_NTS_MARKERS = ['Communication and Teamwork', 'Leadership and Workload Management', 'Situational Awareness', 'Decision Making Process'];
+const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
@@ -204,7 +205,13 @@ export function CaChecks() {
           />
           <div className="grid2">
             <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
-            <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
+            <div className="field">
+              <label>Aircraft type</label>
+              <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>
+                <option value="">—</option>
+                {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
           <button type="submit" className="primary">Create check record</button>
         </form>

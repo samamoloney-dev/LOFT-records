@@ -20,6 +20,17 @@ async function findFlight(id) {
   return rows[0] ? rowToCamel(rows[0]) : null;
 }
 
+async function findFlightWithTrainer(id) {
+  const { rows } = await pool.query(
+    `SELECT f.*, tc.name AS training_captain_name
+     FROM flights f
+     LEFT JOIN users tc ON tc.id = f.training_captain_id
+     WHERE f.id = $1`,
+    [id],
+  );
+  return rows[0] ? rowToCamel(rows[0]) : null;
+}
+
 async function assertTraineeVisible(req, res, traineeId) {
   const trainee = await findTrainee(traineeId);
   if (!trainee) {
@@ -45,7 +56,11 @@ router.get('/', async (req, res) => {
   if (!trainee) return;
 
   const { rows } = await pool.query(
-    'SELECT * FROM flights WHERE trainee_id = $1 ORDER BY date DESC',
+    `SELECT f.*, tc.name AS training_captain_name
+     FROM flights f
+     LEFT JOIN users tc ON tc.id = f.training_captain_id
+     WHERE f.trainee_id = $1
+     ORDER BY f.date DESC`,
     [traineeId],
   );
   res.json(rows.map(rowToCamel));
@@ -56,7 +71,7 @@ router.get('/:id', async (req, res) => {
   if (!flight) return res.status(404).json({ error: 'Not found' });
   const trainee = await assertTraineeVisible(req, res, flight.traineeId);
   if (!trainee) return;
-  res.json(flight);
+  res.json(await findFlightWithTrainer(flight.id));
 });
 
 const createSchema = z.object({
@@ -86,7 +101,7 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   );
   const flight = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'flights', targetId: flight.id });
-  res.status(201).json(flight);
+  res.status(201).json({ ...flight, trainingCaptainName: req.user.name });
 });
 
 // Partial update only - this is deliberate. Earlier versions of this form
@@ -132,12 +147,12 @@ router.patch('/:id', async (req, res) => {
   const values = entries.map(([key, value]) => (UPDATE_COLUMN_MAP[key].json ? JSON.stringify(value) : value));
   values.push(req.params.id);
 
-  const { rows } = await pool.query(
-    `UPDATE flights SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+  await pool.query(
+    `UPDATE flights SET ${setClauses.join(', ')} WHERE id = $${values.length}`,
     values,
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'flights', targetId: flight.id });
-  res.json(rowToCamel(rows[0]));
+  res.json(await findFlightWithTrainer(flight.id));
 });
 
 router.post('/:id/finalize', async (req, res) => {
@@ -145,12 +160,9 @@ router.post('/:id/finalize', async (req, res) => {
   if (!flight) return res.status(404).json({ error: 'Not found' });
   if (!canEditFlight(req.user, flight)) return res.status(403).json({ error: 'Forbidden' });
 
-  const { rows } = await pool.query(
-    'UPDATE flights SET locked = true WHERE id = $1 RETURNING *',
-    [flight.id],
-  );
+  await pool.query('UPDATE flights SET locked = true WHERE id = $1', [flight.id]);
   await logAction({ userId: req.user.id, action: 'FINALIZE', targetTable: 'flights', targetId: flight.id });
-  res.json(rowToCamel(rows[0]));
+  res.json(await findFlightWithTrainer(flight.id));
 });
 
 router.post('/:id/acknowledge', async (req, res) => {
@@ -159,12 +171,12 @@ router.post('/:id/acknowledge', async (req, res) => {
   if (!canAcknowledgeFlight(req.user, flight)) return res.status(403).json({ error: 'Forbidden' });
   if (!flight.locked) return res.status(409).json({ error: 'Flight has not been finalised yet' });
 
-  const { rows } = await pool.query(
-    'UPDATE flights SET acknowledged_by_trainee = true, acknowledged_at = now() WHERE id = $1 RETURNING *',
+  await pool.query(
+    'UPDATE flights SET acknowledged_by_trainee = true, acknowledged_at = now() WHERE id = $1',
     [flight.id],
   );
   await logAction({ userId: req.user.id, action: 'ACKNOWLEDGE', targetTable: 'flights', targetId: flight.id });
-  res.json(rowToCamel(rows[0]));
+  res.json(await findFlightWithTrainer(flight.id));
 });
 
 module.exports = router;

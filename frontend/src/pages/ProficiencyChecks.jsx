@@ -7,6 +7,7 @@ const VARIANTS = [
   { value: 'PC', label: 'Proficiency Check' },
   { value: 'IPC_PC', label: 'IPC and Proficiency Check' },
 ];
+const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
 // IPC and Proficiency Check draw from different check-access ticks even
 // though they're the same underlying record type.
@@ -243,7 +244,13 @@ export function ProficiencyChecks() {
           </div>
           <div className="grid2">
             <div className="field"><label>Assessor(s)</label><input value={newForm.assessor} onChange={(e) => setNewForm({ ...newForm, assessor: e.target.value })} /></div>
-            <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
+            <div className="field">
+              <label>Aircraft type</label>
+              <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>
+                <option value="">—</option>
+                {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
           <AssignedToPicker

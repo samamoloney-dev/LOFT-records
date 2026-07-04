@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { formatFleet, formatUserRole } from '../lib/format';
+import { formatUserRole } from '../lib/format';
 
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
-// Examiners and Check Captains can cover more than one fleet - everyone else
-// (Training Captain, CA Trainer, CA Checker) is qualified on a single fleet,
-// same as real-world type ratings ("a Dash 8 trainer cannot train Fokker 100
-// pilots").
-const MULTI_FLEET_ROLES = ['EXAMINER', 'CC'];
+// Examiners, Check Captains, HOTC, HOFO, CA Trainers and CA Checkers can
+// cover more than one fleet - only Training Captain is qualified on a single
+// fleet, same as real-world type ratings ("a Dash 8 trainer cannot train
+// Fokker 100 pilots").
+const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'CA_TRAINER', 'CA_CHECKER'];
+
+// Pilot and cabin attendant fleets share the same city names (Dash 8, Fokker
+// 100), so a single side-by-side picker needs distinct labels to avoid
+// looking like the same option twice.
+const FLEET_PICKER_LABELS = {
+  DASH_8: 'Dash 8',
+  FOKKER_100: 'Fokker 100',
+  METRO_23: 'Metro 23',
+  CA_DASH_8: 'Dash 8 (Cabin Crew)',
+  CA_FOKKER_100: 'Fokker 100 (Cabin Crew)',
+};
 const CHECK_ACCESS_OPTIONS = [
   { value: 'PC', label: 'PC' },
   { value: 'IPC', label: 'IPC' },
@@ -42,10 +53,10 @@ function CheckAccessPicker({ value, onChange, disabled }) {
   );
 }
 
-// Mirrors CheckAccessPicker's pill-button pattern. In single mode (most
-// roles), picking a fleet replaces whatever was ticked - a Dash 8 trainer
-// can't also be a Fokker 100 trainer. In multi mode (Examiner/CC), ticks
-// toggle independently.
+// Mirrors CheckAccessPicker's pill-button pattern. In single mode (Training
+// Captain only), picking a fleet replaces whatever was ticked - a Dash 8
+// trainer can't also be a Fokker 100 trainer. In multi mode (everyone else
+// except Training Captain), ticks toggle independently.
 function FleetAccessPicker({ value, onChange, multi, disabled }) {
   function toggle(v) {
     if (multi) {
@@ -66,7 +77,7 @@ function FleetAccessPicker({ value, onChange, multi, disabled }) {
             background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
             color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
           }}
-        >{formatFleet(f)}</div>
+        >{FLEET_PICKER_LABELS[f]}</div>
       ))}
     </div>
   );
@@ -179,9 +190,9 @@ export function Staff() {
             <div style={{ fontWeight: 500 }}>{u.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {ADMIN_ROLES.includes(u.role)
+              {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
                 ? 'Fleets: all'
-                : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
+                : `Fleets: ${(u.fleets || []).length ? u.fleets.map((f) => FLEET_PICKER_LABELS[f]).join(', ') : 'none'}`}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {ADMIN_ROLES.includes(u.role)

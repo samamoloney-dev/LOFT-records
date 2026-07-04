@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { ArchiveButton } from '../components/ArchiveButton';
 
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
 // Training Record.
@@ -120,6 +121,18 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
     await save({ assignedTo: staffMember?.id || null });
   }
 
+  async function archiveForm() {
+    setError(null);
+    try { setData((d) => ({ ...d, form: { ...d.form, ...(await api.post(`/api/ctl/${traineeId}/archive`)) } })); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function unarchiveForm() {
+    setError(null);
+    try { setData((d) => ({ ...d, form: { ...d.form, ...(await api.post(`/api/ctl/${traineeId}/unarchive`)) } })); }
+    catch (err) { setError(err.message); }
+  }
+
   if (!data) return null;
 
   const grouped = new Map();
@@ -136,7 +149,15 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 500 }}>Check to Line Assessment</div>
-        <button onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Open'}</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <ArchiveButton
+            archived={form.archived}
+            canArchive={!!form.completedAt}
+            onArchive={archiveForm}
+            onUnarchive={unarchiveForm}
+          />
+          <button onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Open'}</button>
+        </div>
       </div>
       {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>

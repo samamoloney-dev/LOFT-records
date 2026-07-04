@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
+import { ArchiveButton } from '../components/ArchiveButton';
 
 const CA_CHECK_ITEMS = [
   'Personal Presentation',
@@ -21,7 +22,7 @@ const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
-export function CaChecks() {
+export function CaChecks({ archived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -29,9 +30,9 @@ export function CaChecks() {
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/checks?checkType=CABIN_ATTENDANT_LINE_CHECK').then(setChecks).catch((e) => setError(e.message));
+    api.get(`/api/checks?checkType=CABIN_ATTENDANT_LINE_CHECK&archived=${archived}`).then(setChecks).catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [archived]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -84,11 +85,31 @@ export function CaChecks() {
     apply({ assessorId: staffMember?.id || '', assessor: staffMember?.name || '', assessorArn: staffMember?.arn || '' });
   }
 
+  async function archiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/archive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function unarchiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/unarchive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   if (selected) {
     const d = selected.details || {};
     return (
       <div>
-        <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button onClick={() => setSelectedId(null)}>← Back</button>
+          <ArchiveButton
+            archived={selected.archived}
+            canArchive={!!selected.result}
+            onArchive={() => archiveCheck(selected)}
+            onUnarchive={() => unarchiveCheck(selected)}
+          />
+        </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Cabin Attendant Line Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'}</div>
@@ -188,11 +209,11 @@ export function CaChecks() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Cabin Attendant Line Check (SA 540) — 12-month cycle, initial and recurrent</div>
-        <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add cabin attendant check'}</button>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived cabin attendant line checks' : 'Cabin Attendant Line Check (SA 540) — 12-month cycle, initial and recurrent'}</div>
+        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add cabin attendant check'}</button>}
       </div>
 
-      {creating && (
+      {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="grid2">
             <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
@@ -218,7 +239,7 @@ export function CaChecks() {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No cabin attendant checks yet.</div>}
+      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}cabin attendant checks yet.</div>}
       {checks.map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>

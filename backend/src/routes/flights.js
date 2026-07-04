@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, canAccessArchived, canEditFlight, canAcknowledgeFlight, requireRole, FLIGHT_CREATOR_ROLES } = require('../middleware/roles');
+const { canAccessTraineeRecord, canAccessArchived, canEditFlight, canAcknowledgeFlight, requireRole, FLIGHT_CREATOR_ROLES, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -49,8 +49,25 @@ async function assertTraineeVisible(req, res, traineeId) {
 }
 
 router.get('/', async (req, res) => {
-  const { traineeId } = req.query;
-  if (!traineeId) return res.status(400).json({ error: 'traineeId is required' });
+  const { traineeId, archived } = req.query;
+
+  if (!traineeId) {
+    // No trainee given - this is the cross-trainee Archive view, not the
+    // per-trainee flights list. Only admins can browse archived flights
+    // globally, and only archived ones (never the live list) this way.
+    if (archived !== 'true' || !isAdmin(req.user)) {
+      return res.status(400).json({ error: 'traineeId is required' });
+    }
+    const { rows } = await pool.query(
+      `SELECT f.*, tc.name AS training_captain_name, t.first_name, t.last_name, t.type AS trainee_type
+       FROM flights f
+       LEFT JOIN users tc ON tc.id = f.training_captain_id
+       JOIN trainees t ON t.id = f.trainee_id
+       WHERE f.archived = true
+       ORDER BY f.archived_at DESC`,
+    );
+    return res.json(rows.map(rowToCamel));
+  }
 
   const trainee = await assertTraineeVisible(req, res, traineeId);
   if (!trainee) return;
@@ -59,9 +76,9 @@ router.get('/', async (req, res) => {
     `SELECT f.*, tc.name AS training_captain_name
      FROM flights f
      LEFT JOIN users tc ON tc.id = f.training_captain_id
-     WHERE f.trainee_id = $1
+     WHERE f.trainee_id = $1 AND f.archived = $2
      ORDER BY f.date DESC`,
-    [traineeId],
+    [traineeId, archived === 'true'],
   );
   res.json(rows.map(rowToCamel));
 });
@@ -176,6 +193,29 @@ router.post('/:id/acknowledge', async (req, res) => {
     [flight.id],
   );
   await logAction({ userId: req.user.id, action: 'ACKNOWLEDGE', targetTable: 'flights', targetId: flight.id });
+  res.json(await findFlightWithTrainer(flight.id));
+});
+
+router.post('/:id/archive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive flights' });
+
+  const flight = await findFlight(req.params.id);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+  if (!flight.locked) return res.status(400).json({ error: 'Flight must be finalised before it can be archived' });
+
+  await pool.query('UPDATE flights SET archived = true, archived_at = now() WHERE id = $1', [flight.id]);
+  await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'flights', targetId: flight.id });
+  res.json(await findFlightWithTrainer(flight.id));
+});
+
+router.post('/:id/unarchive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can unarchive flights' });
+
+  const flight = await findFlight(req.params.id);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+
+  await pool.query('UPDATE flights SET archived = false, archived_at = null WHERE id = $1', [flight.id]);
+  await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'flights', targetId: flight.id });
   res.json(await findFlightWithTrainer(flight.id));
 });
 

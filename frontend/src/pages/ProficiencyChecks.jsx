@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { ArchiveButton } from '../components/ArchiveButton';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -49,7 +50,7 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
 
 // variant is fixed per tab ('PC' or 'IPC_PC') - the IPC and PC subtabs each
 // render this with their own variant rather than letting the user pick one.
-export function ProficiencyChecks({ variant, label }) {
+export function ProficiencyChecks({ variant, label, archived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -57,11 +58,11 @@ export function ProficiencyChecks({ variant, label }) {
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/checks?checkType=RECURRENT_SIMULATOR')
+    api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}`)
       .then((all) => setChecks(all.filter((c) => c.details?.variant === variant)))
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [variant]);
+  useEffect(load, [variant, archived]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -119,6 +120,18 @@ export function ProficiencyChecks({ variant, label }) {
     patchDetails(check, { seatCheck: next });
   }
 
+  async function archiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/archive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function unarchiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/unarchive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   if (selected) {
     const d = selected.details || {};
     const isIpc = d.variant === 'IPC_PC';
@@ -137,7 +150,15 @@ export function ProficiencyChecks({ variant, label }) {
 
     return (
       <div>
-        <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button onClick={() => setSelectedId(null)}>← Back</button>
+          <ArchiveButton
+            archived={selected.archived}
+            canArchive={!!selected.result}
+            onArchive={() => archiveCheck(selected)}
+            onUnarchive={() => unarchiveCheck(selected)}
+          />
+        </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANT_LABELS[d.variant]}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'} · Assessor: {d.assessor || '—'}</div>
@@ -240,11 +261,11 @@ export function ProficiencyChecks({ variant, label }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</div>
-        <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
+        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>}
       </div>
 
-      {creating && (
+      {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="grid2">
             <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
@@ -271,7 +292,7 @@ export function ProficiencyChecks({ variant, label }) {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {label.toLowerCase()} records yet.</div>}
+      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}{label.toLowerCase()} records yet.</div>}
       {checks.map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>

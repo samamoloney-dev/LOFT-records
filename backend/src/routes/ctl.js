@@ -26,6 +26,23 @@ async function assertTraineeVisible(req, res, traineeId) {
   return trainee;
 }
 
+// Archive view - browses archived Check to Line forms across all trainees,
+// unlike the per-trainee route below.
+router.get('/', async (req, res) => {
+  if (req.query.archived !== 'true' || !isAdmin(req.user)) {
+    return res.status(400).json({ error: 'traineeId is required' });
+  }
+
+  const { rows } = await pool.query(
+    `SELECT ctl.*, t.first_name, t.last_name, t.type AS trainee_type, t.fleet AS trainee_fleet
+     FROM check_to_line_forms ctl
+     JOIN trainees t ON t.id = ctl.trainee_id
+     WHERE ctl.archived = true
+     ORDER BY ctl.archived_at DESC`,
+  );
+  res.json(rows.map(rowToCamel));
+});
+
 router.get('/:traineeId', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
@@ -135,6 +152,34 @@ router.post('/:traineeId/complete', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+router.post('/:traineeId/archive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive checks' });
+
+  const { rows: existingRows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [req.params.traineeId]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'No CTL form found for this trainee' });
+  const existing = rowToCamel(existingRows[0]);
+  if (!existing.completedAt) return res.status(400).json({ error: 'Check to Line must be completed before it can be archived' });
+
+  const { rows } = await pool.query(
+    'UPDATE check_to_line_forms SET archived = true, archived_at = now() WHERE trainee_id = $1 RETURNING *',
+    [req.params.traineeId],
+  );
+  await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'check_to_line_forms', targetId: rows[0].id });
+  res.json(rowToCamel(rows[0]));
+});
+
+router.post('/:traineeId/unarchive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can unarchive checks' });
+
+  const { rows } = await pool.query(
+    'UPDATE check_to_line_forms SET archived = false, archived_at = null WHERE trainee_id = $1 RETURNING *',
+    [req.params.traineeId],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'No CTL form found for this trainee' });
+  await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'check_to_line_forms', targetId: rows[0].id });
+  res.json(rowToCamel(rows[0]));
 });
 
 module.exports = router;

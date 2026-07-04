@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
+import { ArchiveButton } from '../components/ArchiveButton';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -19,7 +20,7 @@ const EP_ITEMS = [
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
-export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
+export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -27,11 +28,11 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/checks?checkType=EMERGENCY_PROCEDURES')
+    api.get(`/api/checks?checkType=EMERGENCY_PROCEDURES&archived=${archived}`)
       .then((all) => setChecks(all.filter((c) => c.appliesTo === appliesTo)))
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [appliesTo]);
+  useEffect(load, [appliesTo, archived]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -84,6 +85,18 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
     apply({ assessorId: staffMember?.id || '', assessor: staffMember?.name || '', assessorArn: staffMember?.arn || '' });
   }
 
+  async function archiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/archive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function unarchiveCheck(check) {
+    setError(null);
+    try { await api.post(`/api/checks/${check.id}/unarchive`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   function toggleType(type) {
     setNewForm((f) => ({
       ...f,
@@ -95,7 +108,15 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
     const d = selected.details || {};
     return (
       <div>
-        <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button onClick={() => setSelectedId(null)}>← Back</button>
+          <ArchiveButton
+            archived={selected.archived}
+            canArchive={!!selected.result}
+            onArchive={() => archiveCheck(selected)}
+            onUnarchive={() => unarchiveCheck(selected)}
+          />
+        </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(d.types || []).join(', ') || 'No type selected'}</div>
@@ -181,11 +202,11 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>12-month cycle, separate from IPC and Proficiency Check</div>
-        <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived emergency procedures checks' : '12-month cycle, separate from IPC and Proficiency Check'}</div>
+        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>}
       </div>
 
-      {creating && (
+      {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="grid2">
             <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
@@ -225,7 +246,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT' }) {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No emergency procedures checks yet.</div>}
+      {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}emergency procedures checks yet.</div>}
       {checks.map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>

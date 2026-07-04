@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const pool = require('../../db/pool');
-const { rowToCamel } = require('../../db/serialize');
+const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth, setSessionCookie, clearSessionCookie } = require('../middleware/auth');
 const { logAction } = require('../lib/audit');
 
@@ -19,7 +19,7 @@ function serializeUser(user) {
     name: user.name,
     email: user.email,
     role: user.role,
-    fleetAccess: user.fleetAccess,
+    fleets: user.fleets,
     traineeId: user.trainee ? user.trainee.id : null,
   };
 }
@@ -47,7 +47,7 @@ router.post('/login', async (req, res) => {
     name: row.name,
     email: row.email,
     role: row.role,
-    fleetAccess: row.fleetAccess,
+    fleets: parsePgArray(row.fleets),
     trainee: row.traineeId ? { id: row.traineeId } : null,
   };
 

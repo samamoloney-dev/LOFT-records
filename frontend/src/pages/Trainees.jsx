@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
@@ -49,20 +50,20 @@ export function Trainees() {
             <div className="field">
               <label>Type</label>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {TYPES.map((t) => <option key={t} value={t}>{formatTraineeRole(t)}</option>)}
               </select>
             </div>
             <div className="field">
               <label>Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                {ROLES.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
               </select>
             </div>
           </div>
           <div className="field">
             <label>Fleet</label>
             <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
-              {FLEETS.map((f) => <option key={f} value={f}>{f}</option>)}
+              {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
             </select>
           </div>
           <button type="submit" className="primary">Create</button>
@@ -76,7 +77,7 @@ export function Trainees() {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {t.fleet} · {t.role}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
+              {formatFleet(t.fleet)} · {formatTraineeRole(t.role)}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
             </div>
           </div>
         </div>

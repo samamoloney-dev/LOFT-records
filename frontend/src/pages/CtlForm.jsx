@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { formatDate } from '../lib/format';
+import { formatDate, formatUserRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
@@ -63,7 +63,7 @@ function SectorFields({ label, value, progressiveLabel, disabled, onChange }) {
   );
 }
 
-export function CtlForm({ traineeId, traineeType, onCompleted }) {
+export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -152,7 +152,7 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
   function printForm() {
     const statusLabel = (v) => (v === true ? '✓' : v === false ? '✗' : v === 'SATISFACTORY' ? '✓' : v === 'UNSATISFACTORY' ? '✗' : v === 'NA' ? 'N/A' : '');
     let body = `<h1>Check to Line Assessment</h1>`;
-    body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · Assigned to ${form.assignedToName ? `${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
+    body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
 
     if (isCabinAttendant) {
       body += section('Assessment', CA_ASSESSMENT_ITEMS.map((item) => [item, statusLabel(form.assessmentItems[item])]));
@@ -204,9 +204,9 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
       </div>
       {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-        {form.assignedToName ? `Assigned to ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
+        {form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
       </div>
-      <AssignedToPicker value={form.assignedTo} accessType="CHECK_TO_LINE" onAssign={assign} />
+      <AssignedToPicker value={form.assignedTo} accessType="CHECK_TO_LINE" fleet={fleet} onAssign={assign} />
 
       {open && (
         <div style={{ marginTop: '0.75rem' }}>

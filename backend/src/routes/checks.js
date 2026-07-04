@@ -78,8 +78,8 @@ router.post('/', async (req, res) => {
   const assignee = await resolveAssignee(d.assignedTo);
   const crewMember = await resolveCrewMember(d.crewMemberId);
   const { rows } = await pool.query(
-    `INSERT INTO checks (trainee_id, crew_member_id, crew_member_name, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, assigned_to_name, assigned_to_arn, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+    `INSERT INTO checks (trainee_id, crew_member_id, crew_member_name, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
     [
       d.traineeId || null,
       d.crewMemberId || null,
@@ -92,6 +92,7 @@ router.post('/', async (req, res) => {
       d.assignedTo || null,
       assignee.assignedToName,
       assignee.assignedToArn,
+      assignee.assignedToRole,
       JSON.stringify(d.details || {}),
     ],
   );
@@ -125,8 +126,10 @@ router.patch('/:id', async (req, res) => {
   if (hasAssignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }
-  // Re-snapshot name/ARN whenever the assignee changes - stale otherwise.
-  const assignee = hasAssignedTo ? await resolveAssignee(d.assignedTo) : { assignedToName: null, assignedToArn: null };
+  // Re-snapshot name/ARN/role whenever the assignee changes - stale otherwise.
+  const assignee = hasAssignedTo
+    ? await resolveAssignee(d.assignedTo)
+    : { assignedToName: null, assignedToArn: null, assignedToRole: null };
 
   const { rows } = await pool.query(
     `UPDATE checks SET
@@ -138,8 +141,9 @@ router.patch('/:id', async (req, res) => {
        assigned_to = CASE WHEN $6 THEN $7::uuid ELSE assigned_to END,
        assigned_to_name = CASE WHEN $6 THEN $8 ELSE assigned_to_name END,
        assigned_to_arn = CASE WHEN $6 THEN $9 ELSE assigned_to_arn END,
-       completed_by = $10
-     WHERE id = $11 RETURNING *`,
+       assigned_to_role = CASE WHEN $6 THEN $10 ELSE assigned_to_role END,
+       completed_by = $11
+     WHERE id = $12 RETURNING *`,
     [
       d.details ? JSON.stringify(d.details) : null,
       d.result ?? null,
@@ -150,6 +154,7 @@ router.patch('/:id', async (req, res) => {
       d.assignedTo ?? null,
       assignee.assignedToName,
       assignee.assignedToArn,
+      assignee.assignedToRole,
       req.user.id,
       req.params.id,
     ],

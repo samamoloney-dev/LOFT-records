@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { formatDate } from '../lib/format';
+import { formatDate, formatUserRole } from '../lib/format';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
@@ -39,7 +39,7 @@ export function ArchivedFlights({ traineeType }) {
         ? [['Other completed tasks', f.otherCompletedTasks], ['Development required', f.debriefComments], ['Homework', f.nextSortieNotes]]
         : [['Flight comments', f.debriefComments], ['LOFT performance rating', f.loftPerformanceRating], ['Next sortie', f.nextSortieNotes]])}
       ${section('Sign-off', [
-        ['Trainer', f.trainingCaptainName],
+        [f.trainingCaptainRole ? formatUserRole(f.trainingCaptainRole) : 'Trainer', f.trainingCaptainName],
         ['Acknowledged by trainee', f.acknowledgedByTrainee ? `Yes${f.acknowledgedAt ? ` (${formatDate(f.acknowledgedAt)})` : ''}` : 'No'],
       ])}
       <div class="disclaimer">We, the undersigned, do hereby mutually agree upon and accept the comment written in this document as being a correct and honest account of the performance of the Applicant in each and every procedure carried out.</div>
@@ -70,7 +70,7 @@ export function ArchivedFlights({ traineeType }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13 }}>
                   {formatDate(f.date)}{f.traineeType !== 'CABIN_ATTENDANT' && ` · ${Number(f.hours)}h`}
-                  {f.trainingCaptainName ? ` · Trainer: ${f.trainingCaptainName}` : ''}
+                  {f.trainingCaptainName ? ` · ${f.trainingCaptainRole ? formatUserRole(f.trainingCaptainRole) : 'Trainer'}: ${f.trainingCaptainName}` : ''}
                 </div>
                 {f.loftPerformanceRating && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Rating: {f.loftPerformanceRating}</div>}
                 {f.debriefComments && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{f.debriefComments}</div>}

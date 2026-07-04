@@ -84,15 +84,17 @@ router.put('/:traineeId', async (req, res) => {
   if (hasAssignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }
-  // Snapshot name/ARN as plain text so they survive the assignee's account
-  // later being deleted, instead of resolving them live off a join.
-  const assignee = hasAssignedTo ? await resolveAssignee(d.assignedTo) : { assignedToName: null, assignedToArn: null };
+  // Snapshot name/ARN/role as plain text so they survive the assignee's
+  // account later being deleted, instead of resolving them live off a join.
+  const assignee = hasAssignedTo
+    ? await resolveAssignee(d.assignedTo)
+    : { assignedToName: null, assignedToArn: null, assignedToRole: null };
 
   const { rows } = await pool.query(
     `INSERT INTO check_to_line_forms
        (trainee_id, fleet, sector_details, assessment_items, nts_scores, comments,
-        overall_result, overall_score, assessor_signature, candidate_signature, assigned_to, assigned_to_name, assigned_to_arn)
-     VALUES ($1, $2, COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8, $9, $10, $11, $12, $13)
+        overall_result, overall_score, assessor_signature, candidate_signature, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role)
+     VALUES ($1, $2, COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (trainee_id) DO UPDATE SET
        sector_details = COALESCE($3, check_to_line_forms.sector_details),
        assessment_items = COALESCE($4, check_to_line_forms.assessment_items),
@@ -102,9 +104,10 @@ router.put('/:traineeId', async (req, res) => {
        overall_score = COALESCE($8, check_to_line_forms.overall_score),
        assessor_signature = COALESCE($9, check_to_line_forms.assessor_signature),
        candidate_signature = COALESCE($10, check_to_line_forms.candidate_signature),
-       assigned_to = CASE WHEN $14 THEN $11::uuid ELSE check_to_line_forms.assigned_to END,
-       assigned_to_name = CASE WHEN $14 THEN $12 ELSE check_to_line_forms.assigned_to_name END,
-       assigned_to_arn = CASE WHEN $14 THEN $13 ELSE check_to_line_forms.assigned_to_arn END
+       assigned_to = CASE WHEN $15 THEN $11::uuid ELSE check_to_line_forms.assigned_to END,
+       assigned_to_name = CASE WHEN $15 THEN $12 ELSE check_to_line_forms.assigned_to_name END,
+       assigned_to_arn = CASE WHEN $15 THEN $13 ELSE check_to_line_forms.assigned_to_arn END,
+       assigned_to_role = CASE WHEN $15 THEN $14 ELSE check_to_line_forms.assigned_to_role END
      RETURNING *`,
     [
       trainee.id,
@@ -120,6 +123,7 @@ router.put('/:traineeId', async (req, res) => {
       d.assignedTo ?? null,
       assignee.assignedToName,
       assignee.assignedToArn,
+      assignee.assignedToRole,
       hasAssignedTo,
     ],
   );

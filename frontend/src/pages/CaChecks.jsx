@@ -5,6 +5,7 @@ import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { formatUserRole } from '../lib/format';
 
 const CA_CHECK_ITEMS = [
   'Personal Presentation',
@@ -27,7 +28,7 @@ const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // recurring Line Checks (see CrewDetail.jsx) instead of the free-text list
 // used for ad-hoc/initial-training checks.
-export function CaChecks({ archived = false, crewMemberId, crewMemberName }) {
+export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -150,9 +151,9 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName }) {
 
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
-            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -226,7 +227,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName }) {
             </div>
           </div>
           <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div className="grid2">
@@ -257,10 +258,11 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName }) {
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType="LINE_CHECK"
+            fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
           <div className="grid2">
-            <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
+            <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
             <div className="field">
               <label>Aircraft type</label>
               <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>

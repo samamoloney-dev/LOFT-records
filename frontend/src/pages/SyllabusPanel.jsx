@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
+import { TRAINER_ROLES } from '../lib/roles';
+import { NoteInfoIcon } from '../components/NoteInfoIcon';
 
 function groupByCategory(items) {
   const groups = new Map();
@@ -77,12 +79,14 @@ function SyllabusItemRow({ item, onSignOff, showPhase }) {
           onClick={() => setSigning((v) => !v)}
         >{item.completedAt ? '✓' : ''}</button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13 }}>{item.description}</div>
+          <div style={{ fontSize: 13 }}>
+            {item.description}
+            {TRAINER_ROLES.includes(user.role) && <NoteInfoIcon note={item.notes} />}
+          </div>
           {(() => {
             const parts = [];
             if (showPhase) parts.push(`Phase ${item.phase}`);
             if (item.roleScope !== 'BOTH') parts.push(item.roleScope === 'CAPTAIN_ONLY' ? 'Captain' : 'FO');
-            if (item.notes) parts.push(item.notes);
             return parts.length > 0 && (
               <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{parts.join(' · ')}</div>
             );
@@ -253,6 +257,7 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
 // only - actual sign-off happens per flight (see FlightSyllabusList above),
 // so this just shows the curriculum structure and subject-level comments.
 export function CaSyllabusOverview({ trainee }) {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [categoryNotes, setCategoryNotes] = useState([]);
   const [error, setError] = useState(null);
@@ -285,8 +290,10 @@ export function CaSyllabusOverview({ trainee }) {
           {categoryItems.map((item) => (
             <div key={item.id} className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13 }}>{item.description}</div>
-                {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
+                <div style={{ fontSize: 13 }}>
+                  {item.description}
+                  {TRAINER_ROLES.includes(user.role) && <NoteInfoIcon note={item.notes} />}
+                </div>
               </div>
             </div>
           ))}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
-import { formatDate } from '../lib/format';
+import { formatDate, formatUserRole } from '../lib/format';
 import { FlightSyllabusList } from './SyllabusPanel';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
@@ -128,7 +128,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {flight.locked ? 'Finalised' : 'Draft'}
-            {flight.locked && flight.trainingCaptainName ? ` · Trainer: ${flight.trainingCaptainName}` : ''}
+            {flight.locked && flight.trainingCaptainName ? ` · ${flight.trainingCaptainRole ? formatUserRole(flight.trainingCaptainRole) : 'Trainer'}: ${flight.trainingCaptainName}` : ''}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
             {flight.archived ? ' · Archived' : ''}
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { formatDate } from '../lib/format';
+import { formatDate, formatFleet } from '../lib/format';
 import { CtlForm } from './CtlForm';
 
 // Browses archived Check to Line forms across all cabin attendant trainees.
@@ -22,9 +22,9 @@ export function ArchivedCheckToLine() {
         <button onClick={() => setSelectedTraineeId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
         <div className="card">
           <div style={{ fontWeight: 500 }}>{selected.firstName} {selected.lastName}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selected.traineeFleet}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(selected.traineeFleet)}</div>
         </div>
-        <CtlForm traineeId={selected.traineeId} traineeType="CABIN_ATTENDANT" onCompleted={() => { setSelectedTraineeId(null); load(); }} />
+        <CtlForm traineeId={selected.traineeId} traineeType="CABIN_ATTENDANT" fleet={selected.traineeFleet} onCompleted={() => { setSelectedTraineeId(null); load(); }} />
       </div>
     );
   }
@@ -38,7 +38,7 @@ export function ArchivedCheckToLine() {
         <div key={f.traineeId} className="card row" onClick={() => setSelectedTraineeId(f.traineeId)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{f.firstName} {f.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{f.traineeFleet} · Completed {f.completedAt ? formatDate(f.completedAt) : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(f.traineeFleet)} · Completed {f.completedAt ? formatDate(f.completedAt) : ''}</div>
           </div>
         </div>
       ))}

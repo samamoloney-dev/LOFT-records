@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../../db/pool');
-const { rowToCamel } = require('../../db/serialize');
+const { rowToCamel, parsePgArray } = require('../../db/serialize');
 
 const COOKIE_NAME = 'loft_session';
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -50,7 +50,7 @@ async function requireAuth(req, res, next) {
       name: row.name,
       email: row.email,
       role: row.role,
-      fleetAccess: row.fleetAccess,
+      fleets: parsePgArray(row.fleets),
       trainee: row.traineeId ? { id: row.traineeId } : null,
     };
     next();

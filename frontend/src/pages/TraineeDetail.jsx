@@ -8,6 +8,7 @@ import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './S
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
@@ -200,7 +201,7 @@ export function TraineeDetail() {
           <div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {trainee.fleet} · {trainee.role}
+              {formatFleet(trainee.fleet)} · {formatTraineeRole(trainee.role)}
               {!isCabinAttendant && ` · Phase ${trainee.phase}`}
               {!isCabinAttendant && ` · ${trainee.totalHours}h total`}
               {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
@@ -233,7 +234,7 @@ export function TraineeDetail() {
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}
       {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
-      {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} onCompleted={load} />}
+      {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} fleet={trainee.fleet} onCompleted={load} />}
     </div>
   );
 }

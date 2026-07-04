@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { CtlForm } from './CtlForm';
+import { formatFleet } from '../lib/format';
 
 // Check to Line is tied to one trainee at a time (it archives them on
 // completion), unlike the flat check lists elsewhere in this tab - so this
@@ -25,9 +26,9 @@ export function CheckToLinePicker() {
         <button onClick={() => setSelectedId(null)} style={{ marginBottom: '1rem' }}>← Back</button>
         <div className="card">
           <div style={{ fontWeight: 500 }}>{selected.firstName} {selected.lastName}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selected.fleet}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(selected.fleet)}</div>
         </div>
-        <CtlForm traineeId={selected.id} traineeType="CABIN_ATTENDANT" onCompleted={() => { setSelectedId(null); load(); }} />
+        <CtlForm traineeId={selected.id} traineeType="CABIN_ATTENDANT" fleet={selected.fleet} onCompleted={() => { setSelectedId(null); load(); }} />
       </div>
     );
   }
@@ -43,7 +44,7 @@ export function CheckToLinePicker() {
         <div key={t.id} className="card row" onClick={() => setSelectedId(t.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.fleet}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(t.fleet)}</div>
           </div>
         </div>
       ))}

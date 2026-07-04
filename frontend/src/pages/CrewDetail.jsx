@@ -7,6 +7,7 @@ import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { formatFleet, formatTraineeRole } from '../lib/format';
 
 function TabBar({ tabs, active, onSelect }) {
   return (
@@ -59,7 +60,7 @@ export function CrewDetail() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 500 }}>{name}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{member.fleet} · {member.role}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(member.fleet)} · {formatTraineeRole(member.role)}</div>
         </div>
         <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
       </div>
@@ -73,11 +74,11 @@ export function CrewDetail() {
 
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
 
-      {tab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} />}
-      {tab === 'ipc' && isPilot && <ProficiencyChecks variant="IPC_PC" label="IPC" crewMemberId={member.id} crewMemberName={name} />}
-      {tab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} />}
-      {tab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} />}
-      {tab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} />}
+      {tab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={member.fleet} />}
+      {tab === 'ipc' && isPilot && <ProficiencyChecks variant="IPC_PC" label="IPC" crewMemberId={member.id} crewMemberName={name} fleet={member.fleet} />}
+      {tab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={member.fleet} />}
+      {tab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={member.fleet} />}
+      {tab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={member.fleet} />}
     </div>
   );
 }

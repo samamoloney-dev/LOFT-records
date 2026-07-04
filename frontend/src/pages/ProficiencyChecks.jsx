@@ -5,6 +5,7 @@ import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { formatUserRole } from '../lib/format';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -55,7 +56,7 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // IPC/PC history (see CrewDetail.jsx) instead of the free-text list used for
 // ad-hoc/initial-training checks.
-export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName }) {
+export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName, fleet }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -232,9 +233,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
 
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
-            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType={variantAccessType(d.variant)} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType={variantAccessType(d.variant)} fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -353,6 +354,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType={variantAccessType(variant)}
+            fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
           />
           <button type="submit" className="primary">Create check record</button>

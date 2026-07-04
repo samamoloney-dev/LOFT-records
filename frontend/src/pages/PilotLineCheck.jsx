@@ -5,7 +5,7 @@ import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
-import { formatDate } from '../lib/format';
+import { formatDate, formatUserRole } from '../lib/format';
 
 // Recurring pilot Line Check (365 days from the initial Check to Line date,
 // then every 365 days after - see backend/src/lib/currency.js). Deliberately
@@ -16,7 +16,7 @@ import { formatDate } from '../lib/format';
 const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
-export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false }) {
+export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false, fleet }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -126,14 +126,14 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false 
 
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
-            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
           <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div className="field"><label>Comments</label><textarea defaultValue={d.comments} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} /></div>
@@ -168,9 +168,10 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false 
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType="LINE_CHECK"
+            fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
-          <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
+          <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}

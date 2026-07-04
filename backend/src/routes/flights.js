@@ -93,12 +93,13 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   if (!trainee) return;
 
   const { rows } = await pool.query(
-    `INSERT INTO flights (trainee_id, training_captain_id, training_captain_name, date, sector_details, hours)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    `INSERT INTO flights (trainee_id, training_captain_id, training_captain_name, training_captain_role, date, sector_details, hours)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [
       parsed.data.traineeId,
       req.user.id,
       req.user.name,
+      req.user.role,
       parsed.data.date,
       JSON.stringify(parsed.data.sectorDetails || {}),
       parsed.data.hours || 0,

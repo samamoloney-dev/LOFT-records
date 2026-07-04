@@ -5,6 +5,7 @@ import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { formatUserRole } from '../lib/format';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -25,7 +26,7 @@ const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // recurring checks (see CrewDetail.jsx) instead of the free-text list used
 // for ad-hoc/initial-training checks.
-export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName }) {
+export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName, fleet }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -158,9 +159,9 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
 
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
-            {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType="EMERGENCY_PROCEDURES" onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
@@ -215,7 +216,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
             </div>
           </div>
           <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
@@ -251,10 +252,11 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType="EMERGENCY_PROCEDURES"
+            fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
           <div className="grid2">
-            <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
+            <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
             <div className="field">
               <label>Aircraft type</label>
               <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { DueBadge } from '../components/DueBadge';
+import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -69,13 +70,13 @@ function CrewRoster({ type }) {
             <div className="field">
               <label>Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                {roles.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
               </select>
             </div>
             <div className="field">
               <label>Fleet</label>
               <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
-                {fleets.map((f) => <option key={f} value={f}>{f}</option>)}
+                {fleets.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             </div>
           </div>
@@ -109,7 +110,7 @@ function CrewRoster({ type }) {
         <div key={m.id} className="card row" onClick={() => navigate(`/crew/${m.id}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{m.firstName} {m.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.fleet} · {m.role}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(m.fleet)} · {formatTraineeRole(m.role)}</div>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             <DueBadge label="Emergency Procedures" info={m.currency.emergencyProcedures} />

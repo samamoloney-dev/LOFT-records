@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { formatFleet, formatUserRole } from '../lib/format';
 
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE'];
-const FLEET_ACCESS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL'];
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+// Examiners and Check Captains can cover more than one fleet - everyone else
+// (Training Captain, CA Trainer, CA Checker) is qualified on a single fleet,
+// same as real-world type ratings ("a Dash 8 trainer cannot train Fokker 100
+// pilots").
+const MULTI_FLEET_ROLES = ['EXAMINER', 'CC'];
 const CHECK_ACCESS_OPTIONS = [
   { value: 'PC', label: 'PC' },
   { value: 'IPC', label: 'IPC' },
@@ -12,7 +18,7 @@ const CHECK_ACCESS_OPTIONS = [
   { value: 'EMERGENCY_PROCEDURES', label: 'Emergency procedures' },
 ];
 
-const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleetAccess: 'ALL', arn: '', checkAccess: [] });
+const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });
 
 function CheckAccessPicker({ value, onChange, disabled }) {
   function toggle(v) {
@@ -31,6 +37,36 @@ function CheckAccessPicker({ value, onChange, disabled }) {
             color: value.includes(opt.value) ? 'var(--text-accent)' : 'inherit',
           }}
         >{opt.label}</div>
+      ))}
+    </div>
+  );
+}
+
+// Mirrors CheckAccessPicker's pill-button pattern. In single mode (most
+// roles), picking a fleet replaces whatever was ticked - a Dash 8 trainer
+// can't also be a Fokker 100 trainer. In multi mode (Examiner/CC), ticks
+// toggle independently.
+function FleetAccessPicker({ value, onChange, multi, disabled }) {
+  function toggle(v) {
+    if (multi) {
+      onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+    } else {
+      onChange(value.includes(v) ? [] : [v]);
+    }
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {FLEET_VALUES.map((f) => (
+        <div
+          key={f}
+          onClick={() => !disabled && toggle(f)}
+          style={{
+            padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+            cursor: disabled ? 'default' : 'pointer', fontSize: 13, opacity: disabled ? 0.6 : 1,
+            background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
+            color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
+          }}
+        >{formatFleet(f)}</div>
       ))}
     </div>
   );
@@ -56,7 +92,7 @@ export function Staff() {
 
   function openEditForm(user) {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, fleetAccess: user.fleetAccess, arn: user.arn || '', checkAccess: user.checkAccess || [] });
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, fleets: user.fleets || [], arn: user.arn || '', checkAccess: user.checkAccess || [] });
     setShowForm(true);
   }
 
@@ -65,7 +101,7 @@ export function Staff() {
     setError(null);
     try {
       if (editingId) {
-        await api.patch(`/api/users/${editingId}`, { name: form.name, role: form.role, fleetAccess: form.fleetAccess, arn: form.arn, checkAccess: form.checkAccess });
+        await api.patch(`/api/users/${editingId}`, { name: form.name, role: form.role, fleets: form.fleets, arn: form.arn, checkAccess: form.checkAccess });
       } else {
         await api.post('/api/users', form);
       }
@@ -83,6 +119,7 @@ export function Staff() {
   }
 
   const isAdminRole = ADMIN_ROLES.includes(form.role);
+  const isMultiFleetRole = MULTI_FLEET_ROLES.includes(form.role);
 
   return (
     <div>
@@ -106,19 +143,22 @@ export function Staff() {
             )}
             <div className="field">
               <label>Role</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, fleets: MULTI_FLEET_ROLES.includes(e.target.value) ? form.fleets : form.fleets.slice(0, 1) })}>
+                {ROLES.map((r) => <option key={r} value={r}>{formatUserRole(r)}</option>)}
               </select>
             </div>
           </div>
-          <div className="grid2">
-            <div className="field">
-              <label>Fleet access</label>
-              <select value={form.fleetAccess} onChange={(e) => setForm({ ...form, fleetAccess: e.target.value })}>
-                {FLEET_ACCESS.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} /></div>
+          <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} /></div>
+          <div className="field">
+            <label>
+              Fleet{isMultiFleetRole ? 's' : ''}
+              {isMultiFleetRole ? ' (this role can be ticked for more than one fleet)' : ' (which fleet is this person qualified on)'}
+            </label>
+            <FleetAccessPicker
+              value={form.fleets}
+              onChange={(fleets) => setForm({ ...form, fleets })}
+              multi={isMultiFleetRole}
+            />
           </div>
           <div className="field">
             <label>Check access{isAdminRole ? ' (this role already has access to everything)' : ' (which checks can this person be picked for)'}</label>
@@ -137,7 +177,12 @@ export function Staff() {
         <div key={u.id} className="card row" style={{ cursor: 'default' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{u.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {u.role}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {ADMIN_ROLES.includes(u.role)
+                ? 'Fleets: all'
+                : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
+            </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {ADMIN_ROLES.includes(u.role)
                 ? 'Check access: all'

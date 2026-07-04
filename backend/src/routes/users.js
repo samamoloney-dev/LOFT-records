@@ -10,6 +10,8 @@ const { logAction } = require('../lib/audit');
 const router = express.Router();
 
 const checkAccessSchema = z.array(z.enum(CHECK_ACCESS_TYPES)).optional();
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const fleetsSchema = z.array(z.enum(FLEET_VALUES)).optional();
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -19,7 +21,7 @@ const createSchema = z.object({
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
   ]),
-  fleetAccess: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL']).optional(),
+  fleets: fleetsSchema,
   arn: z.string().optional(),
   checkAccess: checkAccessSchema,
 });
@@ -31,7 +33,7 @@ function serialize(row) {
     name: u.name,
     email: u.email,
     role: u.role,
-    fleetAccess: u.fleetAccess,
+    fleets: parsePgArray(u.fleets),
     arn: u.arn,
     checkAccess: parsePgArray(u.checkAccess),
     createdAt: u.createdAt,
@@ -42,10 +44,10 @@ router.use(requireAuth);
 
 // Open to any authenticated staff member (not admin-only) - lets check forms
 // offer a "pick the assessor from approved staff" dropdown without exposing
-// email/fleet access to everyone.
+// email to everyone.
 router.get('/roster', async (req, res) => {
-  const { rows } = await pool.query('SELECT id, name, role, arn, check_access FROM users ORDER BY name ASC');
-  res.json(rows.map(rowToCamel).map((u) => ({ ...u, checkAccess: parsePgArray(u.checkAccess) })));
+  const { rows } = await pool.query('SELECT id, name, role, arn, check_access, fleets FROM users ORDER BY name ASC');
+  res.json(rows.map(rowToCamel).map((u) => ({ ...u, checkAccess: parsePgArray(u.checkAccess), fleets: parsePgArray(u.fleets) })));
 });
 
 router.get('/', requireRole(...ADMIN_ROLES), async (req, res) => {
@@ -57,12 +59,12 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { name, email, password, role, fleetAccess, arn, checkAccess } = parsed.data;
+  const { name, email, password, role, fleets, arn, checkAccess } = parsed.data;
   const passwordHash = await bcrypt.hash(password, 10);
   const { rows } = await pool.query(
-    `INSERT INTO users (name, email, password_hash, role, fleet_access, arn, check_access)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::check_access_type[]) RETURNING *`,
-    [name, email, passwordHash, role, fleetAccess || 'ALL', arn || null, checkAccess || []],
+    `INSERT INTO users (name, email, password_hash, role, fleets, arn, check_access)
+     VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7::check_access_type[]) RETURNING *`,
+    [name, email, passwordHash, role, fleets || [], arn || null, checkAccess || []],
   );
   const user = rows[0];
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'users', targetId: user.id });
@@ -75,13 +77,13 @@ const updateSchema = z.object({
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
   ]).optional(),
-  fleetAccess: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'ALL']).optional(),
+  fleets: fleetsSchema,
   arn: z.string().optional(),
   checkAccess: checkAccessSchema,
 });
 
-const COLUMN_MAP = { name: 'name', role: 'role', fleetAccess: 'fleet_access', arn: 'arn', checkAccess: 'check_access' };
-const CAST_MAP = { checkAccess: '::check_access_type[]' };
+const COLUMN_MAP = { name: 'name', role: 'role', fleets: 'fleets', arn: 'arn', checkAccess: 'check_access' };
+const CAST_MAP = { checkAccess: '::check_access_type[]', fleets: '::fleet[]' };
 
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);

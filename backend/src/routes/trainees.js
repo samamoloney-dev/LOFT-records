@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole } = require('../middleware/roles');
+const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -111,6 +111,39 @@ router.patch('/:id', async (req, res) => {
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'trainees', targetId: trainee.id });
   res.json(await withHours(rowToCamel(rows[0])));
+});
+
+// Once a trainee's Check to Line is complete, they can move onto the Crew
+// roster (the ongoing recurrency-tracking system) without re-typing their
+// name/fleet/role. For pilots, the CTL completion date becomes their fixed
+// Line Check anniversary going forward.
+router.post('/:id/promote-to-crew', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can add crew' });
+
+  const trainee = await findTrainee(req.params.id);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows: ctlRows } = await pool.query('SELECT completed_at FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  if (ctlRows.length === 0 || !ctlRows[0].completed_at) {
+    return res.status(400).json({ error: 'Check to Line must be completed before adding this trainee to the Crew roster' });
+  }
+
+  const { rows } = await pool.query(
+    `INSERT INTO crew_members (first_name, last_name, type, role, fleet, line_check_anchor_date)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [
+      trainee.firstName,
+      trainee.lastName,
+      trainee.type,
+      trainee.role,
+      trainee.fleet,
+      trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
+    ],
+  );
+  const crewMember = rowToCamel(rows[0]);
+  await logAction({ userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id });
+  res.status(201).json(crewMember);
 });
 
 module.exports = router;

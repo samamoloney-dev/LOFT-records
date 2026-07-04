@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { FlightRow, APPROACH_TYPES } from './FlightRow';
@@ -8,6 +8,8 @@ import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './S
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { ArchiveButton } from '../components/ArchiveButton';
+
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
@@ -153,11 +155,15 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
 
 export function TraineeDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [trainee, setTrainee] = useState(null);
   const [flights, setFlights] = useState([]);
   const [ctlCompleted, setCtlCompleted] = useState(false);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('flights');
+  const [promoting, setPromoting] = useState(false);
+  const [promoted, setPromoted] = useState(false);
 
   function load() {
     api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
@@ -166,6 +172,20 @@ export function TraineeDetail() {
   }
 
   useEffect(load, [id]);
+
+  async function addToCrewRoster() {
+    setError(null);
+    setPromoting(true);
+    try {
+      const crewMember = await api.post(`/api/trainees/${id}/promote-to-crew`);
+      setPromoted(true);
+      navigate(`/crew/${crewMember.id}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPromoting(false);
+    }
+  }
 
   if (error) return <div className="error-text">{error}</div>;
   if (!trainee) return <div>Loading…</div>;
@@ -176,13 +196,25 @@ export function TraineeDetail() {
   return (
     <div>
       <div className="card">
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {trainee.fleet} · {trainee.role}
-          {!isCabinAttendant && ` · Phase ${trainee.phase}`}
-          {!isCabinAttendant && ` · ${trainee.totalHours}h total`}
-          {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{trainee.firstName} {trainee.lastName}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              {trainee.fleet} · {trainee.role}
+              {!isCabinAttendant && ` · Phase ${trainee.phase}`}
+              {!isCabinAttendant && ` · ${trainee.totalHours}h total`}
+              {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
+            </div>
+          </div>
+          {ADMIN_ROLES.includes(user.role) && ctlCompleted && !promoted && (
+            <button onClick={addToCrewRoster} disabled={promoting}>{promoting ? 'Adding…' : 'Add to Crew roster'}</button>
+          )}
         </div>
+        {ADMIN_ROLES.includes(user.role) && !ctlCompleted && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
+            Once Check to Line is complete, this trainee can be added to the ongoing Crew roster for recurrency tracking.
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>

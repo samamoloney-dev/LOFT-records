@@ -7,6 +7,8 @@ import { TraineeDetail } from './pages/TraineeDetail';
 import { Archive } from './pages/Archive';
 import { Staff } from './pages/Staff';
 import { Checks } from './pages/Checks';
+import { Crew } from './pages/Crew';
+import { CrewDetail } from './pages/CrewDetail';
 import { SyllabusAdmin } from './pages/SyllabusAdmin';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
@@ -20,6 +22,7 @@ function Shell({ children }) {
         <span className="brand">Flight Standards System</span>
         <NavLink to="/" end>Trainees</NavLink>
         {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
+        {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Staff</NavLink>}
@@ -56,6 +59,8 @@ export default function App() {
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><Archive /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><Staff /></ProtectedRoute>} />
                 <Route path="/checks" element={<Checks />} />
+                <Route path="/crew" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><Crew /></ProtectedRoute>} />
+                <Route path="/crew/:id" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><CrewDetail /></ProtectedRoute>} />
               </Routes>
             </Shell>
           </ProtectedRoute>

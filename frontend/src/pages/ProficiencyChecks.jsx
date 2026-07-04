@@ -52,19 +52,22 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
 
 // variant is fixed per tab ('PC' or 'IPC_PC') - the IPC and PC subtabs each
 // render this with their own variant rather than letting the user pick one.
-export function ProficiencyChecks({ variant, label, archived = false }) {
+// crewMemberId/crewMemberName scope this to one Crew roster member's own
+// IPC/PC history (see CrewDetail.jsx) instead of the free-text list used for
+// ad-hoc/initial-training checks.
+export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState(emptyForm(variant));
+  const [newForm, setNewForm] = useState(() => ({ ...emptyForm(variant), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
 
   function load() {
-    api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}`)
+    api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
       .then((all) => setChecks(all.filter((c) => c.details?.variant === variant)))
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [variant, archived]);
+  useEffect(load, [variant, archived, crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -78,9 +81,9 @@ export function ProficiencyChecks({ variant, label, archived = false }) {
         name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn,
         examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
       };
-      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, details });
+      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId, details });
       setCreating(false);
-      setNewForm(emptyForm(variant));
+      setNewForm({ ...emptyForm(variant), name: crewMemberName || '' });
       load();
     } catch (err) { setError(err.message); }
   }
@@ -331,7 +334,9 @@ export function ProficiencyChecks({ variant, label, archived = false }) {
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="grid2">
-            <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
+            {crewMemberId
+              ? <div className="field"><label>Candidate</label><input value={newForm.name} disabled /></div>
+              : <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>}
             <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
           </div>
           <div className="grid2">

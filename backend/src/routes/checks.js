@@ -5,6 +5,7 @@ const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessChecks, isAdmin } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
+const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -21,7 +22,7 @@ function canAccessCheckType(user, checkType) {
 }
 
 router.get('/', async (req, res) => {
-  const { traineeId, checkType, archived } = req.query;
+  const { traineeId, crewMemberId, checkType, archived } = req.query;
   if (checkType && !canAccessCheckType(req.user, checkType)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -32,6 +33,7 @@ router.get('/', async (req, res) => {
   const conditions = [`archived = $1`];
   const params = [archived === 'true'];
   if (traineeId) { params.push(traineeId); conditions.push(`trainee_id = $${params.length}`); }
+  if (crewMemberId) { params.push(crewMemberId); conditions.push(`crew_member_id = $${params.length}`); }
   if (checkType) { params.push(checkType); conditions.push(`check_type = $${params.length}`); }
 
   const { rows } = await pool.query(
@@ -52,7 +54,8 @@ router.get('/:id', async (req, res) => {
 
 const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
-  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK']),
+  crewMemberId: z.string().uuid().optional(),
+  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
@@ -70,14 +73,17 @@ router.post('/', async (req, res) => {
   }
 
   const d = parsed.data;
-  // Snapshot the assignee's name/ARN now, so it survives them later being
-  // deleted from the system - the columns are plain text, not a live join.
+  // Snapshot the assignee's and crew member's name now, so they survive
+  // either later being deleted from the system - plain text, not a live join.
   const assignee = await resolveAssignee(d.assignedTo);
+  const crewMember = await resolveCrewMember(d.crewMemberId);
   const { rows } = await pool.query(
-    `INSERT INTO checks (trainee_id, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, assigned_to_name, assigned_to_arn, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    `INSERT INTO checks (trainee_id, crew_member_id, crew_member_name, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, assigned_to_name, assigned_to_arn, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
     [
       d.traineeId || null,
+      d.crewMemberId || null,
+      crewMember.crewMemberName,
       d.checkType,
       d.fleet || null,
       d.appliesTo,

@@ -12,6 +12,7 @@ const ctlRoutes = require('./routes/ctl');
 const checkRoutes = require('./routes/checks');
 const phase4Routes = require('./routes/phase4');
 const groundSchoolRoutes = require('./routes/ground-school');
+const crewRoutes = require('./routes/crew');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/ctl', ctlRoutes);
 app.use('/api/checks', checkRoutes);
 app.use('/api/phase4', phase4Routes);
 app.use('/api/ground-school', groundSchoolRoutes);
+app.use('/api/crew', crewRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

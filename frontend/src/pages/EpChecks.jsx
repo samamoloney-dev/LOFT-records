@@ -22,19 +22,22 @@ const EP_ITEMS = [
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
-export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
+// crewMemberId/crewMemberName scope this to one Crew roster member's own
+// recurring checks (see CrewDetail.jsx) instead of the free-text list used
+// for ad-hoc/initial-training checks.
+export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState(emptyNewForm());
+  const [newForm, setNewForm] = useState(() => ({ ...emptyNewForm(), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
 
   function load() {
-    api.get(`/api/checks?checkType=EMERGENCY_PROCEDURES&archived=${archived}`)
+    api.get(`/api/checks?checkType=EMERGENCY_PROCEDURES&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
       .then((all) => setChecks(all.filter((c) => c.appliesTo === appliesTo)))
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [appliesTo, archived]);
+  useEffect(load, [appliesTo, archived, crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -44,9 +47,9 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
     if (!newForm.name.trim()) return;
     try {
       const { assignedTo, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo, assignedTo: assignedTo || undefined, details });
+      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo, assignedTo: assignedTo || undefined, crewMemberId, details });
       setCreating(false);
-      setNewForm(emptyNewForm());
+      setNewForm({ ...emptyNewForm(), name: crewMemberName || '' });
       load();
     } catch (err) { setError(err.message); }
   }
@@ -240,7 +243,9 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false }) {
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="grid2">
-            <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>
+            {crewMemberId
+              ? <div className="field"><label>Candidate</label><input value={newForm.name} disabled /></div>
+              : <div className="field"><label>Candidate name</label><input value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} required /></div>}
             <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
           </div>
           <AssignedToPicker

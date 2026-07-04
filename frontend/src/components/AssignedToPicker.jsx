@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+import { ADMIN_ROLES, isEligibleForCheck } from '../lib/checkAccess';
 
 // HOTC/HOFO/Flight Ops Admin only - lets them pick which staff member is
-// responsible for a check. Selecting someone hands back their record so the
-// caller can prefill the rest of the form (name, ARN, etc).
-export function AssignedToPicker({ value, eligibleRoles, onAssign }) {
+// responsible for a check, scoped to staff who have that check type ticked
+// on their profile (or who are admins themselves). Selecting someone hands
+// back their record so the caller can prefill the rest of the form.
+export function AssignedToPicker({ value, accessType, onAssign }) {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const [staff, setStaff] = useState([]);
@@ -19,7 +19,7 @@ export function AssignedToPicker({ value, eligibleRoles, onAssign }) {
 
   if (!isAdmin) return null;
 
-  const eligible = staff.filter((s) => eligibleRoles.includes(s.role));
+  const eligible = staff.filter((s) => isEligibleForCheck(s, accessType));
 
   return (
     <div className="field">

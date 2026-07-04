@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
-
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
+import { AssessorPicker } from '../components/AssessorPicker';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
 const EP_ITEMS = [
@@ -16,7 +15,7 @@ const EP_ITEMS = [
   'Emergency Escape Slide',
 ];
 
-const emptyDetails = () => ({ name: '', date: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
+const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
 export function EpChecks() {
@@ -67,10 +66,19 @@ export function EpChecks() {
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, {
         assignedTo: staffMember?.id || null,
-        details: { ...check.details, assessor: staffMember?.name || check.details?.assessor, assessorArn: staffMember?.arn || check.details?.assessorArn },
+        details: {
+          ...check.details,
+          assessorId: staffMember?.id || check.details?.assessorId,
+          assessor: staffMember?.name || check.details?.assessor,
+          assessorArn: staffMember?.arn || check.details?.assessorArn,
+        },
       });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
+  }
+
+  function setAssessor(staffMember, apply) {
+    apply({ assessorId: staffMember?.id || '', assessor: staffMember?.name || '', assessorArn: staffMember?.arn || '' });
   }
 
   function toggleType(type) {
@@ -94,7 +102,7 @@ export function EpChecks() {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="EMERGENCY_PROCEDURES" onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
@@ -149,7 +157,8 @@ export function EpChecks() {
             </div>
           </div>
           <div className="grid2">
-            <div className="field"><label>Assessor ARN</label><input defaultValue={d.assessorArn} onBlur={(e) => patchDetails(selected, { assessorArn: e.target.value })} /></div>
+            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div className="grid2">
             <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
@@ -176,11 +185,11 @@ export function EpChecks() {
           </div>
           <AssignedToPicker
             value={newForm.assignedTo}
-            eligibleRoles={CHECK_ROLES}
-            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
+            accessType="EMERGENCY_PROCEDURES"
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
           <div className="grid2">
-            <div className="field"><label>Assessor</label><input value={newForm.assessor} onChange={(e) => setNewForm({ ...newForm, assessor: e.target.value })} /></div>
+            <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
             <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
           </div>
           <div className="field"><label>Check type (select all that apply)</label></div>

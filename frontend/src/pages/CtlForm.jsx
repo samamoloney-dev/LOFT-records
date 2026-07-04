@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
-
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
 // Training Record.
 const CA_ASSESSMENT_ITEMS = [
@@ -144,7 +142,7 @@ export function CtlForm({ traineeId, traineeType, onCompleted }) {
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
         {form.assignedToName ? `Assigned to ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
       </div>
-      <AssignedToPicker value={form.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={assign} />
+      <AssignedToPicker value={form.assignedTo} accessType="CHECK_TO_LINE" onAssign={assign} />
 
       {open && (
         <div style={{ marginTop: '0.75rem' }}>

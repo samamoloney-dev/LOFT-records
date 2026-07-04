@@ -4,6 +4,11 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 
+// Staff-profile check access ticks (Staff page). These decide which staff
+// show up as selectable assessors/assignees on each check form - they don't
+// change who can access the Checks tab itself (still role-based, above).
+const CHECK_ACCESS_TYPES = ['PC', 'IPC', 'LINE_CHECK', 'CHECK_TO_LINE', 'EMERGENCY_PROCEDURES'];
+
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight. Combined with canAccessTraineeRecord below, CA Trainer/CA Checker
 // are still limited to Cabin Attendant trainees only.
@@ -63,6 +68,7 @@ module.exports = {
   ADMIN_ROLES,
   CHECK_ROLES,
   CA_ONLY_ROLES,
+  CHECK_ACCESS_TYPES,
   FLIGHT_CREATOR_ROLES,
   requireRole,
   isAdmin,

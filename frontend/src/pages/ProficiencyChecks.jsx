@@ -3,12 +3,16 @@ import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
-
 const VARIANTS = [
   { value: 'PC', label: 'Proficiency Check' },
   { value: 'IPC_PC', label: 'IPC and Proficiency Check' },
 ];
+
+// IPC and Proficiency Check draw from different check-access ticks even
+// though they're the same underlying record type.
+function variantAccessType(variant) {
+  return variant === 'IPC_PC' ? 'IPC' : 'PC';
+}
 
 const emptyForm = () => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant: 'PC', assignedTo: '', examinerName: '', examinerArn: '' });
 
@@ -128,7 +132,7 @@ export function ProficiencyChecks() {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} eligibleRoles={CHECK_ROLES} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType={variantAccessType(d.variant)} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -244,7 +248,7 @@ export function ProficiencyChecks() {
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
           <AssignedToPicker
             value={newForm.assignedTo}
-            eligibleRoles={CHECK_ROLES}
+            accessType={variantAccessType(newForm.variant)}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
           />
           <button type="submit" className="primary">Create check record</button>

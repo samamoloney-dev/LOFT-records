@@ -9,24 +9,30 @@ const groundSchoolItems = require('./ground-school-items');
 
 const DEMO_PASSWORD = 'password123';
 
-async function upsertUser({ name, email, role, fleetAccess }) {
+async function upsertUser({ name, email, role, fleetAccess, checkAccess = [] }) {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const { rows } = await pool.query(
-    `INSERT INTO users (name, email, password_hash, role, fleet_access)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO users (name, email, password_hash, role, fleet_access, check_access)
+     VALUES ($1, $2, $3, $4, $5, $6::check_access_type[])
      ON CONFLICT (email) DO UPDATE SET name = $1
      RETURNING *`,
-    [name, email, passwordHash, role, fleetAccess],
+    [name, email, passwordHash, role, fleetAccess, checkAccess],
   );
   return rows[0];
 }
 
 async function main() {
   const hotc = await upsertUser({ name: 'Alex Reid', email: 'hotc@loft.example', role: 'HOTC', fleetAccess: 'ALL' });
-  await upsertUser({ name: 'Examiner Smith', email: 'examiner.smith@loft.example', role: 'EXAMINER', fleetAccess: 'ALL' });
+  await upsertUser({
+    name: 'Examiner Smith', email: 'examiner.smith@loft.example', role: 'EXAMINER', fleetAccess: 'ALL',
+    checkAccess: ['PC', 'IPC', 'EMERGENCY_PROCEDURES', 'CHECK_TO_LINE'],
+  });
   const tc = await upsertUser({ name: 'TC Jones', email: 'tc.jones@loft.example', role: 'TRAINING_CAPTAIN', fleetAccess: 'DASH_8' });
   await upsertUser({ name: 'CA Trainer Davies', email: 'ca.trainer.davies@loft.example', role: 'CA_TRAINER', fleetAccess: 'ALL' });
-  await upsertUser({ name: 'CA Checker Patel', email: 'ca.checker.patel@loft.example', role: 'CA_CHECKER', fleetAccess: 'ALL' });
+  await upsertUser({
+    name: 'CA Checker Patel', email: 'ca.checker.patel@loft.example', role: 'CA_CHECKER', fleetAccess: 'ALL',
+    checkAccess: ['LINE_CHECK'],
+  });
 
   const traineeSeeds = [
     { firstName: 'Jamie', lastName: 'Carter', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', phase: 1 },

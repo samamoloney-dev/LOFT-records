@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
-
-const ELIGIBLE_ROLES = ['HOTC', 'CA_CHECKER'];
+import { AssessorPicker } from '../components/AssessorPicker';
 
 const CA_CHECK_ITEMS = [
   'Personal Presentation',
@@ -18,7 +17,7 @@ const CA_CHECK_ITEMS = [
 ];
 const CA_NTS_MARKERS = ['Communication and Teamwork', 'Leadership and Workload Management', 'Situational Awareness', 'Decision Making Process'];
 
-const emptyDetails = () => ({ name: '', date: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
+const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
 export function CaChecks() {
@@ -69,10 +68,19 @@ export function CaChecks() {
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, {
         assignedTo: staffMember?.id || null,
-        details: { ...check.details, assessor: staffMember?.name || check.details?.assessor, assessorArn: staffMember?.arn || check.details?.assessorArn },
+        details: {
+          ...check.details,
+          assessorId: staffMember?.id || check.details?.assessorId,
+          assessor: staffMember?.name || check.details?.assessor,
+          assessorArn: staffMember?.arn || check.details?.assessorArn,
+        },
       });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
+  }
+
+  function setAssessor(staffMember, apply) {
+    apply({ assessorId: staffMember?.id || '', assessor: staffMember?.name || '', assessorArn: staffMember?.arn || '' });
   }
 
   if (selected) {
@@ -89,7 +97,7 @@ export function CaChecks() {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} eligibleRoles={ELIGIBLE_ROLES} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -163,7 +171,8 @@ export function CaChecks() {
             </div>
           </div>
           <div className="grid2">
-            <div className="field"><label>Assessor ARN</label><input defaultValue={d.assessorArn} onBlur={(e) => patchDetails(selected, { assessorArn: e.target.value })} /></div>
+            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div className="grid2">
             <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
@@ -190,11 +199,11 @@ export function CaChecks() {
           </div>
           <AssignedToPicker
             value={newForm.assignedTo}
-            eligibleRoles={ELIGIBLE_ROLES}
-            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
+            accessType="LINE_CHECK"
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
           <div className="grid2">
-            <div className="field"><label>Assessor</label><input value={newForm.assessor} onChange={(e) => setNewForm({ ...newForm, assessor: e.target.value })} /></div>
+            <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
             <div className="field"><label>Aircraft type</label><input value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })} /></div>
           </div>
           <button type="submit" className="primary">Create check record</button>

@@ -109,11 +109,11 @@ router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
     const { rowCount } = await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
   } catch (err) {
-    // Foreign key violation - this staff member still owns records that
-    // can't be orphaned (e.g. flights they flew as training captain, or a
-    // trainee account linked to them).
+    // Foreign key violation - the only relationship left that still blocks
+    // deletion is a trainee account linked to this staff member (their name
+    // on flights/checks/sign-offs is snapshotted separately and survives).
     if (err.code === '23503') {
-      return res.status(409).json({ error: 'Cannot delete this staff member - they still have flights, checks, or a linked trainee account. Remove or reassign those first.' });
+      return res.status(409).json({ error: 'Cannot delete this staff member - there is a trainee account linked to them. Remove that link first.' });
     }
     throw err;
   }

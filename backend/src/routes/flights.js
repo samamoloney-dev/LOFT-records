@@ -15,19 +15,11 @@ async function findTrainee(id) {
   return rows[0] ? rowToCamel(rows[0]) : null;
 }
 
+// training_captain_name is snapshotted directly on the row at creation time
+// (see POST /), so no join to users is needed to display it - and it
+// survives the training captain's account later being deleted.
 async function findFlight(id) {
   const { rows } = await pool.query('SELECT * FROM flights WHERE id = $1', [id]);
-  return rows[0] ? rowToCamel(rows[0]) : null;
-}
-
-async function findFlightWithTrainer(id) {
-  const { rows } = await pool.query(
-    `SELECT f.*, tc.name AS training_captain_name
-     FROM flights f
-     LEFT JOIN users tc ON tc.id = f.training_captain_id
-     WHERE f.id = $1`,
-    [id],
-  );
   return rows[0] ? rowToCamel(rows[0]) : null;
 }
 
@@ -59,9 +51,8 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'traineeId is required' });
     }
     const { rows } = await pool.query(
-      `SELECT f.*, tc.name AS training_captain_name, t.first_name, t.last_name, t.type AS trainee_type
+      `SELECT f.*, t.first_name, t.last_name, t.type AS trainee_type
        FROM flights f
-       LEFT JOIN users tc ON tc.id = f.training_captain_id
        JOIN trainees t ON t.id = f.trainee_id
        WHERE f.archived = true
        ORDER BY f.archived_at DESC`,
@@ -73,11 +64,7 @@ router.get('/', async (req, res) => {
   if (!trainee) return;
 
   const { rows } = await pool.query(
-    `SELECT f.*, tc.name AS training_captain_name
-     FROM flights f
-     LEFT JOIN users tc ON tc.id = f.training_captain_id
-     WHERE f.trainee_id = $1 AND f.archived = $2
-     ORDER BY f.date DESC`,
+    `SELECT * FROM flights WHERE trainee_id = $1 AND archived = $2 ORDER BY date DESC`,
     [traineeId, archived === 'true'],
   );
   res.json(rows.map(rowToCamel));
@@ -88,7 +75,7 @@ router.get('/:id', async (req, res) => {
   if (!flight) return res.status(404).json({ error: 'Not found' });
   const trainee = await assertTraineeVisible(req, res, flight.traineeId);
   if (!trainee) return;
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(flight);
 });
 
 const createSchema = z.object({
@@ -106,11 +93,12 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   if (!trainee) return;
 
   const { rows } = await pool.query(
-    `INSERT INTO flights (trainee_id, training_captain_id, date, sector_details, hours)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    `INSERT INTO flights (trainee_id, training_captain_id, training_captain_name, date, sector_details, hours)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
     [
       parsed.data.traineeId,
       req.user.id,
+      req.user.name,
       parsed.data.date,
       JSON.stringify(parsed.data.sectorDetails || {}),
       parsed.data.hours || 0,
@@ -118,7 +106,7 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   );
   const flight = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'flights', targetId: flight.id });
-  res.status(201).json({ ...flight, trainingCaptainName: req.user.name });
+  res.status(201).json(flight);
 });
 
 // Partial update only - this is deliberate. Earlier versions of this form
@@ -169,7 +157,7 @@ router.patch('/:id', async (req, res) => {
     values,
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(await findFlight(flight.id));
 });
 
 router.post('/:id/finalize', async (req, res) => {
@@ -179,7 +167,7 @@ router.post('/:id/finalize', async (req, res) => {
 
   await pool.query('UPDATE flights SET locked = true WHERE id = $1', [flight.id]);
   await logAction({ userId: req.user.id, action: 'FINALIZE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(await findFlight(flight.id));
 });
 
 router.post('/:id/acknowledge', async (req, res) => {
@@ -193,7 +181,7 @@ router.post('/:id/acknowledge', async (req, res) => {
     [flight.id],
   );
   await logAction({ userId: req.user.id, action: 'ACKNOWLEDGE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(await findFlight(flight.id));
 });
 
 router.post('/:id/archive', async (req, res) => {
@@ -205,7 +193,7 @@ router.post('/:id/archive', async (req, res) => {
 
   await pool.query('UPDATE flights SET archived = true, archived_at = now() WHERE id = $1', [flight.id]);
   await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(await findFlight(flight.id));
 });
 
 router.post('/:id/unarchive', async (req, res) => {
@@ -216,7 +204,7 @@ router.post('/:id/unarchive', async (req, res) => {
 
   await pool.query('UPDATE flights SET archived = false, archived_at = null WHERE id = $1', [flight.id]);
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'flights', targetId: flight.id });
-  res.json(await findFlightWithTrainer(flight.id));
+  res.json(await findFlight(flight.id));
 });
 
 module.exports = router;

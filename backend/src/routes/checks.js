@@ -29,17 +29,13 @@ router.get('/', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const conditions = [`c.archived = $1`];
+  const conditions = [`archived = $1`];
   const params = [archived === 'true'];
-  if (traineeId) { params.push(traineeId); conditions.push(`c.trainee_id = $${params.length}`); }
-  if (checkType) { params.push(checkType); conditions.push(`c.check_type = $${params.length}`); }
+  if (traineeId) { params.push(traineeId); conditions.push(`trainee_id = $${params.length}`); }
+  if (checkType) { params.push(checkType); conditions.push(`check_type = $${params.length}`); }
 
   const { rows } = await pool.query(
-    `SELECT c.*, au.name AS assigned_to_name, au.arn AS assigned_to_arn
-     FROM checks c
-     LEFT JOIN users au ON au.id = c.assigned_to
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY c.created_at DESC`,
+    `SELECT * FROM checks WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
     params,
   );
   const checks = rows.map(rowToCamel);
@@ -47,13 +43,7 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT c.*, au.name AS assigned_to_name, au.arn AS assigned_to_arn
-     FROM checks c
-     LEFT JOIN users au ON au.id = c.assigned_to
-     WHERE c.id = $1`,
-    [req.params.id],
-  );
+  const { rows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   const check = rowToCamel(rows[0]);
   if (!canAccessCheckType(req.user, check.checkType)) return res.status(403).json({ error: 'Forbidden' });
@@ -80,9 +70,12 @@ router.post('/', async (req, res) => {
   }
 
   const d = parsed.data;
+  // Snapshot the assignee's name/ARN now, so it survives them later being
+  // deleted from the system - the columns are plain text, not a live join.
+  const assignee = await resolveAssignee(d.assignedTo);
   const { rows } = await pool.query(
-    `INSERT INTO checks (trainee_id, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    `INSERT INTO checks (trainee_id, check_type, fleet, applies_to, due_date, assessor_name, assigned_to, assigned_to_name, assigned_to_arn, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [
       d.traineeId || null,
       d.checkType,
@@ -91,12 +84,14 @@ router.post('/', async (req, res) => {
       d.dueDate || null,
       d.assessorName || null,
       d.assignedTo || null,
+      assignee.assignedToName,
+      assignee.assignedToArn,
       JSON.stringify(d.details || {}),
     ],
   );
   const check = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });
-  res.status(201).json({ ...check, ...(await resolveAssignee(check.assignedTo)) });
+  res.status(201).json(check);
 });
 
 const updateSchema = z.object({
@@ -124,6 +119,8 @@ router.patch('/:id', async (req, res) => {
   if (hasAssignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }
+  // Re-snapshot name/ARN whenever the assignee changes - stale otherwise.
+  const assignee = hasAssignedTo ? await resolveAssignee(d.assignedTo) : { assignedToName: null, assignedToArn: null };
 
   const { rows } = await pool.query(
     `UPDATE checks SET
@@ -133,8 +130,10 @@ router.patch('/:id', async (req, res) => {
        completed_at = COALESCE($4, completed_at),
        assessor_name = COALESCE($5, assessor_name),
        assigned_to = CASE WHEN $6 THEN $7::uuid ELSE assigned_to END,
-       completed_by = $8
-     WHERE id = $9 RETURNING *`,
+       assigned_to_name = CASE WHEN $6 THEN $8 ELSE assigned_to_name END,
+       assigned_to_arn = CASE WHEN $6 THEN $9 ELSE assigned_to_arn END,
+       completed_by = $10
+     WHERE id = $11 RETURNING *`,
     [
       d.details ? JSON.stringify(d.details) : null,
       d.result ?? null,
@@ -143,13 +142,15 @@ router.patch('/:id', async (req, res) => {
       d.assessorName ?? null,
       hasAssignedTo,
       d.assignedTo ?? null,
+      assignee.assignedToName,
+      assignee.assignedToArn,
       req.user.id,
       req.params.id,
     ],
   );
   const updated = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
-  res.json({ ...updated, ...(await resolveAssignee(updated.assignedTo)) });
+  res.json(updated);
 });
 
 router.post('/:id/archive', async (req, res) => {
@@ -165,8 +166,7 @@ router.post('/:id/archive', async (req, res) => {
     [req.params.id],
   );
   await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'checks', targetId: req.params.id });
-  const updated = rowToCamel(rows[0]);
-  res.json({ ...updated, ...(await resolveAssignee(updated.assignedTo)) });
+  res.json(rowToCamel(rows[0]));
 });
 
 router.post('/:id/unarchive', async (req, res) => {
@@ -178,8 +178,7 @@ router.post('/:id/unarchive', async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'checks', targetId: req.params.id });
-  const updated = rowToCamel(rows[0]);
-  res.json({ ...updated, ...(await resolveAssignee(updated.assignedTo)) });
+  res.json(rowToCamel(rows[0]));
 });
 
 module.exports = router;

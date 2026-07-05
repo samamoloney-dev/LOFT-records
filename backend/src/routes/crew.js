@@ -63,10 +63,25 @@ async function completedPilotLineCheckCount(crewMemberId) {
   return rows[0]?.n || 0;
 }
 
-function dueInfo(dueDate, completedDate, opts) {
+function dueInfo(dueDate, completedDate, plannedDate, opts) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
-  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed };
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts), completedDate: completed };
+  const planned = plannedDate ? new Date(plannedDate).toISOString() : null;
+  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed, plannedDate: planned };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts), completedDate: completed, plannedDate: planned };
+}
+
+// HOTC/HOFO/Flight Ops Admin can note a planned date for an upcoming check
+// (e.g. "PC booked for 15 Aug") before it's actually conducted - purely
+// informational, shown alongside the computed due date on Currency
+// Overview and the crew member's own profile.
+const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'];
+
+async function plannedDatesFor(crewMemberId) {
+  const { rows } = await pool.query(
+    'SELECT check_key, planned_date FROM crew_planned_checks WHERE crew_member_id = $1',
+    [crewMemberId],
+  );
+  return Object.fromEntries(rows.map((r) => [r.check_key, r.planned_date]));
 }
 
 // Quick-add lets an admin seed a crew member's currency clock with a date
@@ -81,6 +96,8 @@ function latestOf(a, b) {
 }
 
 async function withCurrency(member) {
+  const planned = await plannedDatesFor(member.id);
+
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
@@ -96,12 +113,14 @@ async function withCurrency(member) {
     return {
       ...member,
       currency: {
-        emergencyProcedures: dueInfo(nextDueRolling(ep), ep),
-        ipc: dueInfo(nextDueRolling(ipc), ipc),
-        proficiencyCheck: pcWin ? dueInfo(pcWin.targetDue, pc, { hardExpiry: pcWin.hardExpiry }) : dueInfo(null, pc),
+        emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
+        ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc),
+        proficiencyCheck: pcWin
+          ? dueInfo(pcWin.targetDue, pc, planned.proficiencyCheck, { hardExpiry: pcWin.hardExpiry })
+          : dueInfo(null, pc, planned.proficiencyCheck),
         // Falls back to the initial Check to Line anchor date when no
         // recurrent Line Check has ever been completed yet.
-        lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate),
+        lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck),
       },
     };
   }
@@ -115,8 +134,8 @@ async function withCurrency(member) {
   return {
     ...member,
     currency: {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck),
     },
   };
 }
@@ -229,6 +248,30 @@ router.patch('/:id', async (req, res) => {
   res.json(await withCurrency(serializeCrewMember(rows[0])));
 });
 
+const plannedCheckSchema = z.object({ plannedDate: z.string().nullable() });
+
+router.put('/:id/planned-checks/:checkKey', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!PLANNED_CHECK_KEYS.includes(req.params.checkKey)) return res.status(400).json({ error: 'Invalid check' });
+
+  const parsed = plannedCheckSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { plannedDate } = parsed.data;
+
+  if (!plannedDate) {
+    await pool.query('DELETE FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2', [member.id, req.params.checkKey]);
+  } else {
+    await pool.query(
+      `INSERT INTO crew_planned_checks (crew_member_id, check_key, planned_date) VALUES ($1, $2, $3)
+       ON CONFLICT (crew_member_id, check_key) DO UPDATE SET planned_date = $3`,
+      [member.id, req.params.checkKey, plannedDate],
+    );
+  }
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_planned_checks', targetId: member.id });
+  res.json(await withCurrency(member));
+});
+
 router.post('/:id/archive', async (req, res) => {
   const { rows } = await pool.query(
     'UPDATE crew_members SET archived = true, archived_at = now() WHERE id = $1 RETURNING *',
@@ -267,6 +310,7 @@ const competencySchema = z.object({
   name: z.string().min(1),
   completedDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  plannedDate: z.string().nullable().optional(),
 });
 
 router.post('/:id/competencies', async (req, res) => {
@@ -275,11 +319,11 @@ router.post('/:id/competencies', async (req, res) => {
 
   const parsed = competencySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { name, completedDate, dueDate } = parsed.data;
+  const { name, completedDate, dueDate, plannedDate } = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [member.id, name, completedDate || null, dueDate || null],
+    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [member.id, name, completedDate || null, dueDate || null, plannedDate || null],
   );
   const competency = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_competencies', targetId: competency.id });
@@ -287,7 +331,7 @@ router.post('/:id/competencies', async (req, res) => {
 });
 
 const competencyUpdateSchema = competencySchema.partial();
-const COMPETENCY_COLUMN_MAP = { name: 'name', completedDate: 'completed_date', dueDate: 'due_date' };
+const COMPETENCY_COLUMN_MAP = { name: 'name', completedDate: 'completed_date', dueDate: 'due_date', plannedDate: 'planned_date' };
 
 router.patch('/:id/competencies/:competencyId', async (req, res) => {
   const parsed = competencyUpdateSchema.safeParse(req.body);

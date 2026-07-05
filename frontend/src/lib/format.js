@@ -16,9 +16,9 @@ export function formatDate(value) {
 const FLEET_LABELS = {
   DASH_8: 'Dash 8',
   FOKKER_100: 'Fokker 100',
-  METRO_23: 'Metro 23',
-  CA_DASH_8: 'Dash 8',
-  CA_FOKKER_100: 'Fokker 100',
+  METRO_23: 'Metro',
+  CA_DASH_8: 'Cabin Dash 8',
+  CA_FOKKER_100: 'Cabin Fokker 100',
   ALL: 'All fleets',
 };
 

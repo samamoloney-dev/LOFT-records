@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
@@ -103,6 +104,12 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     catch (err) { setError(err.message); }
   }
 
+  async function deleteCheck(check) {
+    setError(null);
+    try { await api.delete(`/api/checks/${check.id}`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   function printCheck(check) {
     const d = check.details || {};
     const itemRows = CA_CHECK_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N/A' : '']);
@@ -142,6 +149,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
               onArchive={() => archiveCheck(selected)}
               onUnarchive={() => unarchiveCheck(selected)}
             />
+            <DeleteButton archived={selected.archived} onDelete={() => deleteCheck(selected)} />
           </div>
         </div>
         <div className="card">

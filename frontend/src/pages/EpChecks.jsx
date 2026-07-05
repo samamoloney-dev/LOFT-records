@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
@@ -103,6 +104,12 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     catch (err) { setError(err.message); }
   }
 
+  async function deleteCheck(check) {
+    setError(null);
+    try { await api.delete(`/api/checks/${check.id}`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   function printCheck(check) {
     const d = check.details || {};
     const itemRows = EP_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N (Not Tested)' : '']);
@@ -150,6 +157,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
               onArchive={() => archiveCheck(selected)}
               onUnarchive={() => unarchiveCheck(selected)}
             />
+            <DeleteButton archived={selected.archived} onDelete={() => deleteCheck(selected)} />
           </div>
         </div>
         <div className="card">

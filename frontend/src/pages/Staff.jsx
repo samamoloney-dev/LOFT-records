@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { formatUserRole } from '../lib/format';
+import { formatUserRole, formatFleet } from '../lib/format';
 
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -11,16 +11,6 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 // Fokker 100 pilots").
 const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'CA_TRAINER', 'CA_CHECKER'];
 
-// Pilot and cabin attendant fleets share the same city names (Dash 8, Fokker
-// 100), so a single side-by-side picker needs distinct labels to avoid
-// looking like the same option twice.
-const FLEET_PICKER_LABELS = {
-  DASH_8: 'Dash 8',
-  FOKKER_100: 'Fokker 100',
-  METRO_23: 'Metro 23',
-  CA_DASH_8: 'Dash 8 (Cabin Crew)',
-  CA_FOKKER_100: 'Fokker 100 (Cabin Crew)',
-};
 const CHECK_ACCESS_OPTIONS = [
   { value: 'PC', label: 'PC' },
   { value: 'IPC', label: 'IPC' },
@@ -77,7 +67,7 @@ function FleetAccessPicker({ value, onChange, multi, disabled }) {
             background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
             color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
           }}
-        >{FLEET_PICKER_LABELS[f]}</div>
+        >{formatFleet(f)}</div>
       ))}
     </div>
   );
@@ -192,7 +182,7 @@ export function Staff() {
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
                 ? 'Fleets: all'
-                : `Fleets: ${(u.fleets || []).length ? u.fleets.map((f) => FLEET_PICKER_LABELS[f]).join(', ') : 'none'}`}
+                : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
               {ADMIN_ROLES.includes(u.role)

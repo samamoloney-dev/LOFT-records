@@ -13,8 +13,11 @@ const LABELS = {
 };
 
 // Small colour-coded pill for a single recurrency item's next-due date.
-// `info` is the { dueDate, status, completedDate } shape returned by the
-// backend's currency object (see backend/src/routes/crew.js withCurrency).
+// `info` is the { dueDate, status, completedDate, plannedDate } shape
+// returned by the backend's currency object (see
+// backend/src/routes/crew.js withCurrency). plannedDate is purely
+// informational - an admin's note that a check is booked for a date,
+// distinct from the computed due date.
 export function DueBadge({ label, info }) {
   if (!info) return null;
   const text = info.dueDate ? `${LABELS[info.status]} · due ${formatDate(info.dueDate)}` : 'Not yet current';
@@ -27,6 +30,9 @@ export function DueBadge({ label, info }) {
       >{text}</span>
       {info.completedDate && (
         <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>Completed {formatDate(info.completedDate)}</div>
+      )}
+      {info.plannedDate && (
+        <div style={{ fontSize: 10.5, color: 'var(--text-accent)' }}>Planned for {formatDate(info.plannedDate)}</div>
       )}
     </div>
   );

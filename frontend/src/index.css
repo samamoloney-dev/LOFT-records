@@ -73,6 +73,30 @@ input, select, textarea {
 .top-nav .spacer { flex: 1; }
 .top-nav .user-label { font-size: 12px; color: var(--text-secondary); }
 
+/* Every sub-tab bar in the app (Checks, Crew, Crew Detail, Archive, Trainee
+   Detail) shares this look, matching the top nav exactly. */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 0.5px solid var(--border);
+  flex-wrap: wrap;
+}
+.tab-bar button {
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding: 9px 14px;
+  margin-bottom: -0.5px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tab-bar button.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
+.tab-bar button:hover { color: var(--text-primary); }
+
 .card {
   background: var(--surface-2);
   border: 0.5px solid var(--border);
@@ -121,8 +145,10 @@ input, select, textarea {
 .login-shell { max-width: 340px; margin: 4rem auto; }
 
 .tick-btn {
-  min-width: 32px;
+  width: 44px;
   height: 32px;
+  padding: 0;
+  text-align: center;
   border: 0.5px solid var(--border-strong);
   border-radius: 6px;
   background: var(--surface-1);

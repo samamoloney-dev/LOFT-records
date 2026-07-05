@@ -11,6 +11,7 @@ import { Crew } from './pages/Crew';
 import { CrewDetail } from './pages/CrewDetail';
 import { CurrencyOverview } from './pages/CurrencyOverview';
 import { SyllabusAdmin } from './pages/SyllabusAdmin';
+import { formatUserRole } from './lib/format';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'CA_CHECKER', 'SIMULATOR_ONLY'];
@@ -29,10 +30,12 @@ function Shell({ children }) {
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Staff</NavLink>}
         <span className="spacer" />
-        <span className="user-label">{user.name} · {user.role}</span>
-        <button onClick={logout}>Sign out</button>
+        <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
       </nav>
       {children}
+      <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>
+        <button onClick={logout}>Sign out</button>
+      </div>
     </div>
   );
 }

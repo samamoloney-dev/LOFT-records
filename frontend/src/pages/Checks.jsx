@@ -4,24 +4,11 @@ import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { CheckToLinePicker } from './CheckToLinePicker';
+import { TabBar } from '../components/TabBar';
 
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER']; // IPC, PC, Emergency Procedures
 const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER']; // Check to Line, Line Check
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
-
-function TabBar({ tabs, active, onSelect }) {
-  return (
-    <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)' }}>
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onSelect(t.key)}
-          style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: active === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: active === t.key ? 500 : 400 }}
-        >{t.label}</button>
-      ))}
-    </div>
-  );
-}
 
 export function Checks() {
   const { user } = useAuth();

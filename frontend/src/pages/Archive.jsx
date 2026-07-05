@@ -7,20 +7,7 @@ import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { ArchivedFlights } from './ArchivedFlights';
 import { ArchivedCheckToLine } from './ArchivedCheckToLine';
-
-function TabBar({ tabs, active, onSelect }) {
-  return (
-    <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onSelect(t.key)}
-          style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: active === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: active === t.key ? 500 : 400 }}
-        >{t.label}</button>
-      ))}
-    </div>
-  );
-}
+import { TabBar } from '../components/TabBar';
 
 // Archived trainees (whole trainee records, archived automatically when
 // their Check to Line completes) - kept as-is under the Others tab, since

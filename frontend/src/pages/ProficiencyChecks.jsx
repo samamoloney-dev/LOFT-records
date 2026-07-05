@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
@@ -142,6 +143,12 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     catch (err) { setError(err.message); }
   }
 
+  async function deleteCheck(check) {
+    setError(null);
+    try { await api.delete(`/api/checks/${check.id}`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   function resultMark(v) {
     return v === 'S' ? '✓' : v === 'X' ? '✗' : v === 'N' ? 'N/A' : '';
   }
@@ -242,6 +249,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
               onArchive={() => archiveCheck(selected)}
               onUnarchive={() => unarchiveCheck(selected)}
             />
+            <DeleteButton archived={selected.archived} onDelete={() => deleteCheck(selected)} />
           </div>
         </div>
         <div className="card">

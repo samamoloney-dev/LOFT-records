@@ -47,6 +47,25 @@ function StatusFilterBar({ value, onChange }) {
   );
 }
 
+// Calendar-day difference (not a 24h-period count), so a due date later
+// today still reads as "due today" rather than "overdue" or "-1 days".
+function daysToExpiry(dueDate) {
+  if (!dueDate) return null;
+  const due = new Date(dueDate);
+  const today = new Date();
+  const dueDay = Date.UTC(due.getFullYear(), due.getMonth(), due.getDate());
+  const todayDay = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((dueDay - todayDay) / (24 * 60 * 60 * 1000));
+}
+
+function expiryText(dueDate) {
+  const days = daysToExpiry(dueDate);
+  if (days === null) return '';
+  if (days === 0) return 'due today';
+  if (days < 0) return `overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'}`;
+  return `due in ${days} day${days === 1 ? '' : 's'}`;
+}
+
 function StatusPill({ status }) {
   return (
     <span style={{ ...STATUS_STYLES[status], display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
@@ -69,6 +88,7 @@ function currencyRows(member) {
       item: CURRENCY_LABELS[key] || key,
       dueDate: info.dueDate,
       completedDate: info.completedDate,
+      plannedDate: info.plannedDate,
       status: info.status,
     }));
 }
@@ -122,7 +142,7 @@ export function CurrencyOverview() {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{r.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)}` : ''}
+              {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)} (${expiryText(r.dueDate)})` : ''}{r.plannedDate ? ` · Planned for ${formatDate(r.plannedDate)}` : ''}
             </div>
           </div>
           <StatusPill status={r.status} />
@@ -137,7 +157,7 @@ export function CurrencyOverview() {
         <div key={c.id} className="card row" onClick={() => navigate(`/crew/${c.memberId}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.memberName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.name}{c.dueDate ? ` · Due ${formatDate(c.dueDate)}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.name}{c.dueDate ? ` · Due ${formatDate(c.dueDate)} (${expiryText(c.dueDate)})` : ''}{c.plannedDate ? ` · Planned for ${formatDate(c.plannedDate)}` : ''}</div>
           </div>
           <StatusPill status={c.status} />
         </div>

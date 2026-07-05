@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
@@ -87,6 +88,12 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     catch (err) { setError(err.message); }
   }
 
+  async function deleteCheck(check) {
+    setError(null);
+    try { await api.delete(`/api/checks/${check.id}`); setSelectedId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   function printCheck(check) {
     const d = check.details || {};
     const html = `
@@ -117,6 +124,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
               onArchive={() => archiveCheck(selected)}
               onUnarchive={() => unarchiveCheck(selected)}
             />
+            <DeleteButton archived={selected.archived} onDelete={() => deleteCheck(selected)} />
           </div>
         </div>
         <div className="card">

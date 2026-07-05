@@ -7,19 +7,27 @@ import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 
-function TabBar({ tabs, active, onSelect }) {
+// HOTC/HOFO/Flight Ops Admin only (this whole page is admin-gated already) -
+// notes a planned date for an upcoming recurrent check, purely informational
+// and distinct from the computed due date. Surfaced via DueBadge and
+// Currency Overview as "Planned for X".
+function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
+  const [value, setValue] = useState(plannedDate ? plannedDate.slice(0, 10) : '');
+
+  async function save(next) {
+    setValue(next);
+    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { plannedDate: next || null });
+    onSaved(updated);
+  }
+
   return (
-    <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)' }}>
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onSelect(t.key)}
-          style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: active === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: active === t.key ? 500 : 400 }}
-        >{t.label}</button>
-      ))}
+    <div>
+      <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
+      <input type="date" value={value} onChange={(e) => save(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
     </div>
   );
 }
@@ -66,7 +74,7 @@ function CompetencyList({ crewMemberId }) {
   const [competencies, setCompetencies] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [form, setForm] = useState({ name: '', completedDate: '', dueDate: '' });
+  const [form, setForm] = useState({ name: '', completedDate: '', dueDate: '', plannedDate: '' });
   const [error, setError] = useState(null);
 
   function load() {
@@ -80,7 +88,7 @@ function CompetencyList({ crewMemberId }) {
     try {
       await api.post(`/api/crew/${crewMemberId}/competencies`, form);
       setShowForm(false);
-      setForm({ name: '', completedDate: '', dueDate: '' });
+      setForm({ name: '', completedDate: '', dueDate: '', plannedDate: '' });
       load();
     } catch (err) { setError(err.message); }
   }
@@ -120,6 +128,7 @@ function CompetencyList({ crewMemberId }) {
             <div className="field"><label>Completed date</label><input type="date" value={form.completedDate} onChange={(e) => setForm({ ...form, completedDate: e.target.value })} /></div>
             <div className="field"><label>Due date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
           </div>
+          <div className="field"><label>Planned date (optional - e.g. booked with the provider)</label><input type="date" value={form.plannedDate} onChange={(e) => setForm({ ...form, plannedDate: e.target.value })} /></div>
           <button type="submit" className="primary">Add</button>
         </form>
       )}
@@ -134,7 +143,7 @@ function CompetencyList({ crewMemberId }) {
           <div key={c.id} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 500 }}>{c.name}</div>
-              {status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status }} />}
+              {status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
             </div>
             <div className="grid2" style={{ marginTop: 8 }}>
               <div className="field" style={{ margin: 0 }}>
@@ -145,6 +154,10 @@ function CompetencyList({ crewMemberId }) {
                 <label>Due date</label>
                 <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.id, { dueDate: e.target.value || null })} />
               </div>
+            </div>
+            <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+              <label>Planned date</label>
+              <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.id, { plannedDate: e.target.value || null })} />
             </div>
             <button style={{ marginTop: 8 }} onClick={() => (showArchived ? unarchiveCompetency(c.id) : archiveCompetency(c.id))}>
               {showArchived ? 'Unarchive' : 'Archive'}
@@ -197,10 +210,26 @@ export function CrewDetail() {
       </div>
 
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
-        {isPilot && <DueBadge label="IPC" info={member.currency.ipc} />}
-        {isPilot && <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />}
-        <DueBadge label="Line Check" info={member.currency.lineCheck} />
+        <div>
+          <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={setMember} />
+        </div>
+        {isPilot && (
+          <div>
+            <DueBadge label="IPC" info={member.currency.ipc} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={setMember} />
+          </div>
+        )}
+        {isPilot && (
+          <div>
+            <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={setMember} />
+          </div>
+        )}
+        <div>
+          <DueBadge label="Line Check" info={member.currency.lineCheck} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={setMember} />
+        </div>
       </div>
 
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />

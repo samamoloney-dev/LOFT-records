@@ -197,4 +197,20 @@ router.post('/:id/unarchive', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
+// Deleting is permanent, unlike archiving - restricted to admins, and
+// blocked once a check is archived (archived records are the historical
+// record and should be unarchived first if they genuinely need removing).
+router.delete('/:id', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can delete checks' });
+
+  const { rows: existingRows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (existing.archived) return res.status(400).json({ error: 'Archived checks cannot be deleted' });
+
+  await pool.query('DELETE FROM checks WHERE id = $1', [req.params.id]);
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'checks', targetId: req.params.id });
+  res.status(204).send();
+});
+
 module.exports = router;

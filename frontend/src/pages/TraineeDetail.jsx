@@ -9,6 +9,7 @@ import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { LandingAssessmentForm } from './LandingAssessmentForm';
 import { ArchiveButton } from '../components/ArchiveButton';
+import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
@@ -230,15 +231,7 @@ export function TraineeDetail() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 0, marginBottom: '1.25rem', borderBottom: '0.5px solid var(--border)', flexWrap: 'wrap' }}>
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{ border: 'none', background: 'none', padding: '7px 14px', borderBottom: tab === t.key ? '2px solid var(--text-primary)' : '2px solid transparent', fontWeight: tab === t.key ? 500 : 400 }}
-          >{t.label}</button>
-        ))}
-      </div>
+      <TabBar tabs={tabs} active={tab} onSelect={setTab} />
 
       {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}

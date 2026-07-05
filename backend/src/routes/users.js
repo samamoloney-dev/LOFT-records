@@ -19,7 +19,7 @@ const createSchema = z.object({
   password: z.string().min(8),
   role: z.enum([
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
-    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
+    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]),
   fleets: fleetsSchema,
   arn: z.string().optional(),
@@ -75,7 +75,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   role: z.enum([
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
-    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'TRAINEE',
+    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]).optional(),
   fleets: fleetsSchema,
   arn: z.string().optional(),

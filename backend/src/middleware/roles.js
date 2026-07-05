@@ -4,6 +4,15 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 
+// Every role the operator counts as a "trainer": Training Captain, Check
+// Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, HOFO
+// and HOTC - deliberately excludes Flight Ops Admin.
+const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC'];
+
+// Pre-Simulator Assessment sign-off is narrower still - only the roles who
+// actually fly with the candidate before the simulator.
+const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
+
 // Staff-profile check access ticks (Staff page). These decide which staff
 // show up as selectable assessors/assignees on each check form - they don't
 // change who can access the Checks tab itself (still role-based, above).
@@ -68,6 +77,8 @@ module.exports = {
   ADMIN_ROLES,
   CHECK_ROLES,
   CA_ONLY_ROLES,
+  TRAINER_ROLES,
+  PRE_SIM_ASSESSOR_ROLES,
   CHECK_ACCESS_TYPES,
   FLIGHT_CREATOR_ROLES,
   requireRole,

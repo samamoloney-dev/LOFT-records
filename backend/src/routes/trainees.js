@@ -1,7 +1,7 @@
 const express = require('express');
 const { z } = require('zod');
 const pool = require('../../db/pool');
-const { rowToCamel } = require('../../db/serialize');
+const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
@@ -130,18 +130,18 @@ router.post('/:id/promote-to-crew', async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_members (first_name, last_name, type, role, fleet, line_check_anchor_date)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
+     VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
     [
       trainee.firstName,
       trainee.lastName,
       trainee.type,
       trainee.role,
-      trainee.fleet,
+      [trainee.fleet],
       trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
     ],
   );
-  const crewMember = rowToCamel(rows[0]);
+  const crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
   await logAction({ userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id });
   res.status(201).json(crewMember);
 });

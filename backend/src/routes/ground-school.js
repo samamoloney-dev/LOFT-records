@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, requireRole, ADMIN_ROLES } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -174,6 +174,9 @@ const completeSchema = z.object({
   signedOffByName: z.string().min(1),
 });
 
+// Pre-Simulator Assessment and instructor-led ground school courses are
+// restricted beyond the general canAccessTraineeRecord check - the wider
+// ground school panel otherwise has no role restriction at all today.
 router.post('/trainee/:traineeId/complete', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
@@ -181,6 +184,31 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
 
   const parsed = completeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows: itemRows } = await pool.query(
+    'SELECT category FROM ground_school_items WHERE id = $1',
+    [parsed.data.groundSchoolItemId],
+  );
+  if (itemRows.length === 0) return res.status(404).json({ error: 'Ground school item not found' });
+  const { category } = itemRows[0];
+
+  if (category === 'Pre-Simulator Assessment' && !PRE_SIM_ASSESSOR_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only a Training Captain, Check Captain or Examiner can sign off Pre-Simulator Assessment items' });
+  }
+
+  if (category.includes('Instructor-led')) {
+    if (!TRAINER_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Only trainers can sign off instructor-led ground school items' });
+    }
+    const { rows: progressRows } = await pool.query(
+      'SELECT details FROM ground_school_progress WHERE trainee_id = $1 AND ground_school_item_id = $2',
+      [trainee.id, parsed.data.groundSchoolItemId],
+    );
+    const passMark = progressRows[0]?.details?.passMark;
+    if (passMark === undefined || passMark === null || passMark === '') {
+      return res.status(400).json({ error: 'A pass mark must be recorded before this item can be signed off' });
+    }
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO ground_school_progress (trainee_id, ground_school_item_id, completed_at, signed_off_by, signed_off_by_name)

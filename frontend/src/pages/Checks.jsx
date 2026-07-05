@@ -25,7 +25,10 @@ function TabBar({ tabs, active, onSelect }) {
 
 export function Checks() {
   const { user } = useAuth();
-  const canAccessPilots = CHECK_ROLES.includes(user.role);
+  // Simulator-only staff can reach the Pilots tab, but only its IPC/PC
+  // sub-tabs - not Emergency Procedures.
+  const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
+  const canAccessPilots = CHECK_ROLES.includes(user.role) || isSimulatorOnly;
   const canAccessEpForCa = CHECK_ROLES.includes(user.role);
   const canAccessCaOnly = CA_CHECK_ROLES.includes(user.role);
   const canAccessCabinAttendants = canAccessEpForCa || canAccessCaOnly;
@@ -42,8 +45,8 @@ export function Checks() {
   const pilotTabs = [
     { key: 'ipc', label: 'IPC' },
     { key: 'pc', label: 'PC' },
-    { key: 'ep', label: 'Emergency Procedures' },
-  ];
+    !isSimulatorOnly && { key: 'ep', label: 'Emergency Procedures' },
+  ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState('ipc');
 
   const caTabs = [

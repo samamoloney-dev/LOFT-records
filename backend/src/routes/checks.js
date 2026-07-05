@@ -14,9 +14,14 @@ router.use(requireAuth);
 
 // Recurrent Sim and Emergency Procedures: HOTC / HOFO / Flight Ops Admin / Examiner.
 // Cabin Attendant Line Check: HOTC / CA Checker (mirrors the Flight Standards prototype).
+// Simulator-only staff can additionally access Recurrent Sim (PC/IPC) only -
+// no Emergency Procedures, Line Checks, or Check to Line.
 function canAccessCheckType(user, checkType) {
   if (checkType === 'CABIN_ATTENDANT_LINE_CHECK') {
     return user.role === 'HOTC' || user.role === 'CA_CHECKER';
+  }
+  if (checkType === 'RECURRENT_SIMULATOR') {
+    return canAccessChecks(user) || user.role === 'SIMULATOR_ONLY';
   }
   return canAccessChecks(user);
 }

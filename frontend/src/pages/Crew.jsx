@@ -21,9 +21,48 @@ function TabBar({ tabs, active, onSelect }) {
 }
 
 const emptyForm = (type) => ({
-  firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT', fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8',
+  firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
+  fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
 });
+
+// Cabin attendants start qualified on Dash 8 and can only add Fokker 100
+// once they hold Dash 8 (real-world conversion-course requirement) - pilots
+// stay single-fleet (radio-style picking).
+function FleetPicker({ type, value, onChange }) {
+  const fleets = FLEETS.filter((f) => (type === 'PILOT' ? !f.startsWith('CA_') : f.startsWith('CA_')));
+  const isCabinAttendant = type === 'CABIN_ATTENDANT';
+
+  function toggle(f) {
+    if (!isCabinAttendant) {
+      onChange(value.includes(f) ? [] : [f]);
+      return;
+    }
+    if (f === 'CA_DASH_8' && value.includes('CA_FOKKER_100')) return; // can't drop Dash 8 while Fokker 100 is held
+    onChange(value.includes(f) ? value.filter((x) => x !== f) : [...value, f]);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {fleets.map((f) => {
+        const disabled = isCabinAttendant && f === 'CA_FOKKER_100' && !value.includes('CA_DASH_8');
+        return (
+          <div
+            key={f}
+            onClick={() => !disabled && toggle(f)}
+            title={disabled ? 'Dash 8 must be added first' : undefined}
+            style={{
+              padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+              cursor: disabled ? 'default' : 'pointer', fontSize: 13, opacity: disabled ? 0.4 : 1,
+              background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
+              color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
+            }}
+          >{formatFleet(f)}</div>
+        );
+      })}
+    </div>
+  );
+}
 
 function CrewRoster({ type }) {
   const [members, setMembers] = useState([]);
@@ -51,7 +90,6 @@ function CrewRoster({ type }) {
   }
 
   const roles = type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
-  const fleets = FLEETS.filter((f) => (type === 'PILOT' ? !f.startsWith('CA_') : f.startsWith('CA_')));
 
   return (
     <div>
@@ -66,19 +104,15 @@ function CrewRoster({ type }) {
             <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></div>
             <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required /></div>
           </div>
-          <div className="grid2">
-            <div className="field">
-              <label>Role</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {roles.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Fleet</label>
-              <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
-                {fleets.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
-              </select>
-            </div>
+          <div className="field">
+            <label>Role</label>
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              {roles.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Fleet{type === 'CABIN_ATTENDANT' ? 's' : ''}</label>
+            <FleetPicker type={type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets })} />
           </div>
 
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0.75rem 0 0.25rem' }}>
@@ -110,7 +144,7 @@ function CrewRoster({ type }) {
         <div key={m.id} className="card row" onClick={() => navigate(`/crew/${m.id}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{m.firstName} {m.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatFleet(m.fleet)} · {formatTraineeRole(m.role)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(m.role)}</div>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             <DueBadge label="Emergency Procedures" info={m.currency.emergencyProcedures} />

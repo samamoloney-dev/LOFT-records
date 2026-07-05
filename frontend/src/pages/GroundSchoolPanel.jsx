@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
+import { TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES } from '../lib/roles';
 
 function groupByCategory(items) {
   const groups = new Map();
@@ -21,11 +22,15 @@ function extraFieldsForCategory(category) {
   if (category === 'Course') {
     return [{ key: 'completedDate', label: 'Completed', type: 'date', width: 150 }];
   }
-  if (category === 'Dash 8 Ground School (Module CBT)' || category === 'Dash 8 Ground School (Instructor-led)') {
-    return [
+  if (category === 'Dash 8 Ground School (Module CBT)' || category.includes('Instructor-led')) {
+    const fields = [
       { key: 'completedDate', label: 'Completed', type: 'date', width: 150 },
       { key: 'passMark', label: 'Pass mark %', type: 'number', width: 100 },
     ];
+    if (category.includes('Instructor-led')) {
+      fields.push({ key: 'attempts', label: 'Attempts', type: 'select', options: [1, 2, 3], width: 90 });
+    }
+    return fields;
   }
   if (category === 'Observation Flights') {
     return [
@@ -39,6 +44,19 @@ function extraFieldsForCategory(category) {
 function DetailInput({ item, field, onSave }) {
   const [value, setValue] = useState(item.details?.[field.key] || '');
 
+  if (field.type === 'select') {
+    return (
+      <select
+        value={value}
+        onChange={(e) => { setValue(e.target.value); onSave(item.id, { ...item.details, [field.key]: e.target.value }); }}
+        style={{ fontSize: 13, padding: '6px 8px' }}
+      >
+        <option value="">—</option>
+        {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+
   return (
     <input
       type={field.type}
@@ -50,11 +68,21 @@ function DetailInput({ item, field, onSave }) {
   );
 }
 
-function GroundSchoolItemRow({ item, fields, gridTemplate, onSignOff, onSaveDetails }) {
+function GroundSchoolItemRow({ item, fields, gridTemplate, category, onSignOff, onSaveDetails }) {
   const { user } = useAuth();
   const [signing, setSigning] = useState(false);
   const [name, setName] = useState(item.signedOffByName || user.name);
   const [error, setError] = useState(null);
+
+  const isInstructorLed = category.includes('Instructor-led');
+  const canSignOff = category === 'Pre-Simulator Assessment'
+    ? PRE_SIM_ASSESSOR_ROLES.includes(user.role)
+    : isInstructorLed
+      ? TRAINER_ROLES.includes(user.role)
+      : true;
+  const passMarkMissing = isInstructorLed && !item.details?.passMark;
+  const isFirstAid = item.description === 'First Aid';
+  const isNa = !!item.details?.na;
 
   async function confirm() {
     if (!name.trim()) return;
@@ -65,17 +93,31 @@ function GroundSchoolItemRow({ item, fields, gridTemplate, onSignOff, onSaveDeta
     } catch (err) { setError(err.message); }
   }
 
+  function toggleNa() {
+    onSaveDetails(item.id, { ...item.details, na: !isNa });
+  }
+
   return (
     <div style={{ borderBottom: '0.5px solid var(--border)', padding: '8px 6px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: gridTemplate, gap: 10, alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <button
             className={`tick-btn ${item.completedAt ? 'active-pass' : ''}`}
+            disabled={!canSignOff || passMarkMissing || isNa}
+            title={!canSignOff ? 'Not eligible to sign off this item' : passMarkMissing ? 'A pass mark must be recorded first' : undefined}
             onClick={() => setSigning((v) => !v)}
-          >{item.completedAt ? '✓' : ''}</button>
+          >{isNa ? 'N/A' : item.completedAt ? '✓' : ''}</button>
+          {isFirstAid && (
+            <button onClick={toggleNa} className={isNa ? 'primary' : ''} style={{ fontSize: 11, padding: '4px 8px' }}>
+              {isNa ? 'Marked N/A' : 'Mark N/A'}
+            </button>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13 }}>{item.description}</div>
             {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
+            {passMarkMissing && !isNa && (
+              <div style={{ fontSize: 11, color: 'var(--text-warning)' }}>Enter a pass mark before this can be signed off</div>
+            )}
             {item.completedAt && (
               <div style={{ fontSize: 11, color: 'var(--text-success)' }}>
                 Signed off by {item.signedOffByName} on {formatDate(item.completedAt)}
@@ -148,6 +190,7 @@ function GroundSchoolCategoryCard({ category, items, traineeId, noteFor, onSignO
           item={item}
           fields={fields}
           gridTemplate={gridTemplate}
+          category={category}
           onSignOff={onSignOff}
           onSaveDetails={onSaveDetails}
         />
@@ -182,7 +225,7 @@ export function GroundSchoolPanel({ trainee }) {
     load();
   }
 
-  const outstanding = items.filter((i) => i.required && !i.completedAt);
+  const outstanding = items.filter((i) => i.required && !i.completedAt && !i.details?.na);
   const grouped = groupByCategory(items);
   const noteFor = (category) => categoryNotes.find((n) => n.category === category)?.notes || '';
 

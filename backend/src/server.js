@@ -15,6 +15,7 @@ const groundSchoolRoutes = require('./routes/ground-school');
 const crewRoutes = require('./routes/crew');
 const landingAssessmentRoutes = require('./routes/landing-assessment');
 const fstdPresetRoutes = require('./routes/fstd-presets');
+const surveyRoutes = require('./routes/survey');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/ground-school', groundSchoolRoutes);
 app.use('/api/crew', crewRoutes);
 app.use('/api/landing-assessment', landingAssessmentRoutes);
 app.use('/api/fstd-presets', fstdPresetRoutes);
+app.use('/api/survey', surveyRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

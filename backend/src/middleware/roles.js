@@ -19,6 +19,14 @@ const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 // get an editing exception here, only view access via canAccessTraineeRecord.
 const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 
+// Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
+// is deliberately narrower than the usual admin trio - Flight Ops Admin is
+// excluded, per the operator's explicit request. The survey itself can be
+// filled in by whoever can already conduct a RECURRENT_SIMULATOR check
+// (mirrors checks.js canAccessCheckType).
+const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO'];
+const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'SIMULATOR_ONLY'];
+
 // Staff-profile check access ticks (Staff page). These decide which staff
 // show up as selectable assessors/assignees on each check form - they don't
 // change who can access the Checks tab itself (still role-based, above).
@@ -86,6 +94,8 @@ module.exports = {
   TRAINER_ROLES,
   PRE_SIM_ASSESSOR_ROLES,
   LANDING_ASSESSMENT_EDIT_ROLES,
+  CONTINUOUS_IMPROVEMENT_ROLES,
+  SURVEY_FILL_ROLES,
   CHECK_ACCESS_TYPES,
   FLIGHT_CREATOR_ROLES,
   requireRole,

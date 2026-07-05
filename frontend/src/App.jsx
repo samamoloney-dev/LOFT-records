@@ -11,7 +11,9 @@ import { Crew } from './pages/Crew';
 import { CrewDetail } from './pages/CrewDetail';
 import { CurrencyOverview } from './pages/CurrencyOverview';
 import { SyllabusAdmin } from './pages/SyllabusAdmin';
+import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { formatUserRole } from './lib/format';
+import { CONTINUOUS_IMPROVEMENT_ROLES } from './lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'CA_CHECKER', 'SIMULATOR_ONLY'];
@@ -26,6 +28,7 @@ function Shell({ children }) {
         {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
+        {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Staff</NavLink>}
@@ -67,6 +70,7 @@ export default function App() {
                 <Route path="/crew" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><Crew /></ProtectedRoute>} />
                 <Route path="/crew/:id" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><CrewDetail /></ProtectedRoute>} />
                 <Route path="/currency" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN']}><CurrencyOverview /></ProtectedRoute>} />
+                <Route path="/continuous-improvement" element={<ProtectedRoute roles={CONTINUOUS_IMPROVEMENT_ROLES}><ContinuousImprovement /></ProtectedRoute>} />
               </Routes>
             </Shell>
           </ProtectedRoute>

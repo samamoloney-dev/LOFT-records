@@ -14,3 +14,11 @@ export const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 // but not edit it. Mirrors backend/src/middleware/roles.js's
 // LANDING_ASSESSMENT_EDIT_ROLES.
 export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
+
+// Continuous Improvement (post-IPC/PC survey + trend analytics). The
+// analytics tab is HOTC/HOFO only (deliberately excludes Flight Ops
+// Admin), but the survey itself can be filled in by anyone who can
+// conduct a RECURRENT_SIMULATOR check. Mirrors
+// backend/src/middleware/roles.js's CONTINUOUS_IMPROVEMENT_ROLES/SURVEY_FILL_ROLES.
+export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO'];
+export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'SIMULATOR_ONLY'];

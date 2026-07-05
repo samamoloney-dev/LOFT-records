@@ -8,11 +8,89 @@ import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
+import { SURVEY_FILL_ROLES } from '../lib/roles';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+
+// Continuous Improvement: once this check is completed, whoever conducted
+// it rates the candidate 1-5 on a HOTC/HOFO-managed question bank, so
+// trends in weak areas can be tracked over time (see
+// frontend/src/pages/ContinuousImprovement.jsx). Not shown to the
+// candidate - this only ever renders inside the staff-facing check detail.
+function CandidateSurvey({ checkId }) {
+  const { user } = useAuth();
+  const canFill = SURVEY_FILL_ROLES.includes(user.role);
+  const [questions, setQuestions] = useState([]);
+  const [survey, setSurvey] = useState(null);
+  const [scores, setScores] = useState({});
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/survey/questions').then(setQuestions).catch(() => {});
+    api.get(`/api/survey/check/${checkId}`)
+      .then((d) => { setSurvey(d.survey); setScores(d.survey?.responses || {}); })
+      .catch((e) => setError(e.message));
+  }
+  useEffect(load, [checkId]);
+
+  const locked = !canFill || !!survey?.submittedAt;
+
+  async function setScore(questionId, score) {
+    const nextScores = { ...scores, [questionId]: score };
+    setScores(nextScores);
+    setError(null);
+    try {
+      const updated = await api.put(`/api/survey/check/${checkId}`, {
+        responses: Object.entries(nextScores).map(([qId, s]) => ({ questionId: qId, score: s })),
+      });
+      setSurvey(updated.survey);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function submit() {
+    setError(null);
+    try {
+      const updated = await api.post(`/api/survey/check/${checkId}/submit`);
+      setSurvey(updated.survey);
+    } catch (err) { setError(err.message); }
+  }
+
+  if (questions.length === 0) return null;
+  const allAnswered = questions.every((q) => scores[q.id] !== undefined);
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Continuous Improvement Survey</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Rate the candidate 1 (needs significant improvement) to 5 (excellent) on each area - feeds HOTC/HOFO trend analytics only, not shown to the candidate.
+      </div>
+      {questions.map((q) => (
+        <div key={q.id} className="row" style={{ cursor: 'default' }}>
+          <div style={{ flex: 1, fontSize: 13 }}>{q.text}</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                disabled={locked}
+                className={`tick-btn ${scores[q.id] === n ? 'active-pass' : ''}`}
+                onClick={() => setScore(q.id, n)}
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {survey?.submittedAt ? (
+        <div className="badge pass" style={{ marginTop: 8 }}>Submitted</div>
+      ) : (
+        canFill && <button className="primary" style={{ marginTop: 8 }} onClick={submit} disabled={!allAnswered}>Submit survey</button>
+      )}
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
 
 // IPC and Proficiency Check draw from different check-access ticks even
 // though they're the same underlying record type.
@@ -380,6 +458,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             </select>
           </div>
         </div>
+        {selected.completedAt && <CandidateSurvey checkId={selected.id} />}
         {error && <div className="error-text">{error}</div>}
       </div>
     );

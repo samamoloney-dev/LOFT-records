@@ -68,14 +68,28 @@ function dueInfo(dueDate, opts) {
   return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts) };
 }
 
+// Quick-add lets an admin seed a crew member's currency clock with a date
+// (e.g. "last EP date") without a real check ever having been conducted
+// through this app - stored directly on crew_members (seed_ep_date etc.),
+// not as a synthetic checks row. Once a real check is completed, its date
+// naturally takes over since it'll be later than the one-off seed date.
+function latestOf(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return new Date(a) > new Date(b) ? a : b;
+}
+
 async function withCurrency(member) {
   if (member.type === 'PILOT') {
-    const [ep, ipc, pc, lineCheckCount] = await Promise.all([
+    const [epChk, ipcChk, pcChk, lineCheckCount] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
       completedPilotLineCheckCount(member.id),
     ]);
+    const ep = latestOf(epChk, member.seedEpDate);
+    const ipc = latestOf(ipcChk, member.seedIpcDate);
+    const pc = latestOf(pcChk, member.seedPcDate);
     const pcWin = pcWindow(pc);
     return {
       ...member,
@@ -88,10 +102,12 @@ async function withCurrency(member) {
     };
   }
 
-  const [ep, lineCheck] = await Promise.all([
+  const [epChk, lineCheckChk] = await Promise.all([
     lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
     lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
   ]);
+  const ep = latestOf(epChk, member.seedEpDate);
+  const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
   return {
     ...member,
     currency: {
@@ -127,9 +143,10 @@ const quickAddSchema = z.object({
   type: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1),
-  // Seed dates - each (other than the pilot Line Check anchor) becomes an
-  // ordinary completed check row so the same due-date queries above pick it
-  // up like any other check would.
+  // Seed dates - stored directly on crew_members (see 0028 migration) and
+  // merged with any real completed check by withCurrency, rather than
+  // creating a synthetic checks row for a check that was never conducted
+  // through this app.
   lastEpDate: z.string().optional(),
   lastIpcDate: z.string().optional(),
   lastPcDate: z.string().optional(),
@@ -145,44 +162,25 @@ router.post('/', async (req, res) => {
   const fleetError = fleetOrderError(d.type, d.fleets);
   if (fleetError) return res.status(400).json({ error: fleetError });
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows } = await client.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
-      [d.firstName, d.lastName, d.type, d.role, d.fleets, d.type === 'PILOT' ? (d.lineCheckAnchorDate || null) : null],
-    );
-    const member = serializeCrewMember(rows[0]);
-    const name = `${d.firstName} ${d.lastName}`;
-
-    async function seed(checkType, completedAt, variant) {
-      if (!completedAt) return;
-      await client.query(
-        `INSERT INTO checks (crew_member_id, crew_member_name, check_type, applies_to, result, completed_at, details)
-         VALUES ($1, $2, $3, $4, 'PASS', $5, $6)`,
-        [member.id, name, checkType, d.type, completedAt, JSON.stringify(variant ? { name, variant } : { name })],
-      );
-    }
-
-    if (d.type === 'PILOT') {
-      await seed('EMERGENCY_PROCEDURES', d.lastEpDate);
-      await seed('RECURRENT_SIMULATOR', d.lastIpcDate, 'IPC_PC');
-      await seed('RECURRENT_SIMULATOR', d.lastPcDate, 'PC');
-    } else {
-      await seed('EMERGENCY_PROCEDURES', d.lastEpDate);
-      await seed('CABIN_ATTENDANT_LINE_CHECK', d.lastLineCheckDate);
-    }
-
-    await client.query('COMMIT');
-    await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id });
-    res.status(201).json(await withCurrency(member));
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const { rows } = await pool.query(
+    `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date)
+     VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10) RETURNING *`,
+    [
+      d.firstName,
+      d.lastName,
+      d.type,
+      d.role,
+      d.fleets,
+      d.type === 'PILOT' ? (d.lineCheckAnchorDate || null) : null,
+      d.lastEpDate || null,
+      d.type === 'PILOT' ? (d.lastIpcDate || null) : null,
+      d.type === 'PILOT' ? (d.lastPcDate || null) : null,
+      d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
+    ],
+  );
+  const member = serializeCrewMember(rows[0]);
+  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id });
+  res.status(201).json(await withCurrency(member));
 });
 
 const updateSchema = z.object({

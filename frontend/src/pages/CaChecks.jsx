@@ -166,6 +166,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
                   {['S', 'X', 'N'].map((v) => (
                     <button
                       key={v}
+                      disabled={!!selected.completedAt}
                       className={`tick-btn ${d.items?.[i] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
                       onClick={() => patchDetails(selected, { items: { ...d.items, [i]: d.items?.[i] === v ? undefined : v } })}
                     >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N/A'}</button>
@@ -175,10 +176,10 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
               {item === 'In-Flight Service' && (
                 <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 12 }}>
                   <label style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
-                    <input type="radio" checked={d.serviceMode === 'demo'} onChange={() => patchDetails(selected, { serviceMode: 'demo' })} /> Demonstrated
+                    <input type="radio" disabled={!!selected.completedAt} checked={d.serviceMode === 'demo'} onChange={() => patchDetails(selected, { serviceMode: 'demo' })} /> Demonstrated
                   </label>
                   <label style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
-                    <input type="radio" checked={d.serviceMode === 'desc'} onChange={() => patchDetails(selected, { serviceMode: 'desc' })} /> Described
+                    <input type="radio" disabled={!!selected.completedAt} checked={d.serviceMode === 'desc'} onChange={() => patchDetails(selected, { serviceMode: 'desc' })} /> Described
                   </label>
                 </div>
               )}
@@ -195,11 +196,11 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
                 <div className="grid2" style={{ gap: 6 }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Score</label>
-                    <input defaultValue={d.nts?.[`score${i}`] || ''} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`score${i}`]: e.target.value } })} />
+                    <input defaultValue={d.nts?.[`score${i}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`score${i}`]: e.target.value } })} />
                   </div>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Code</label>
-                    <input defaultValue={d.nts?.[`code${i}`] || ''} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`code${i}`]: e.target.value } })} />
+                    <input defaultValue={d.nts?.[`code${i}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`code${i}`]: e.target.value } })} />
                   </div>
                 </div>
               </div>
@@ -210,12 +211,28 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div className="card">
           <div className="field">
             <label>Comments</label>
-            <textarea defaultValue={d.comments} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 70 }} />
+            <textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 70 }} />
           </div>
+          <div className="grid2">
+            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
+          </div>
+          <div className="grid2">
+            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+          </div>
+        </div>
+
+        {!selected.completedAt && (
+          <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
+            DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
+          </div>
+        )}
+        <div className="card">
           <div className="grid2">
             <div className="field">
               <label>Overall assessment</label>
-              <select value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+              <select disabled={!!selected.completedAt} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
                 <option value="">—</option>
                 <option value="PASS">PASS</option>
                 <option value="FAIL">FAIL</option>
@@ -223,16 +240,8 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             </div>
             <div className="field">
               <label>Overall score (1–5)</label>
-              <input type="number" min="1" max="5" defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
+              <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
             </div>
-          </div>
-          <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
-            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
-          </div>
-          <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
           </div>
         </div>
         {error && <div className="error-text">{error}</div>}

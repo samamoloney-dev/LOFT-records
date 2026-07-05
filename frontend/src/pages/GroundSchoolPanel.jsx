@@ -23,14 +23,11 @@ function extraFieldsForCategory(category) {
     return [{ key: 'completedDate', label: 'Completed', type: 'date', width: 150 }];
   }
   if (category === 'Dash 8 Ground School (Module CBT)' || category.includes('Instructor-led')) {
-    const fields = [
+    return [
       { key: 'completedDate', label: 'Completed', type: 'date', width: 150 },
       { key: 'passMark', label: 'Pass mark %', type: 'number', width: 100 },
+      { key: 'attempts', label: 'Attempts', type: 'select', options: [1, 2, 3], width: 90 },
     ];
-    if (category.includes('Instructor-led')) {
-      fields.push({ key: 'attempts', label: 'Attempts', type: 'select', options: [1, 2, 3], width: 90 });
-    }
-    return fields;
   }
   if (category === 'Observation Flights') {
     return [

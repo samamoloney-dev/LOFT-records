@@ -176,6 +176,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
                 {['S', 'X', 'N'].map((v) => (
                   <button
                     key={v}
+                    disabled={!!selected.completedAt}
                     className={`tick-btn ${d.items?.[i] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
                     onClick={() => patchDetails(selected, { items: { ...d.items, [i]: d.items?.[i] === v ? undefined : v } })}
                   >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N'}</button>
@@ -188,35 +189,21 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <div className="card">
           <div className="field">
             <label>Life Jacket Training (Wet Drill) date — initial qualification only</label>
-            <input type="date" defaultValue={d.lifeJacketDate} onBlur={(e) => patchDetails(selected, { lifeJacketDate: e.target.value })} />
+            <input type="date" defaultValue={d.lifeJacketDate} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { lifeJacketDate: e.target.value })} />
           </div>
         </div>
 
         <div className="card">
           <div className="field">
             <label>Scenarios selected for the assessment</label>
-            <textarea defaultValue={d.scenarios} onBlur={(e) => patchDetails(selected, { scenarios: e.target.value })} style={{ minHeight: 60 }} />
+            <textarea defaultValue={d.scenarios} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { scenarios: e.target.value })} style={{ minHeight: 60 }} />
           </div>
           <div className="field">
             <label>Comments</label>
-            <textarea defaultValue={d.comments} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} />
+            <textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} />
           </div>
           <div className="grid2">
-            <div className="field">
-              <label>Overall assessment</label>
-              <select value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
-                <option value="">—</option>
-                <option value="PASS">PASS</option>
-                <option value="FAIL">FAIL</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Overall score (1–5)</label>
-              <input type="number" min="1" max="5" defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
-            </div>
-          </div>
-          <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
@@ -225,8 +212,30 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
             Applicant in each and every procedure carried out.
           </div>
           <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+          </div>
+        </div>
+
+        {!selected.completedAt && (
+          <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
+            DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
+          </div>
+        )}
+        <div className="card">
+          <div className="grid2">
+            <div className="field">
+              <label>Overall assessment</label>
+              <select disabled={!!selected.completedAt} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+                <option value="">—</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Overall score (1–5)</label>
+              <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
+            </div>
           </div>
         </div>
         {error && <div className="error-text">{error}</div>}

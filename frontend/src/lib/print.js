@@ -31,6 +31,16 @@ const PRINT_STYLES = `
   .pass { background: #dff5e1; color: #14632f; }
   .fail { background: #fbe1e1; color: #8f1d1d; }
   .page-break { break-before: page; }
+
+  /* Denser rendering for long item-checklist forms (e.g. IPC/PC) so they
+     fit their intended page count instead of running several pages long. */
+  .compact h1 { font-size: 15px; margin-bottom: 2px; }
+  .compact .meta { font-size: 10px; margin-bottom: 6px; padding-bottom: 4px; }
+  .compact h2 { font-size: 10px; margin: 6px 0 3px; padding: 3px 6px; }
+  .compact table { margin-bottom: 6px; font-size: 9.5px; }
+  .compact td, .compact th { padding: 2px 6px; line-height: 1.2; }
+  .columns-2 { column-count: 2; column-gap: 16px; }
+  .compact-section { break-inside: avoid; -webkit-column-break-inside: avoid; }
 `;
 
 export function openPrintWindow(title, bodyHtml) {

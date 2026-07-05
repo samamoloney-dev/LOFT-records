@@ -25,7 +25,7 @@ const emptyDetails = (variant) => ({
   seatCheck: [],
   testNumber: '',
   applicantArn: '', applicantName: '', applicantSig: '',
-  fstdDate: '', fstdNumber: '', fstdType: '', groundTime: '', simulatorTime: '',
+  fstdNumber: '', fstdType: '', groundTime: '', simulatorTime: '',
   examinerArn: '', examinerName: '', examinerSig: '',
   examinerComments: '',
 });
@@ -81,6 +81,10 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         ...emptyDetails(variant),
         name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn,
         examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
+        // Carry the candidate's name/ARN (already given when the check was
+        // assigned) straight into the Applicant section below, instead of
+        // asking for the same information twice.
+        applicantName: newForm.name, applicantArn: newForm.arn,
       };
       await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId, details });
       setCreating(false);
@@ -156,42 +160,51 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
 
     const recurrentRows = RECURRENT_TRAINING_ITEMS.map((item, i) => [item.description, resultMark(results[`rt-${i}`])]);
     const knowledgeRows = isIpc ? KNOWLEDGE_ITEMS.map((item, i) => [item.description, resultMark(results[`kn-${i}`])]) : [];
+    // Wrapped in compact-section so the 2-column layout below never splits
+    // a table across the column break, and columns-2 so the long checklist
+    // (up to ~56 rows for IPC) uses the page's full width instead of just
+    // running down a single narrow column for several pages.
+    const recurrentHtml = `<div class="compact-section">${section('Recurrent Training (121.50 (1B))', recurrentRows)}</div>`;
+    const knowledgeHtml = isIpc ? `<div class="compact-section">${section('Knowledge requirements (Ground Component)', knowledgeRows)}</div>` : '';
     const flightHtml = flightSections
-      .map((s) => section(`${s.section} (Flight Component)`, s.allItems.map((item, i) => [item.description, resultMark(results[`fc-${s.section}-${i}`])])))
+      .map((s) => `<div class="compact-section">${section(`${s.section} (Flight Component)`, s.allItems.map((item, i) => [item.description, resultMark(results[`fc-${s.section}-${i}`])]))}</div>`)
       .join('');
 
     const html = `
-      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'}</h1>
-      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''} · Assessor: ${d.assessor || '—'}</div>
-      ${section('Assignment', [
-        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
-      ])}
-      ${section('Recurrent Training (121.50 (1B))', recurrentRows)}
-      ${isIpc ? section('Knowledge requirements (Ground Component)', knowledgeRows) : ''}
-      ${flightHtml}
-      ${section('Seat check conducted in', [['Seats', seatCheck.join(', ') || '—']])}
+      <div class="compact">
+        <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'}</h1>
+        <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''} · Assessor: ${d.assessor || '—'}</div>
+        ${section('Assignment', [
+          ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+        ])}
+        <div class="columns-2">
+          ${recurrentHtml}
+          ${knowledgeHtml}
+          ${flightHtml}
+        </div>
+        ${section('Seat check conducted in', [['Seats', seatCheck.join(', ') || '—']])}
 
-      <div class="page-break"></div>
-      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
-      ${section('Applicant', [
-        ['Test number', d.testNumber],
-        ['Applicant ARN', d.applicantArn],
-        ['Applicant name', d.applicantName],
-      ])}
-      ${section('FSTD', [
-        ['Date', d.fstdDate],
-        ['FSTD number', d.fstdNumber],
-        ['FSTD type', d.fstdType],
-        ['Ground time', d.groundTime],
-        ['Simulator time', d.simulatorTime],
-      ])}
-      ${section('Examiner', [
-        ['Examiner ARN', d.examinerArn],
-        ['Examiner name', d.examinerName],
-        ["Examiner's comments", d.examinerComments],
-      ])}
-      ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
-      ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
+        <div class="page-break"></div>
+        <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
+        ${section('Applicant', [
+          ['Test number', d.testNumber],
+          ['Applicant ARN', d.applicantArn],
+          ['Applicant name', d.applicantName],
+        ])}
+        ${section('FSTD', [
+          ['FSTD number', d.fstdNumber],
+          ['FSTD type', d.fstdType],
+          ['Ground time', d.groundTime],
+          ['Simulator time', d.simulatorTime],
+        ])}
+        ${section('Examiner', [
+          ['Examiner ARN', d.examinerArn],
+          ['Examiner name', d.examinerName],
+          ["Examiner's comments", d.examinerComments],
+        ])}
+        ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
+        ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
+      </div>
     `;
     openPrintWindow(`${VARIANT_LABELS[d.variant] || 'Proficiency Check'} - ${d.name || ''}`, html);
   }
@@ -290,14 +303,13 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>FSTD</div>
           <div className="grid2">
-            <div className="field"><label>Date</label><input type="date" defaultValue={d.fstdDate} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdDate: e.target.value })} /></div>
             <div className="field"><label>FSTD number</label><input defaultValue={d.fstdNumber} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdNumber: e.target.value })} /></div>
+            <div className="field"><label>FSTD type</label><input defaultValue={d.fstdType} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdType: e.target.value })} /></div>
           </div>
           <div className="grid2">
-            <div className="field"><label>FSTD type</label><input defaultValue={d.fstdType} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdType: e.target.value })} /></div>
             <div className="field"><label>Ground time</label><input defaultValue={d.groundTime} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { groundTime: e.target.value })} /></div>
+            <div className="field"><label>Simulator time</label><input defaultValue={d.simulatorTime} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { simulatorTime: e.target.value })} /></div>
           </div>
-          <div className="field"><label>Simulator time</label><input defaultValue={d.simulatorTime} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { simulatorTime: e.target.value })} /></div>
         </div>
 
         <div className="card">
@@ -310,6 +322,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           <div className="field"><label>Examiner's comments</label><textarea defaultValue={d.examinerComments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerComments: e.target.value })} style={{ minHeight: 70 }} /></div>
         </div>
 
+        {!selected.completedAt && (
+          <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
+            DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
+          </div>
+        )}
         <div className="card">
           <div className="field">
             <label>Overall assessment</label>

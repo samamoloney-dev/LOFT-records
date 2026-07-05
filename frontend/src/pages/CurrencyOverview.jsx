@@ -21,6 +21,32 @@ const STATUS_STYLES = {
 
 const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon', ok: 'Current' };
 
+const STATUS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'due_soon', label: 'Due Soon' },
+  { key: 'ok', label: 'Current' },
+];
+
+function StatusFilterBar({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem' }}>
+      {STATUS_FILTERS.map((f) => (
+        <div
+          key={f.key}
+          onClick={() => onChange(f.key)}
+          style={{
+            padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+            cursor: 'pointer', fontSize: 13,
+            background: value === f.key ? 'var(--bg-accent)' : 'var(--surface-2)',
+            color: value === f.key ? 'var(--text-accent)' : 'inherit',
+          }}
+        >{f.label}</div>
+      ))}
+    </div>
+  );
+}
+
 function StatusPill({ status }) {
   return (
     <span style={{ ...STATUS_STYLES[status], display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
@@ -42,6 +68,7 @@ function currencyRows(member) {
       fleet: member.fleets.map(formatFleet).join(', '),
       item: CURRENCY_LABELS[key] || key,
       dueDate: info.dueDate,
+      completedDate: info.completedDate,
       status: info.status,
     }));
 }
@@ -50,6 +77,7 @@ export function CurrencyOverview() {
   const [rows, setRows] = useState([]);
   const [competencyRows, setCompetencyRows] = useState([]);
   const [error, setError] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -78,18 +106,24 @@ export function CurrencyOverview() {
 
   if (error) return <div className="error-text">{error}</div>;
 
+  const filteredRows = statusFilter === 'all' ? rows : rows.filter((r) => r.status === statusFilter);
+  const filteredCompetencyRows = statusFilter === 'all' ? competencyRows : competencyRows.filter((c) => c.status === statusFilter);
+
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
         Every crew member's recurrent checks, most overdue first
       </div>
+      <StatusFilterBar value={statusFilter} onChange={setStatusFilter} />
 
-      {rows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No crew currency data yet.</div>}
-      {rows.map((r, i) => (
+      {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No crew currency data matches this filter.</div>}
+      {filteredRows.map((r, i) => (
         <div key={i} className="card row" onClick={() => navigate(`/crew/${r.memberId}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{r.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.fleet} · {r.item}{r.dueDate ? ` · Due ${formatDate(r.dueDate)}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)}` : ''}
+            </div>
           </div>
           <StatusPill status={r.status} />
         </div>
@@ -98,8 +132,8 @@ export function CurrencyOverview() {
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '1.5rem 0 1rem' }}>
         Competencies due within 30 days or overdue
       </div>
-      {competencyRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing due soon.</div>}
-      {competencyRows.map((c) => (
+      {filteredCompetencyRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing matches this filter.</div>}
+      {filteredCompetencyRows.map((c) => (
         <div key={c.id} className="card row" onClick={() => navigate(`/crew/${c.memberId}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.memberName}</div>

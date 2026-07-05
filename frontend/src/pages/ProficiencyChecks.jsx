@@ -170,6 +170,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       .map((s) => `<div class="compact-section">${section(`${s.section} (Flight Component)`, s.allItems.map((item, i) => [item.description, resultMark(results[`fc-${s.section}-${i}`])]))}</div>`)
       .join('');
 
+    // Only page 1 (the long checklists) needs the compact/2-column
+    // treatment to fit its page count - page 2 is four short sections and
+    // renders fine at normal spacing. Applying compact spacing there too
+    // previously crowded rows badly enough that values visually shifted
+    // onto the wrong labels.
     const html = `
       <div class="compact">
         <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'}</h1>
@@ -183,28 +188,28 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           ${flightHtml}
         </div>
         ${section('Seat check conducted in', [['Seats', seatCheck.join(', ') || '—']])}
-
-        <div class="page-break"></div>
-        <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
-        ${section('Applicant', [
-          ['Test number', d.testNumber],
-          ['Applicant ARN', d.applicantArn],
-          ['Applicant name', d.applicantName],
-        ])}
-        ${section('FSTD', [
-          ['FSTD number', d.fstdNumber],
-          ['FSTD type', d.fstdType],
-          ['Ground time', d.groundTime],
-          ['Simulator time', d.simulatorTime],
-        ])}
-        ${section('Examiner', [
-          ['Examiner ARN', d.examinerArn],
-          ['Examiner name', d.examinerName],
-          ["Examiner's comments", d.examinerComments],
-        ])}
-        ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
-        ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
       </div>
+
+      <div class="page-break"></div>
+      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
+      ${section('Applicant', [
+        ['Test number', d.testNumber],
+        ['Applicant ARN', d.applicantArn],
+        ['Applicant name', d.applicantName],
+      ])}
+      ${section('FSTD', [
+        ['FSTD number', d.fstdNumber],
+        ['FSTD type', d.fstdType],
+        ['Ground time', d.groundTime],
+        ['Simulator time', d.simulatorTime],
+      ])}
+      ${section('Examiner', [
+        ['Examiner ARN', d.examinerArn],
+        ['Examiner name', d.examinerName],
+        ["Examiner's comments", d.examinerComments],
+      ])}
+      ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
+      ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
     `;
     openPrintWindow(`${VARIANT_LABELS[d.variant] || 'Proficiency Check'} - ${d.name || ''}`, html);
   }

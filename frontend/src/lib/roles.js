@@ -8,3 +8,9 @@ export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER'
 // actually fly with the candidate before the simulator. Mirrors
 // backend/src/middleware/roles.js's PRE_SIM_ASSESSOR_ROLES.
 export const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
+
+// The Initial Take-Off & Landing Assessment can only be filled in/signed off
+// by a Check Captain or Examiner - HOTC/HOFO/Flight Ops Admin can view it
+// but not edit it. Mirrors backend/src/middleware/roles.js's
+// LANDING_ASSESSMENT_EDIT_ROLES.
+export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];

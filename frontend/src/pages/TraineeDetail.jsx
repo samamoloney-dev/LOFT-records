@@ -7,6 +7,7 @@ import { CtlForm } from './CtlForm';
 import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
+import { LandingAssessmentForm } from './LandingAssessmentForm';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 
@@ -19,15 +20,26 @@ const FLIGHT_CREATOR_ROLES = [
   'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
 ];
 
-const PILOT_TABS = [
-  { key: 'groundSchool', label: 'Ground School' },
-  { key: 'flights', label: 'Flights' },
-  { key: 'syllabus', label: 'Syllabus' },
-  { key: 'discussion', label: 'Line Training Discussion' },
-  { key: 'phase4', label: 'Phase 4' },
-  { key: 'phase', label: 'Phase Completion' },
-  { key: 'ctl', label: 'Check to Line' },
-];
+// The Landing Assessment tab only applies to Fokker 100/Dash 8 pilot
+// trainees (Metro 23 doesn't require it) - appended conditionally rather
+// than being a fixed tab like the rest.
+const LANDING_ASSESSMENT_FLEETS = ['FOKKER_100', 'DASH_8'];
+
+function pilotTabs(fleet) {
+  const tabs = [
+    { key: 'groundSchool', label: 'Ground School' },
+    { key: 'flights', label: 'Flights' },
+    { key: 'syllabus', label: 'Syllabus' },
+    { key: 'discussion', label: 'Line Training Discussion' },
+    { key: 'phase4', label: 'Phase 4' },
+    { key: 'phase', label: 'Phase Completion' },
+    { key: 'ctl', label: 'Check to Line' },
+  ];
+  if (LANDING_ASSESSMENT_FLEETS.includes(fleet)) {
+    tabs.push({ key: 'landingAssessment', label: 'Landing Assessment' });
+  }
+  return tabs;
+}
 
 // Cabin attendants have no phase concept - the syllabus is signed off
 // cumulatively across training flights rather than gated by phase.
@@ -192,7 +204,7 @@ export function TraineeDetail() {
   if (!trainee) return <div>Loading…</div>;
 
   const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
-  const tabs = isCabinAttendant ? CA_TABS : PILOT_TABS;
+  const tabs = isCabinAttendant ? CA_TABS : pilotTabs(trainee.fleet);
 
   return (
     <div>
@@ -235,6 +247,7 @@ export function TraineeDetail() {
       {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} fleet={trainee.fleet} onCompleted={load} />}
+      {tab === 'landingAssessment' && !isCabinAttendant && <LandingAssessmentForm traineeId={id} fleet={trainee.fleet} />}
     </div>
   );
 }

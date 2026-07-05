@@ -36,9 +36,9 @@ const PRINT_STYLES = `
      fit their intended page count instead of running several pages long. */
   .compact h1 { font-size: 15px; margin-bottom: 2px; }
   .compact .meta { font-size: 10px; margin-bottom: 6px; padding-bottom: 4px; }
-  .compact h2 { font-size: 10px; margin: 6px 0 3px; padding: 3px 6px; }
-  .compact table { margin-bottom: 6px; font-size: 9.5px; }
-  .compact td, .compact th { padding: 2px 6px; line-height: 1.2; }
+  .compact h2 { font-size: 10px; margin: 8px 0 0; padding: 3px 6px; }
+  .compact table { margin: 4px 0 8px; font-size: 9.5px; }
+  .compact td, .compact th { padding: 3px 6px; line-height: 1.3; }
   .columns-2 { column-count: 2; column-gap: 16px; }
   .compact-section { break-inside: avoid; -webkit-column-break-inside: avoid; }
 `;

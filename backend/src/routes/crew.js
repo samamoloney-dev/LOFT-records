@@ -63,9 +63,10 @@ async function completedPilotLineCheckCount(crewMemberId) {
   return rows[0]?.n || 0;
 }
 
-function dueInfo(dueDate, opts) {
-  if (!dueDate) return { dueDate: null, status: 'overdue' };
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts) };
+function dueInfo(dueDate, completedDate, opts) {
+  const completed = completedDate ? new Date(completedDate).toISOString() : null;
+  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts), completedDate: completed };
 }
 
 // Quick-add lets an admin seed a crew member's currency clock with a date
@@ -81,11 +82,12 @@ function latestOf(a, b) {
 
 async function withCurrency(member) {
   if (member.type === 'PILOT') {
-    const [epChk, ipcChk, pcChk, lineCheckCount] = await Promise.all([
+    const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
       completedPilotLineCheckCount(member.id),
+      lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const ipc = latestOf(ipcChk, member.seedIpcDate);
@@ -94,10 +96,12 @@ async function withCurrency(member) {
     return {
       ...member,
       currency: {
-        emergencyProcedures: dueInfo(nextDueRolling(ep)),
-        ipc: dueInfo(nextDueRolling(ipc)),
-        proficiencyCheck: pcWin ? dueInfo(pcWin.targetDue, { hardExpiry: pcWin.hardExpiry }) : dueInfo(null),
-        lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount)),
+        emergencyProcedures: dueInfo(nextDueRolling(ep), ep),
+        ipc: dueInfo(nextDueRolling(ipc), ipc),
+        proficiencyCheck: pcWin ? dueInfo(pcWin.targetDue, pc, { hardExpiry: pcWin.hardExpiry }) : dueInfo(null, pc),
+        // Falls back to the initial Check to Line anchor date when no
+        // recurrent Line Check has ever been completed yet.
+        lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate),
       },
     };
   }
@@ -111,8 +115,8 @@ async function withCurrency(member) {
   return {
     ...member,
     currency: {
-      emergencyProcedures: dueInfo(nextDueRolling(ep)),
-      lineCheck: dueInfo(nextDueRolling(lineCheck)),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck),
     },
   };
 }

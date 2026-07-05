@@ -13,6 +13,12 @@ const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_T
 // actually fly with the candidate before the simulator.
 const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 
+// The Initial Take-Off & Landing Assessment (SA_575, Fokker 100/Dash 8
+// pilot trainees) can only be filled in and signed off by a Check Captain
+// or Examiner - unlike Check to Line, HOTC/HOFO/Flight Ops Admin do not
+// get an editing exception here, only view access via canAccessTraineeRecord.
+const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
+
 // Staff-profile check access ticks (Staff page). These decide which staff
 // show up as selectable assessors/assignees on each check form - they don't
 // change who can access the Checks tab itself (still role-based, above).
@@ -79,6 +85,7 @@ module.exports = {
   CA_ONLY_ROLES,
   TRAINER_ROLES,
   PRE_SIM_ASSESSOR_ROLES,
+  LANDING_ASSESSMENT_EDIT_ROLES,
   CHECK_ACCESS_TYPES,
   FLIGHT_CREATOR_ROLES,
   requireRole,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -178,6 +178,11 @@ export function TraineeDetail() {
   const [tab, setTab] = useState('flights');
   const [promoting, setPromoting] = useState(false);
   const [promoted, setPromoted] = useState(false);
+  // null = not loaded yet for this trainee, used to gate the default-tab
+  // computation below until real data has arrived.
+  const [groundSchoolItems, setGroundSchoolItems] = useState(null);
+  const [phaseCompletions, setPhaseCompletions] = useState(null);
+  const defaultTabSetForId = useRef(null);
 
   function load() {
     api.get(`/api/trainees/${id}`).then(setTrainee).catch((e) => setError(e.message));
@@ -186,6 +191,47 @@ export function TraineeDetail() {
   }
 
   useEffect(load, [id]);
+
+  useEffect(() => {
+    setGroundSchoolItems(null);
+    setPhaseCompletions(null);
+  }, [id]);
+
+  // Ground school completeness and phase sign-off status drive which tab
+  // opens by default (see the effect below) - only relevant for pilots,
+  // since cabin attendants have neither concept.
+  useEffect(() => {
+    if (!trainee || trainee.type === 'CABIN_ATTENDANT') return;
+    api.get(`/api/ground-school/trainee/${id}`).then(setGroundSchoolItems).catch(() => setGroundSchoolItems([]));
+    api.get(`/api/syllabus/trainee/${id}/phase-completions`).then(setPhaseCompletions).catch(() => setPhaseCompletions([]));
+  }, [id, trainee?.type]);
+
+  // Default tab follows the trainee's actual progress: Ground School until
+  // every required item is ticked, then Flights, then Phase 4 once Phase 3
+  // is signed off, then Check to Line once Phase 4 is signed off in Phase
+  // Completion. Computed once per trainee visit (via the ref guard) so it
+  // doesn't fight with the user's own tab clicks afterward.
+  useEffect(() => {
+    if (!trainee || defaultTabSetForId.current === id) return;
+
+    if (trainee.type === 'CABIN_ATTENDANT') {
+      defaultTabSetForId.current = id;
+      return;
+    }
+    if (groundSchoolItems === null || phaseCompletions === null) return;
+
+    const outstanding = groundSchoolItems.filter((i) => i.required && !i.completedAt && !i.details?.na);
+    const phase3Done = phaseCompletions.find((c) => c.phase === 3)?.completedAt;
+    const phase4Done = phaseCompletions.find((c) => c.phase === 4)?.completedAt;
+
+    let defaultTab = 'groundSchool';
+    if (outstanding.length === 0) defaultTab = 'flights';
+    if (phase3Done) defaultTab = 'phase4';
+    if (phase4Done) defaultTab = 'ctl';
+
+    setTab(defaultTab);
+    defaultTabSetForId.current = id;
+  }, [trainee, groundSchoolItems, phaseCompletions, id]);
 
   async function addToCrewRoster() {
     setError(null);

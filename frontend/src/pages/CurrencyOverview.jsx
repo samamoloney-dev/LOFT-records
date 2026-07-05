@@ -83,7 +83,7 @@ function currencyRows(member) {
     .filter(([, info]) => info)
     .map(([key, info]) => ({
       memberId: member.id,
-      name: `${member.firstName} ${member.lastName}`,
+      name: member.name,
       fleet: member.fleets.map(formatFleet).join(', '),
       item: CURRENCY_LABELS[key] || key,
       dueDate: info.dueDate,
@@ -112,7 +112,7 @@ export function CurrencyOverview() {
         setRows(flattened);
 
         const competencyLists = await Promise.all(
-          members.map((m) => api.get(`/api/crew/${m.id}/competencies`).then((cs) => cs.map((c) => ({ ...c, memberId: m.id, memberName: `${m.firstName} ${m.lastName}` }))).catch(() => [])),
+          members.map((m) => api.get(`/api/crew/${m.id}/competencies`).then((cs) => cs.map((c) => ({ ...c, memberId: m.id, memberName: m.name }))).catch(() => [])),
         );
         const dueSoon = competencyLists
           .flat()

@@ -26,6 +26,35 @@ function canAccessCheckType(user, checkType) {
   return canAccessChecks(user);
 }
 
+// A Training Captain/Examiner who conducts an IPC/PC from the "Other Seat"
+// (the jump/observer position, per the seat-check note on that form)
+// demonstrates their own Right Hand Seat currency by doing so - if they
+// have a linked crew profile (see crew.js CREW_SELECT/user_id), their
+// "Right Hand Seat" competency is auto-revalidated on a rolling 12-month
+// basis rather than needing to be updated by hand. No-op if unlinked.
+async function revalidateRhsCompetency(assignedToUserId, completedAt) {
+  const { rows: crewRows } = await pool.query('SELECT id FROM crew_members WHERE user_id = $1', [assignedToUserId]);
+  if (crewRows.length === 0) return;
+  const crewMemberId = crewRows[0].id;
+
+  const completed = completedAt ? new Date(completedAt) : new Date();
+  const due = new Date(completed);
+  due.setDate(due.getDate() + 365);
+
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM crew_competencies WHERE crew_member_id = $1 AND name = 'Right Hand Seat' AND archived = false`,
+    [crewMemberId],
+  );
+  if (existing.length > 0) {
+    await pool.query('UPDATE crew_competencies SET completed_date = $1, due_date = $2 WHERE id = $3', [completed, due, existing[0].id]);
+  } else {
+    await pool.query(
+      `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date) VALUES ($1, 'Right Hand Seat', $2, $3)`,
+      [crewMemberId, completed, due],
+    );
+  }
+}
+
 router.get('/', async (req, res) => {
   const { traineeId, crewMemberId, checkType, archived } = req.query;
   if (checkType && !canAccessCheckType(req.user, checkType)) {
@@ -166,6 +195,14 @@ router.patch('/:id', async (req, res) => {
   );
   const updated = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
+
+  if (updated.checkType === 'RECURRENT_SIMULATOR' && d.result && updated.assignedTo) {
+    const seatCheck = Array.isArray(updated.details?.seatCheck) ? updated.details.seatCheck : [];
+    if (seatCheck.includes('Other Seat')) {
+      await revalidateRhsCompetency(updated.assignedTo, updated.completedAt);
+    }
+  }
+
   res.json(updated);
 });
 

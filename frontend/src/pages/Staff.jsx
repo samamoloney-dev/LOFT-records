@@ -21,6 +21,61 @@ const CHECK_ACCESS_OPTIONS = [
 
 const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });
 
+// Real per-aircraft FSTD facts (which simulator, its number/type) - set
+// once here by an admin, reused by the "Autofill FSTD" button on the
+// IPC/PC check form instead of being hardcoded or retyped every time.
+const FSTD_AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+
+function FstdPresetsPanel() {
+  const [presets, setPresets] = useState([]);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/fstd-presets').then(setPresets).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  const presetFor = (aircraftType) => presets.find((p) => p.aircraftType === aircraftType) || {};
+
+  async function save(aircraftType, patch) {
+    setError(null);
+    try {
+      const current = presetFor(aircraftType);
+      await api.put(`/api/fstd-presets/${encodeURIComponent(aircraftType)}`, {
+        fstdNumber: current.fstdNumber || '',
+        fstdType: current.fstdType || '',
+        ...patch,
+      });
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>FSTD presets</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Used by the "Autofill FSTD" button on IPC/PC check forms.
+      </div>
+      {FSTD_AIRCRAFT_TYPES.map((aircraftType) => {
+        const preset = presetFor(aircraftType);
+        return (
+          <div key={aircraftType} className="grid2" style={{ marginBottom: 8 }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>{aircraftType} — FSTD number</label>
+              <input defaultValue={preset.fstdNumber || ''} onBlur={(e) => save(aircraftType, { fstdNumber: e.target.value })} />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>{aircraftType} — FSTD type</label>
+              <input defaultValue={preset.fstdType || ''} onBlur={(e) => save(aircraftType, { fstdType: e.target.value })} />
+            </div>
+          </div>
+        );
+      })}
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
+
 function CheckAccessPicker({ value, onChange, disabled }) {
   function toggle(v) {
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
@@ -124,6 +179,8 @@ export function Staff() {
 
   return (
     <div>
+      <FstdPresetsPanel />
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Staff accounts</div>
         <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add staff member'}</button>

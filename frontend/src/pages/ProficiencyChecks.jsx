@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
@@ -11,6 +12,7 @@ import { formatUserRole } from '../lib/format';
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // IPC and Proficiency Check draw from different check-access ticks even
 // though they're the same underlying record type.
@@ -58,11 +60,17 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
 // IPC/PC history (see CrewDetail.jsx) instead of the free-text list used for
 // ad-hoc/initial-training checks.
 export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName, fleet }) {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(() => ({ ...emptyForm(variant), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
+  // Bumped whenever FSTD fields are autofilled, so the (uncontrolled)
+  // number/type inputs below remount with the new defaultValue - otherwise
+  // React ignores a defaultValue change on an already-mounted input.
+  const [fstdVersion, setFstdVersion] = useState(0);
 
   function load() {
     api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -129,6 +137,23 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   function toggleSeat(check, currentSeats, seat) {
     const next = currentSeats.includes(seat) ? currentSeats.filter((s) => s !== seat) : [...currentSeats, seat];
     patchDetails(check, { seatCheck: next });
+  }
+
+  // HOTC/HOFO/Flight Ops Admin only - fills FSTD number/type from the
+  // preset saved for this check's aircraft type (see Staff page), instead
+  // of retyping the same simulator details on every check.
+  async function autofillFstd(check) {
+    setError(null);
+    try {
+      const presets = await api.get('/api/fstd-presets');
+      const preset = presets.find((p) => p.aircraftType === check.details?.actype);
+      if (!preset || (!preset.fstdNumber && !preset.fstdType)) {
+        setError(`No FSTD preset saved for ${check.details?.actype || 'this aircraft type'} yet - set one on the Staff page.`);
+        return;
+      }
+      await patchDetails(check, { fstdNumber: preset.fstdNumber || '', fstdType: preset.fstdType || '' });
+      setFstdVersion((v) => v + 1);
+    } catch (err) { setError(err.message); }
   }
 
   async function archiveCheck(check) {
@@ -314,10 +339,15 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         </div>
 
         <div className="card">
-          <div style={{ fontWeight: 500, marginBottom: 6 }}>FSTD</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontWeight: 500 }}>FSTD</div>
+            {isAdmin && !selected.completedAt && (
+              <button onClick={() => autofillFstd(selected)}>Autofill FSTD</button>
+            )}
+          </div>
           <div className="grid2">
-            <div className="field"><label>FSTD number</label><input defaultValue={d.fstdNumber} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdNumber: e.target.value })} /></div>
-            <div className="field"><label>FSTD type</label><input defaultValue={d.fstdType} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdType: e.target.value })} /></div>
+            <div className="field"><label>FSTD number</label><input key={`fstdNumber-${fstdVersion}`} defaultValue={d.fstdNumber} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdNumber: e.target.value })} /></div>
+            <div className="field"><label>FSTD type</label><input key={`fstdType-${fstdVersion}`} defaultValue={d.fstdType} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { fstdType: e.target.value })} /></div>
           </div>
           <div className="grid2">
             <div className="field"><label>Ground time</label><input defaultValue={d.groundTime} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { groundTime: e.target.value })} /></div>

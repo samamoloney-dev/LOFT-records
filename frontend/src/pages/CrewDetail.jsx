@@ -8,8 +8,45 @@ import { PilotLineCheck } from './PilotLineCheck';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
-import { formatFleet, formatTraineeRole } from '../lib/format';
+import { formatFleet, formatTraineeRole, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
+
+// HOTC/HOFO/Flight Ops Admin only (page already admin-gated) - links this
+// crew profile to an existing staff account (e.g. a Training Captain who
+// is also tracked for their own recurrency), so their name/fleets read
+// live from the Staff page instead of needing to be kept in sync by hand.
+function LinkedStaffPicker({ member, onSaved }) {
+  const [staff, setStaff] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.get('/api/users').then(setStaff).catch(() => {});
+  }, []);
+
+  async function link(userId) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/crew/${member.id}`, { userId: userId || null });
+      onSaved(updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Linked staff account</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        {member.isLinked
+          ? "This crew profile's name and fleets are read live from the linked staff account below - edit them on the Staff page instead."
+          : 'Link this crew profile to a staff account so name/fleet amendments on the Staff page carry over here automatically.'}
+      </div>
+      <select value={member.userId || ''} onChange={(e) => link(e.target.value)}>
+        <option value="">— Not linked —</option>
+        {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({formatUserRole(s.role)})</option>)}
+      </select>
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
 
 // HOTC/HOFO/Flight Ops Admin only (this whole page is admin-gated already) -
 // notes a planned date for an upcoming recurrent check, purely informational
@@ -43,7 +80,7 @@ function CurrencyFolder({ member }) {
   const [subTab, setSubTab] = useState('ep');
   const [showArchived, setShowArchived] = useState(false);
 
-  const name = `${member.firstName} ${member.lastName}`;
+  const name = member.name;
   // Only enforce fleet-matching in the assessor picker when it's
   // unambiguous - a crew member qualified on more than one fleet doesn't
   // have a single "the" fleet to filter by for a given check instance.
@@ -196,7 +233,7 @@ export function CrewDetail() {
   if (error) return <div className="error-text">{error}</div>;
   if (!member) return null;
 
-  const name = `${member.firstName} ${member.lastName}`;
+  const name = member.name;
   const topTabs = [{ key: 'currency', label: 'Currency' }, { key: 'competencies', label: 'Competencies' }];
 
   return (
@@ -208,6 +245,8 @@ export function CrewDetail() {
         </div>
         <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
       </div>
+
+      <LinkedStaffPicker member={member} onSaved={setMember} />
 
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         <div>

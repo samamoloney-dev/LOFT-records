@@ -130,7 +130,7 @@ function CrewRoster({ type }) {
       {members.map((m) => (
         <div key={m.id} className="card row" onClick={() => navigate(`/crew/${m.id}`)}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500 }}>{m.firstName} {m.lastName}</div>
+            <div style={{ fontWeight: 500 }}>{m.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(m.role)}</div>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>

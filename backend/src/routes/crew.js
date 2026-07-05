@@ -28,13 +28,31 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole(...ADMIN_ROLES));
 
+// Some crew members are also staff accounts (e.g. a Training Captain who is
+// themselves subject to recurrent currency) - when crew_members.user_id
+// links to one, their name and fleets are read live from the users table
+// instead of the crew member's own (possibly stale) copies, so an
+// amendment on the Staff page carries straight over without re-entry.
+const CREW_SELECT = `
+  SELECT crew_members.*, u.name AS linked_user_name, u.fleets AS linked_user_fleets
+  FROM crew_members
+  LEFT JOIN users u ON u.id = crew_members.user_id
+`;
+
 function serializeCrewMember(row) {
   const m = rowToCamel(row);
-  return { ...m, fleets: parsePgArray(m.fleets) };
+  const isLinked = !!m.userId;
+  const { linkedUserName, linkedUserFleets, ...rest } = m;
+  return {
+    ...rest,
+    fleets: isLinked ? parsePgArray(linkedUserFleets) : parsePgArray(rest.fleets),
+    name: isLinked ? linkedUserName : `${rest.firstName} ${rest.lastName}`,
+    isLinked,
+  };
 }
 
 async function findCrewMember(id) {
-  const { rows } = await pool.query('SELECT * FROM crew_members WHERE id = $1', [id]);
+  const { rows } = await pool.query(`${CREW_SELECT} WHERE crew_members.id = $1`, [id]);
   return rows[0] ? serializeCrewMember(rows[0]) : null;
 }
 
@@ -142,12 +160,12 @@ async function withCurrency(member) {
 
 router.get('/', async (req, res) => {
   const { type, archived } = req.query;
-  const conditions = ['archived = $1'];
+  const conditions = ['crew_members.archived = $1'];
   const params = [archived === 'true'];
-  if (type) { params.push(type); conditions.push(`type = $${params.length}`); }
+  if (type) { params.push(type); conditions.push(`crew_members.type = $${params.length}`); }
 
   const { rows } = await pool.query(
-    `SELECT * FROM crew_members WHERE ${conditions.join(' AND ')} ORDER BY last_name ASC`,
+    `${CREW_SELECT} WHERE ${conditions.join(' AND ')} ORDER BY crew_members.last_name ASC`,
     params,
   );
   const members = await Promise.all(rows.map(serializeCrewMember).map(withCurrency));
@@ -212,6 +230,9 @@ const updateSchema = z.object({
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']).optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1).optional(),
   lineCheckAnchorDate: z.string().nullable().optional(),
+  // Links this crew profile to an existing staff account (see CREW_SELECT)
+  // so name/fleets are read live from Staff instead of drifting out of sync.
+  userId: z.string().uuid().nullable().optional(),
 });
 
 const COLUMN_MAP = {
@@ -220,6 +241,7 @@ const COLUMN_MAP = {
   role: 'role',
   fleets: 'fleets',
   lineCheckAnchorDate: 'line_check_anchor_date',
+  userId: 'user_id',
 };
 const CAST_MAP = { fleets: '::fleet[]' };
 
@@ -240,12 +262,20 @@ router.patch('/:id', async (req, res) => {
   const values = entries.map(([, value]) => value);
   values.push(req.params.id);
 
-  const { rows } = await pool.query(
-    `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
-    values,
-  );
+  try {
+    await pool.query(
+      `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${values.length}`,
+      values,
+    );
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That staff account is already linked to another crew profile' });
+    throw err;
+  }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: member.id });
-  res.json(await withCurrency(serializeCrewMember(rows[0])));
+  // Re-fetch through the same join CREW_SELECT uses, rather than trusting
+  // the UPDATE's own RETURNING row - a linked member's name/fleets only
+  // come back correctly once joined against the newly-linked user.
+  res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
 const plannedCheckSchema = z.object({ plannedDate: z.string().nullable() });
@@ -279,7 +309,7 @@ router.post('/:id/archive', async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'crew_members', targetId: req.params.id });
-  res.json(serializeCrewMember(rows[0]));
+  res.json(await findCrewMember(req.params.id));
 });
 
 router.post('/:id/unarchive', async (req, res) => {
@@ -289,7 +319,7 @@ router.post('/:id/unarchive', async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'crew_members', targetId: req.params.id });
-  res.json(serializeCrewMember(rows[0]));
+  res.json(await findCrewMember(req.params.id));
 });
 
 // Ad-hoc competencies (e.g. Dangerous Goods, run by an external provider) -

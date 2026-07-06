@@ -151,15 +151,30 @@ function StaffAccountsPanel() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
+  // Not linking a crew member at creation means they're just line crew,
+  // not training staff - this is the way to upgrade one later (e.g. to
+  // Training Captain) without hand-typing a duplicate name.
+  const [promoting, setPromoting] = useState(false);
+  const [unlinkedCrew, setUnlinkedCrew] = useState([]);
+  const [promoteCrewMemberId, setPromoteCrewMemberId] = useState('');
 
   function load() {
     api.get('/api/users').then(setUsers).catch((e) => setError(e.message));
   }
   useEffect(load, []);
 
+  useEffect(() => {
+    if (!promoting) return;
+    Promise.all([api.get('/api/crew?type=PILOT'), api.get('/api/crew?type=CABIN_ATTENDANT')])
+      .then(([pilots, cabinAttendants]) => setUnlinkedCrew([...pilots, ...cabinAttendants].filter((m) => !m.isLinked)))
+      .catch(() => {});
+  }, [promoting]);
+
   function openCreateForm() {
     setEditingId(null);
     setForm(emptyForm());
+    setPromoting(false);
+    setPromoteCrewMemberId('');
     setShowForm((v) => !v);
   }
 
@@ -169,6 +184,12 @@ function StaffAccountsPanel() {
     setShowForm(true);
   }
 
+  function selectCrewMemberToPromote(id) {
+    setPromoteCrewMemberId(id);
+    const member = unlinkedCrew.find((m) => m.id === id);
+    if (member) setForm((f) => ({ ...f, name: member.name }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -176,11 +197,16 @@ function StaffAccountsPanel() {
       if (editingId) {
         await api.patch(`/api/users/${editingId}`, { name: form.name, role: form.role, fleets: form.fleets, arn: form.arn, checkAccess: form.checkAccess });
       } else {
-        await api.post('/api/users', form);
+        const created = await api.post('/api/users', form);
+        if (promoteCrewMemberId) {
+          await api.patch(`/api/crew/${promoteCrewMemberId}`, { userId: created.id });
+        }
       }
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm());
+      setPromoting(false);
+      setPromoteCrewMemberId('');
       load();
     } catch (err) { setError(err.message); }
   }
@@ -203,6 +229,28 @@ function StaffAccountsPanel() {
 
       {showForm && (
         <form className="card" onSubmit={handleSubmit}>
+          {!editingId && (
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={promoting}
+                  onChange={(e) => { setPromoting(e.target.checked); setPromoteCrewMemberId(''); }}
+                  style={{ width: 'auto' }}
+                />
+                This is an existing crew member (upgrade them to staff, e.g. Training Captain)
+              </label>
+            </div>
+          )}
+          {promoting && (
+            <div className="field">
+              <label>Crew member</label>
+              <select value={promoteCrewMemberId} onChange={(e) => selectCrewMemberToPromote(e.target.value)} required>
+                <option value="">— Select —</option>
+                {unlinkedCrew.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="grid2">
             <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
             <div className="field">

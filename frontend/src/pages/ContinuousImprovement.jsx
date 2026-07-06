@@ -4,6 +4,8 @@ import { api } from '../api/client';
 const RANGE_OPTIONS = [
   { key: 'all', label: 'All time (real-time)' },
   { key: '12m', label: 'Last 12 months' },
+  { key: 'this_year', label: 'This year' },
+  { key: 'last_year', label: 'Last year' },
 ];
 
 const RANK_LABELS = { CAPTAIN: 'Captain', FIRST_OFFICER: 'FO', UNSPECIFIED: 'Unspecified rank' };

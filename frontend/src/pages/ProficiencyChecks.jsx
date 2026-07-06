@@ -170,10 +170,12 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   // Fetched once so the create form can both offer a picker and auto-match
   // a hand-typed candidate name against an existing crew member.
   const [crewOptions, setCrewOptions] = useState([]);
-  // The Continuous Improvement survey is kept out of view by default - it's
-  // a separate thing from the check form itself (the bar-graph analytics on
-  // its own tab is how that data actually gets used), not something that
-  // needs to be seen every time a completed check is opened.
+  // Kept out of view by default when reopening an already-saved completed
+  // check (it's a separate thing from the check form itself - the
+  // bar-graph analytics on its own tab is how that data actually gets
+  // used) - but setResult below flips this to true the moment a check is
+  // completed, so the examiner/check captain can fill it in right away in
+  // the same sitting rather than hunting for a button afterwards.
   const [showSurvey, setShowSurvey] = useState(false);
 
   function load() {
@@ -246,6 +248,10 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: new Date().toISOString() });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+      // Only "reopening a saved check later" keeps the survey tucked behind
+      // the toggle - completing it just now is exactly when the assessor
+      // should fill it in, so surface it straight away in this session.
+      if (result) setShowSurvey(true);
     } catch (err) { setError(err.message); }
   }
 

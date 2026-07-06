@@ -166,16 +166,22 @@ router.post('/check/:checkId/submit', async (req, res) => {
   res.json({ survey: await findSurveyWithResponses(check.id) });
 });
 
-// HOTC/HOFO only - average score per active question, over either all
-// submitted surveys ever or just the last 12 months, so trends in weak
-// areas can be spotted (see frontend/src/pages/ContinuousImprovement.jsx).
-// Broken down by the candidate's fleet and rank (snapshotted on the check
-// itself as details.actype/details.role at the time it was created - see
+// HOTC/HOFO only - average score per active question, over all submitted
+// surveys ever, the last 12 months, or a calendar year (this one or last),
+// so trends in weak areas can be spotted and year-on-year improvement
+// compared (see frontend/src/pages/ContinuousImprovement.jsx). Broken down
+// by the candidate's fleet and rank (snapshotted on the check itself as
+// details.actype/details.role at the time it was created - see
 // ProficiencyChecks.jsx) so e.g. "Fokker 100 Captain" and "Dash 8 FO" trend
 // separately rather than being averaged together.
+const RANGE_CLAUSES = {
+  '12m': "AND cs.submitted_at >= now() - interval '12 months'",
+  this_year: "AND cs.submitted_at >= date_trunc('year', now())",
+  last_year: "AND cs.submitted_at >= date_trunc('year', now()) - interval '1 year' AND cs.submitted_at < date_trunc('year', now())",
+};
+
 router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
-  const range = req.query.range === '12m' ? '12m' : 'all';
-  const dateClause = range === '12m' ? "AND cs.submitted_at >= now() - interval '12 months'" : '';
+  const dateClause = RANGE_CLAUSES[req.query.range] || '';
 
   // The date filter has to narrow which surveys count *before* joining to
   // responses - putting it on a plain LEFT JOIN's ON clause would only null

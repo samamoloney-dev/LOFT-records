@@ -8,7 +8,7 @@ import { PilotLineCheck } from './PilotLineCheck';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
-import { formatFleet, formatTraineeRole, formatUserRole } from '../lib/format';
+import { formatFleet, formatTraineeRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -16,15 +16,6 @@ const COMPETENCY_OPTIONS = [
   'Dangerous Goods', 'First Aid', 'SMS Training', 'Fatigue Management',
   'Human Factor and NTS', 'DAMP', 'CFIT', 'CPR Training', 'Refresher Training',
 ];
-
-// Anything overdue, or due within this many days, gets a small highlight on
-// the profile header so it stands out without dumping every due-date card
-// on screen by default - the detail all still lives under the Expiry tab.
-const HIGHLIGHT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-function isUrgent(dueDate) {
-  if (!dueDate) return true; // never completed - treat as due now
-  return new Date(dueDate).getTime() - Date.now() <= HIGHLIGHT_WINDOW_MS;
-}
 
 // Cabin attendants start qualified on Dash 8 and can only add Fokker 100
 // once they hold Dash 8 - mirrors Crew.jsx's FleetPicker (kept separate
@@ -120,56 +111,6 @@ function CrewInfoEditor({ member, onSaved }) {
         <button type="button" onClick={() => setEditing(false)}>Cancel</button>
       </div>
     </form>
-  );
-}
-
-// HOTC/HOFO/Flight Ops Admin only (page already admin-gated) - links this
-// crew profile to an existing staff account once (e.g. a Training Captain
-// who is also tracked for their own recurrency), so their name reads live
-// from the Staff page instead of needing to be kept in sync by hand. Once
-// linked, this is a one-way action - not left as an easy-to-fumble dropdown
-// that could be casually re-pointed at a different account.
-function LinkedStaffPicker({ member, onSaved }) {
-  const [staff, setStaff] = useState([]);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (member.isLinked) return;
-    api.get('/api/users').then(setStaff).catch(() => {});
-  }, [member.isLinked]);
-
-  if (member.isLinked) {
-    const linkedStaff = staff.find((s) => s.id === member.userId);
-    return (
-      <div className="card">
-        <div style={{ fontWeight: 500, marginBottom: 4 }}>Linked staff account</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-          This profile's name is read live from the Staff page{linkedStaff ? ` (${linkedStaff.name})` : ''} - edit it there instead.
-        </div>
-      </div>
-    );
-  }
-
-  async function link(userId) {
-    setError(null);
-    try {
-      const updated = await api.patch(`/api/crew/${member.id}`, { userId: userId || null });
-      onSaved(updated);
-    } catch (err) { setError(err.message); }
-  }
-
-  return (
-    <div className="card">
-      <div style={{ fontWeight: 500, marginBottom: 6 }}>Link to existing staff account</div>
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-        Link this crew profile to a staff account (e.g. a Training Captain who is themselves subject to recurrency) so name amendments on the Staff page carry over here automatically.
-      </div>
-      <select value="" onChange={(e) => link(e.target.value)}>
-        <option value="">— Not linked —</option>
-        {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({formatUserRole(s.role)})</option>)}
-      </select>
-      {error && <div className="error-text">{error}</div>}
-    </div>
   );
 }
 
@@ -404,7 +345,6 @@ function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
 export function CrewDetail() {
   const { id } = useParams();
   const [member, setMember] = useState(null);
-  const [competencies, setCompetencies] = useState([]);
   const [error, setError] = useState(null);
   const [topTab, setTopTab] = useState('currency');
 
@@ -412,11 +352,6 @@ export function CrewDetail() {
     api.get(`/api/crew/${id}`).then(setMember).catch((e) => setError(e.message));
   }
   useEffect(load, [id]);
-
-  function loadCompetencies() {
-    api.get(`/api/crew/${id}/competencies?archived=false`).then(setCompetencies).catch(() => {});
-  }
-  useEffect(loadCompetencies, [id]);
 
   const isPilot = member?.type === 'PILOT';
 
@@ -435,8 +370,7 @@ export function CrewDetail() {
   if (!member) return null;
 
   const name = member.name;
-  const currencyKeys = isPilot ? ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'] : ['emergencyProcedures', 'lineCheck'];
-  const needsAttention = currencyKeys.some((k) => isUrgent(member.currency[k].dueDate)) || competencies.some((c) => c.dueDate && isUrgent(c.dueDate));
+  const needsAttention = member.urgentItems.length > 0;
   const topTabs = [{ key: 'currency', label: 'Currency' }, { key: 'expiry', label: needsAttention ? 'Expiry ⚠' : 'Expiry' }];
 
   return (
@@ -451,12 +385,11 @@ export function CrewDetail() {
       </div>
 
       <CrewInfoEditor member={member} onSaved={setMember} />
-      <LinkedStaffPicker member={member} onSaved={setMember} />
 
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />
 
       {topTab === 'currency' && <CurrencyFolder member={member} />}
-      {topTab === 'expiry' && <ExpiryTab member={member} onSaved={setMember} onCompetenciesChanged={loadCompetencies} />}
+      {topTab === 'expiry' && <ExpiryTab member={member} onSaved={setMember} onCompetenciesChanged={load} />}
     </div>
   );
 }

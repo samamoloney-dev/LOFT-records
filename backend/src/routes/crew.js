@@ -5,7 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
-const { nextDueRolling, pcWindow, pilotLineCheckDue, statusFor } = require('../lib/currency');
+const { nextDueRolling, pcWindow, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -122,8 +122,59 @@ function latestOf(a, b) {
   return new Date(a) > new Date(b) ? a : b;
 }
 
+const CURRENCY_LABELS = {
+  emergencyProcedures: 'Emergency Procedures',
+  ipc: 'IPC',
+  proficiencyCheck: 'Proficiency Check',
+  lineCheck: 'Line Check',
+};
+
+async function activeCompetencies(crewMemberId) {
+  const { rows } = await pool.query(
+    'SELECT name, due_date, planned_date, completed_date FROM crew_competencies WHERE crew_member_id = $1 AND archived = false',
+    [crewMemberId],
+  );
+  return rows;
+}
+
+// The single place that decides "does this need a highlight" - a recurrent
+// check or competency counts as urgent only when it's overdue or due
+// within the soon-window AND nothing's already been planned for it (an
+// admin who's already booked it in doesn't need to be nagged about it).
+// Reused by the Crew roster row, Currency Overview, and the crew profile's
+// own Expiry tab highlight, so all three agree on the same definition.
+function isUrgent(status) {
+  return status === 'overdue' || status === 'due_soon';
+}
+
+async function urgentItemsFor(member, currency) {
+  const fromCurrency = Object.entries(currency)
+    .filter(([, info]) => info && isUrgent(info.status) && !info.plannedDate)
+    .map(([key, info]) => ({
+      label: CURRENCY_LABELS[key] || key,
+      status: info.status,
+      dueDate: info.dueDate,
+      completedDate: info.completedDate,
+      plannedDate: info.plannedDate,
+    }));
+
+  const competencies = await activeCompetencies(member.id);
+  const fromCompetencies = competencies
+    .map((c) => ({
+      label: c.name,
+      status: competencyStatus(c.due_date),
+      dueDate: c.due_date,
+      completedDate: c.completed_date,
+      plannedDate: c.planned_date,
+    }))
+    .filter((c) => isUrgent(c.status) && !c.plannedDate);
+
+  return [...fromCurrency, ...fromCompetencies];
+}
+
 async function withCurrency(member) {
   const planned = await plannedDatesFor(member.id);
+  let currency;
 
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk] = await Promise.all([
@@ -142,34 +193,30 @@ async function withCurrency(member) {
     // the IPC's own due date above.
     const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
     const pcWin = pcWindow(pc);
-    return {
-      ...member,
-      currency: {
-        emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
-        ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc),
-        proficiencyCheck: pcWin
-          ? dueInfo(pcWin.targetDue, pc, planned.proficiencyCheck, { hardExpiry: pcWin.hardExpiry })
-          : dueInfo(null, pc, planned.proficiencyCheck),
-        // Falls back to the initial Check to Line anchor date when no
-        // recurrent Line Check has ever been completed yet.
-        lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck),
-      },
+    currency = {
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
+      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc),
+      proficiencyCheck: pcWin
+        ? dueInfo(pcWin.targetDue, pc, planned.proficiencyCheck, { hardExpiry: pcWin.hardExpiry })
+        : dueInfo(null, pc, planned.proficiencyCheck),
+      // Falls back to the initial Check to Line anchor date when no
+      // recurrent Line Check has ever been completed yet.
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck),
+    };
+  } else {
+    const [epChk, lineCheckChk] = await Promise.all([
+      lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
+      lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
+    ]);
+    const ep = latestOf(epChk, member.seedEpDate);
+    const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
+    currency = {
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck),
     };
   }
 
-  const [epChk, lineCheckChk] = await Promise.all([
-    lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
-    lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
-  ]);
-  const ep = latestOf(epChk, member.seedEpDate);
-  const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
-  return {
-    ...member,
-    currency: {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck),
-    },
-  };
+  return { ...member, currency, urgentItems: await urgentItemsFor(member, currency) };
 }
 
 router.get('/', async (req, res) => {

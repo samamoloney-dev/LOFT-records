@@ -204,12 +204,11 @@ function CrewRoster({ type }) {
             <div style={{ fontWeight: 500 }}>{m.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(m.role)}</div>
           </div>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <DueBadge label="Emergency Procedures" info={m.currency.emergencyProcedures} />
-            {type === 'PILOT' && <DueBadge label="IPC" info={m.currency.ipc} />}
-            {type === 'PILOT' && <DueBadge label="Proficiency Check" info={m.currency.proficiencyCheck} />}
-            <DueBadge label="Line Check" info={m.currency.lineCheck} />
-          </div>
+          {m.urgentItems.length > 0 && (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {m.urgentItems.map((item, i) => <DueBadge key={i} label={item.label} info={item} />)}
+            </div>
+          )}
         </div>
       ))}
     </div>

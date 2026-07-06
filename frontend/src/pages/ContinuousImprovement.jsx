@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 
 const RANGE_OPTIONS = [
-  { key: 'all', label: 'All time (real-time)' },
   { key: '12m', label: 'Last 12 months' },
   { key: 'this_year', label: 'This year' },
   { key: 'last_year', label: 'Last year' },
@@ -41,11 +40,12 @@ function HorizontalBars({ data }) {
 // filled in after every completed IPC/PC (see CandidateSurvey in
 // ProficiencyChecks.jsx). Broken down by fleet and rank (e.g. "Fokker 100
 // Captain") since a weak area for one fleet/rank combination can otherwise
-// get averaged away by the rest. Real-time (all-time cumulative) and
-// last-12-months views. Question bank management lives on the Syllabus tab
-// now, alongside the rest of course/form editing.
+// get averaged away by the rest. Last-12-months, this-year and last-year
+// views, so year-on-year improvement can be compared. Question bank
+// management lives on the Syllabus tab now, alongside the rest of
+// course/form editing.
 export function ContinuousImprovement() {
-  const [range, setRange] = useState('all');
+  const [range, setRange] = useState('12m');
   const [data, setData] = useState([]);
   const [error, setError] = useState(null);
 

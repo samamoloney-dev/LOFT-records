@@ -61,4 +61,20 @@ function statusFor(dueDate, { hardExpiry } = {}) {
   return 'ok';
 }
 
-module.exports = { addDays, addMonths, nextDueRolling, pcWindow, pilotLineCheckDue, statusFor };
+const COMPETENCY_SOON_DAYS = 30;
+
+// Competencies (Dangerous Goods etc.) have a straight due date rather than
+// a computed recurrency rule/grace window - mirrors the frontend's
+// lib/dueStatus.js competencyStatus, kept as its own small function here
+// (rather than a computed rule like statusFor above) since it needs to run
+// server-side for the crew list's urgentItems (see crew.js).
+function competencyStatus(dueDate) {
+  if (!dueDate) return null;
+  const due = new Date(dueDate);
+  const today = new Date();
+  if (today > due) return 'overdue';
+  if (today >= addDays(due, -COMPETENCY_SOON_DAYS)) return 'due_soon';
+  return 'ok';
+}
+
+module.exports = { addDays, addMonths, nextDueRolling, pcWindow, pilotLineCheckDue, statusFor, competencyStatus };

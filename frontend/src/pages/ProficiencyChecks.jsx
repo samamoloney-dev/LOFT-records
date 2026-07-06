@@ -167,6 +167,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   // number/type inputs below remount with the new defaultValue - otherwise
   // React ignores a defaultValue change on an already-mounted input.
   const [fstdVersion, setFstdVersion] = useState(0);
+  // Fetched once so the create form can both offer a picker and auto-match
+  // a hand-typed candidate name against an existing crew member.
+  const [crewOptions, setCrewOptions] = useState([]);
 
   function load() {
     api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -174,6 +177,10 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       .catch((e) => setError(e.message));
   }
   useEffect(load, [variant, archived, crewMemberId]);
+  useEffect(() => {
+    if (crewMemberId) return;
+    api.get('/api/crew?type=PILOT').then(setCrewOptions).catch(() => {});
+  }, [crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -182,16 +189,22 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     setError(null);
     if (!newForm.name.trim()) return;
     try {
+      // If nobody explicitly picked a crew member from the dropdown, fall
+      // back to matching the typed candidate name - keeps currency/rank/
+      // ARN flowing through even for admins who still just type the name.
+      const nameMatch = !newForm.linkedCrewMemberId && crewOptions.find((m) => m.name.trim().toLowerCase() === newForm.name.trim().toLowerCase());
+      const arn = newForm.arn || nameMatch?.arn || '';
+      const role = newForm.role || nameMatch?.role || '';
       const details = {
         ...emptyDetails(variant),
-        name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn, role: newForm.role,
+        name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn, role,
         examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
         // Carry the candidate's name/ARN (already given when the check was
         // assigned) straight into the Applicant section below, instead of
         // asking for the same information twice.
-        applicantName: newForm.name, applicantArn: newForm.arn,
+        applicantName: newForm.name, applicantArn: arn,
       };
-      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId: crewMemberId || newForm.linkedCrewMemberId || undefined, details });
+      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId: crewMemberId || newForm.linkedCrewMemberId || nameMatch?.id || undefined, details });
       setCreating(false);
       setNewForm({ ...emptyForm(variant), name: crewMemberName || '' });
       load();
@@ -493,9 +506,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <form className="card" onSubmit={createCheck}>
           {!crewMemberId && (
             <CrewMemberPicker
-              type="PILOT"
+              members={crewOptions}
               value={newForm.linkedCrewMemberId}
-              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name, role: m?.role || f.role }))}
+              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name, role: m?.role || f.role, arn: m?.arn || f.arn }))}
             />
           )}
           <div className="grid2">

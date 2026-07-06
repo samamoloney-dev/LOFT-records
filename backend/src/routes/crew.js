@@ -184,6 +184,10 @@ const quickAddSchema = z.object({
   type: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1),
+  // The crew member's own ARN (distinct from a linked staff account's ARN,
+  // if any) - required so it can be autofilled into check forms (e.g. the
+  // Applicant's ARN on an IPC/PC) instead of retyped every time.
+  arn: z.string().min(1),
   // Seed dates - stored directly on crew_members (see 0028 migration) and
   // merged with any real completed check by withCurrency, rather than
   // creating a synthetic checks row for a check that was never conducted
@@ -212,8 +216,8 @@ router.post('/', async (req, res) => {
   let rows;
   try {
     ({ rows } = await pool.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11) RETURNING *`,
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         d.firstName,
         d.lastName,
@@ -226,6 +230,7 @@ router.post('/', async (req, res) => {
         d.type === 'PILOT' ? (d.lastPcDate || null) : null,
         d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
         d.userId || null,
+        d.arn,
       ],
     ));
   } catch (err) {
@@ -243,6 +248,7 @@ const updateSchema = z.object({
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']).optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1).optional(),
   lineCheckAnchorDate: z.string().nullable().optional(),
+  arn: z.string().min(1).optional(),
   // Links this crew profile to an existing staff account (see CREW_SELECT)
   // so name/fleets are read live from Staff instead of drifting out of sync.
   userId: z.string().uuid().nullable().optional(),
@@ -254,6 +260,7 @@ const COLUMN_MAP = {
   role: 'role',
   fleets: 'fleets',
   lineCheckAnchorDate: 'line_check_anchor_date',
+  arn: 'arn',
   userId: 'user_id',
 };
 const CAST_MAP = { fleets: '::fleet[]' };

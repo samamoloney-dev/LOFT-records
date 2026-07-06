@@ -11,7 +11,7 @@ const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
-  userId: '',
+  userId: '', arn: '',
 });
 
 // Splits a staff account's full name into the first_name/last_name pair
@@ -106,7 +106,7 @@ function CrewRoster({ type }) {
 
   function linkStaff(s) {
     if (!s) { setForm((f) => ({ ...f, userId: '' })); return; }
-    setForm((f) => ({ ...f, userId: s.id, ...splitName(s.name) }));
+    setForm((f) => ({ ...f, userId: s.id, ...splitName(s.name), arn: s.arn || f.arn }));
   }
 
   const linkedUserIds = new Set(members.filter((m) => m.isLinked).map((m) => m.userId));
@@ -136,6 +136,7 @@ function CrewRoster({ type }) {
             <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} disabled={!!form.userId} required /></div>
             <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} disabled={!!form.userId} required /></div>
           </div>
+          <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required /></div>
           {nameMatch && (
             <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
               "{nameMatch.name}" already exists{staff.includes(nameMatch) ? ' as a staff account' : ' as a crew member'} - this looks like a duplicate.
@@ -198,8 +199,42 @@ function CrewRoster({ type }) {
   );
 }
 
+// Archiving a crew member previously made their profile invisible
+// everywhere (they simply dropped out of the Pilots/Cabin Attendants
+// rosters) - this tab is the way back to them, for both re-checking their
+// history and unarchiving via the ArchiveButton on their own profile page.
+function ArchivedCrew() {
+  const [members, setMembers] = useState([]);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  function load() {
+    Promise.all([
+      api.get('/api/crew?type=PILOT&archived=true'),
+      api.get('/api/crew?type=CABIN_ATTENDANT&archived=true'),
+    ]).then(([pilots, cabinAttendants]) => setMembers([...pilots, ...cabinAttendants])).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Archived crew - open a profile to unarchive it.</div>
+      {error && <div className="error-text">{error}</div>}
+      {members.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No archived crew members.</div>}
+      {members.map((m) => (
+        <div key={m.id} className="card row" onClick={() => navigate(`/crew/${m.id}`)}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>{m.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(m.role)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Crew() {
-  const tabs = [{ key: 'pilots', label: 'Pilots' }, { key: 'cabin-attendants', label: 'Cabin Attendants' }];
+  const tabs = [{ key: 'pilots', label: 'Pilots' }, { key: 'cabin-attendants', label: 'Cabin Attendants' }, { key: 'archived', label: 'Archived' }];
   const [tab, setTab] = useState('pilots');
 
   return (
@@ -207,6 +242,7 @@ export function Crew() {
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       {tab === 'pilots' && <CrewRoster type="PILOT" />}
       {tab === 'cabin-attendants' && <CrewRoster type="CABIN_ATTENDANT" />}
+      {tab === 'archived' && <ArchivedCrew />}
     </div>
   );
 }

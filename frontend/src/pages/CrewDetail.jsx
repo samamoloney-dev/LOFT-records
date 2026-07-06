@@ -242,6 +242,22 @@ export function CrewDetail() {
         <div>
           <div style={{ fontSize: 18, fontWeight: 500 }}>{name}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{member.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(member.role)}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <label style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ARN</label>
+            <input
+              key={member.arn || ''}
+              defaultValue={member.arn || ''}
+              placeholder="Required"
+              style={{ fontSize: 12, padding: '3px 6px', width: 120 }}
+              onBlur={async (e) => {
+                const value = e.target.value.trim();
+                if (!value || value === (member.arn || '')) return;
+                setError(null);
+                try { setMember(await api.patch(`/api/crew/${id}`, { arn: value })); }
+                catch (err) { setError(err.message); }
+              }}
+            />
+          </div>
         </div>
         <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
       </div>

@@ -34,6 +34,10 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(() => ({ ...emptyNewForm(), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
+  // Fetched once so the create form can both offer a picker and auto-match
+  // a hand-typed candidate name against an existing crew member - see
+  // createCheck below.
+  const [crewOptions, setCrewOptions] = useState([]);
 
   function load() {
     api.get(`/api/checks?checkType=EMERGENCY_PROCEDURES&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -41,6 +45,10 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
       .catch((e) => setError(e.message));
   }
   useEffect(load, [appliesTo, archived, crewMemberId]);
+  useEffect(() => {
+    if (crewMemberId) return;
+    api.get(`/api/crew?type=${appliesTo}`).then(setCrewOptions).catch(() => {});
+  }, [appliesTo, crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -50,7 +58,11 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     if (!newForm.name.trim()) return;
     try {
       const { assignedTo, linkedCrewMemberId, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo, assignedTo: assignedTo || undefined, crewMemberId: crewMemberId || linkedCrewMemberId || undefined, details });
+      // If nobody explicitly picked a crew member, fall back to matching
+      // the typed candidate name - keeps currency/rank/ARN flowing through
+      // even for admins who still just type the name out of habit.
+      const nameMatch = !linkedCrewMemberId && crewOptions.find((m) => m.name.trim().toLowerCase() === newForm.name.trim().toLowerCase());
+      await api.post('/api/checks', { checkType: 'EMERGENCY_PROCEDURES', appliesTo, assignedTo: assignedTo || undefined, crewMemberId: crewMemberId || linkedCrewMemberId || nameMatch?.id || undefined, details });
       setCreating(false);
       setNewForm({ ...emptyNewForm(), name: crewMemberName || '' });
       load();
@@ -263,7 +275,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <form className="card" onSubmit={createCheck}>
           {!crewMemberId && (
             <CrewMemberPicker
-              type={appliesTo}
+              members={crewOptions}
               value={newForm.linkedCrewMemberId}
               onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name }))}
             />

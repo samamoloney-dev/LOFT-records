@@ -36,11 +36,16 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(() => ({ ...emptyNewForm(), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
+  const [crewOptions, setCrewOptions] = useState([]);
 
   function load() {
     api.get(`/api/checks?checkType=CABIN_ATTENDANT_LINE_CHECK&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`).then(setChecks).catch((e) => setError(e.message));
   }
   useEffect(load, [archived, crewMemberId]);
+  useEffect(() => {
+    if (crewMemberId) return;
+    api.get('/api/crew?type=CABIN_ATTENDANT').then(setCrewOptions).catch(() => {});
+  }, [crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -50,7 +55,8 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     if (!newForm.name.trim()) return;
     try {
       const { assignedTo, linkedCrewMemberId, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'CABIN_ATTENDANT_LINE_CHECK', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, crewMemberId: crewMemberId || linkedCrewMemberId || undefined, details });
+      const nameMatch = !linkedCrewMemberId && crewOptions.find((m) => m.name.trim().toLowerCase() === newForm.name.trim().toLowerCase());
+      await api.post('/api/checks', { checkType: 'CABIN_ATTENDANT_LINE_CHECK', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, crewMemberId: crewMemberId || linkedCrewMemberId || nameMatch?.id || undefined, details });
       setCreating(false);
       setNewForm({ ...emptyNewForm(), name: crewMemberName || '' });
       load();
@@ -269,7 +275,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <form className="card" onSubmit={createCheck}>
           {!crewMemberId && (
             <CrewMemberPicker
-              type="CABIN_ATTENDANT"
+              members={crewOptions}
               value={newForm.linkedCrewMemberId}
               onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name }))}
             />

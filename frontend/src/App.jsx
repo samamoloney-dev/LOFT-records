@@ -22,8 +22,11 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   return (
     <div className="app-shell">
-      <nav className="top-nav">
+      <div className="top-bar">
         <span className="brand">Flight Standards System</span>
+        <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
+      </div>
+      <nav className="top-nav">
         <NavLink to="/" end>Trainees</NavLink>
         {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
@@ -32,8 +35,6 @@ function Shell({ children }) {
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Staff</NavLink>}
-        <span className="spacer" />
-        <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
       </nav>
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>

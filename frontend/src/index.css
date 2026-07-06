@@ -51,6 +51,19 @@ input, select, textarea {
 
 .app-shell { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
 
+/* Brand + signed-in user, always on their own row so the nav links below
+   never have to compete with them for space (that competition was what
+   caused uneven wrapping - some links ending up on the brand's row, others
+   dropping to a second row). */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 0.75rem;
+}
+.top-bar .brand { font-weight: 600; font-size: 21px; }
+.top-bar .user-label { font-size: 12px; color: var(--text-secondary); }
+
 .top-nav {
   display: flex;
   align-items: center;
@@ -59,7 +72,6 @@ input, select, textarea {
   border-bottom: 0.5px solid var(--border);
   flex-wrap: wrap;
 }
-.top-nav .brand { font-weight: 600; font-size: 21px; margin-right: 1rem; }
 .top-nav a {
   font-size: 13px;
   color: var(--text-secondary);
@@ -70,8 +82,6 @@ input, select, textarea {
 }
 .top-nav a.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
 .top-nav a:hover { color: var(--text-primary); }
-.top-nav .spacer { flex: 1; }
-.top-nav .user-label { font-size: 12px; color: var(--text-secondary); }
 
 /* Every sub-tab bar in the app (Checks, Crew, Crew Detail, Archive, Trainee
    Detail) shares this look, matching the top nav exactly. */

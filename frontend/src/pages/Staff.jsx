@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatUserRole, formatFleet } from '../lib/format';
+import { TabBar } from '../components/TabBar';
 
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -128,7 +129,23 @@ function FleetAccessPicker({ value, onChange, multi, disabled }) {
   );
 }
 
+const STAFF_TABS = [
+  { key: 'staff', label: 'Staff' },
+  { key: 'fstd', label: 'FSTD' },
+];
+
 export function Staff() {
+  const [tab, setTab] = useState('staff');
+  return (
+    <div>
+      <TabBar tabs={STAFF_TABS} active={tab} onSelect={setTab} />
+      {tab === 'staff' && <StaffAccountsPanel />}
+      {tab === 'fstd' && <FstdPresetsPanel />}
+    </div>
+  );
+}
+
+function StaffAccountsPanel() {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -179,8 +196,6 @@ export function Staff() {
 
   return (
     <div>
-      <FstdPresetsPanel />
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Staff accounts</div>
         <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add staff member'}</button>

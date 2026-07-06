@@ -65,20 +65,32 @@ function CandidateSurvey({ checkId }) {
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Continuous Improvement Survey</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Rate the candidate 1 (needs significant improvement) to 5 (excellent) on each area - feeds HOTC/HOFO trend analytics only, not shown to the candidate.
+        For each performance criteria, pick the descriptor that best matches the candidate - feeds HOTC/HOFO trend analytics only, not shown to the candidate.
       </div>
       {questions.map((q) => (
-        <div key={q.id} className="row" style={{ cursor: 'default' }}>
-          <div style={{ flex: 1, fontSize: 13 }}>{q.text}</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                disabled={locked}
-                className={`tick-btn ${scores[q.id] === n ? 'active-pass' : ''}`}
-                onClick={() => setScore(q.id, n)}
-              >{n}</button>
-            ))}
+        <div key={q.id} style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 6 }}>{q.text}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(q.options || []).map((optionText, i) => {
+              const score = i + 1;
+              const selected = scores[q.id] === score;
+              return (
+                <div
+                  key={score}
+                  onClick={() => !locked && setScore(q.id, score)}
+                  style={{
+                    display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 8,
+                    border: selected ? '1.5px solid var(--text-accent)' : '0.5px solid var(--border-strong)',
+                    background: selected ? 'var(--bg-accent)' : 'var(--surface-1)',
+                    cursor: locked ? 'default' : 'pointer',
+                    opacity: locked && !selected ? 0.6 : 1,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 13, flexShrink: 0, color: selected ? 'var(--text-accent)' : 'var(--text-secondary)' }}>{score}</div>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>{optionText}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}

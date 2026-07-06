@@ -34,7 +34,7 @@ function Shell({ children }) {
         {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Staff</NavLink>}
+        {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
       </nav>
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>

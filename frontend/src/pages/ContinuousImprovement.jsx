@@ -52,11 +52,48 @@ function BarChart({ data }) {
   );
 }
 
+const OPTION_LABELS = ['1 — lowest', '2', '3', '4', '5 — highest'];
+
+// Add/edit form for one performance criteria and its 5 behavioural
+// descriptors (worst to best) - shared between "Add question" and
+// "Edit" so the two stay in sync.
+function QuestionForm({ initial, submitLabel, onSubmit, onCancel }) {
+  const [text, setText] = useState(initial?.text || '');
+  const [options, setOptions] = useState(initial?.options?.length === 5 ? initial.options : ['', '', '', '', '']);
+
+  function updateOption(i, value) {
+    setOptions((opts) => opts.map((o, idx) => (idx === i ? value : o)));
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!text.trim() || options.some((o) => !o.trim())) return;
+    onSubmit({ text: text.trim(), options: options.map((o) => o.trim()) });
+  }
+
+  return (
+    <form onSubmit={submit} className="card">
+      <div className="field"><label>Performance criteria (e.g. Technique)</label><input value={text} onChange={(e) => setText(e.target.value)} required /></div>
+      {OPTION_LABELS.map((label, i) => (
+        <div className="field" key={i}>
+          <label>{label}</label>
+          <textarea value={options[i]} onChange={(e) => updateOption(i, e.target.value)} style={{ minHeight: 60 }} required />
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="submit" className="primary">{submitLabel}</button>
+        {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
+      </div>
+    </form>
+  );
+}
+
 // HOTC/HOFO manage the question bank here too - archiving keeps historical
 // data intact but removes the question from new surveys going forward.
 function QuestionManager() {
   const [questions, setQuestions] = useState([]);
-  const [newText, setNewText] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState(null);
 
   function load() {
@@ -64,46 +101,57 @@ function QuestionManager() {
   }
   useEffect(load, []);
 
-  async function addQuestion(e) {
-    e.preventDefault();
-    if (!newText.trim()) return;
+  async function addQuestion(data) {
     setError(null);
     try {
-      await api.post('/api/survey/questions', { text: newText.trim() });
-      setNewText('');
+      await api.post('/api/survey/questions', data);
+      setShowAddForm(false);
       load();
     } catch (err) { setError(err.message); }
   }
 
   async function updateQuestion(id, patch) {
     setError(null);
-    try { await api.patch(`/api/survey/questions/${id}`, patch); load(); }
+    try {
+      await api.patch(`/api/survey/questions/${id}`, patch);
+      setEditingId(null);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(q) {
+    setError(null);
+    try { await api.patch(`/api/survey/questions/${q.id}`, { archived: !q.archived }); load(); }
     catch (err) { setError(err.message); }
   }
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 500, marginBottom: 6 }}>Manage survey questions</div>
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        The assessor rates the candidate 1-5 on each of these once an IPC/PC check is completed. Archiving a question keeps its past data but drops it from new surveys.
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ fontWeight: 500 }}>Manage survey questions</div>
+        <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? 'Cancel' : 'Add question'}</button>
       </div>
-      <form onSubmit={addQuestion} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <input style={{ flex: 1 }} value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Add a question" />
-        <button type="submit" className="primary">Add</button>
-      </form>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Each question is a performance criteria (e.g. "Technique") with 5 behavioural descriptors, worst to best - the assessor picks whichever one matches. Archiving keeps past data but drops the question from new surveys.
+      </div>
       {error && <div className="error-text">{error}</div>}
+
+      {showAddForm && <QuestionForm submitLabel="Add question" onSubmit={addQuestion} />}
+
       {questions.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No questions yet - add your first one above.</div>}
       {questions.map((q) => (
-        <div key={q.id} className="row" style={{ cursor: 'default' }}>
-          <input
-            style={{ flex: 1, opacity: q.archived ? 0.6 : 1 }}
-            defaultValue={q.text}
-            disabled={q.archived}
-            onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== q.text) updateQuestion(q.id, { text: v }); }}
-          />
-          <button onClick={() => updateQuestion(q.id, { archived: !q.archived })}>
-            {q.archived ? 'Unarchive' : 'Archive'}
-          </button>
+        <div key={q.id} style={{ borderBottom: '0.5px solid var(--border)', padding: '10px 0' }}>
+          {editingId === q.id ? (
+            <QuestionForm initial={q} submitLabel="Save changes" onSubmit={(data) => updateQuestion(q.id, data)} onCancel={() => setEditingId(null)} />
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 500, opacity: q.archived ? 0.6 : 1 }}>{q.text}{q.archived ? ' (archived)' : ''}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setEditingId(q.id)}>Edit</button>
+                <button onClick={() => toggleArchive(q)}>{q.archived ? 'Unarchive' : 'Archive'}</button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

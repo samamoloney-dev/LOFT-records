@@ -23,7 +23,11 @@ router.get('/questions', async (req, res) => {
   res.json(rows.map(rowToCamel));
 });
 
-const questionSchema = z.object({ text: z.string().min(1) });
+// Each question is a performance criteria (e.g. "Technique") rated against
+// exactly 5 behavioural descriptors, ordered worst (1) to best (5) - the
+// assessor picks the descriptor that matches, not a bare number.
+const optionsSchema = z.array(z.string().min(1)).length(5);
+const questionSchema = z.object({ text: z.string().min(1), options: optionsSchema });
 
 router.post('/questions', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
   const parsed = questionSchema.safeParse(req.body);
@@ -31,8 +35,8 @@ router.post('/questions', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (r
 
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM survey_questions');
   const { rows } = await pool.query(
-    'INSERT INTO survey_questions (text, sort_order) VALUES ($1, $2) RETURNING *',
-    [parsed.data.text, maxRows[0].next],
+    'INSERT INTO survey_questions (text, options, sort_order) VALUES ($1, $2, $3) RETURNING *',
+    [parsed.data.text, JSON.stringify(parsed.data.options), maxRows[0].next],
   );
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'survey_questions', targetId: rows[0].id });
   res.status(201).json(rowToCamel(rows[0]));
@@ -40,10 +44,12 @@ router.post('/questions', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (r
 
 const questionUpdateSchema = z.object({
   text: z.string().min(1).optional(),
+  options: optionsSchema.optional(),
   sortOrder: z.number().int().optional(),
   archived: z.boolean().optional(),
 });
-const QUESTION_COLUMN_MAP = { text: 'text', sortOrder: 'sort_order', archived: 'archived' };
+const QUESTION_COLUMN_MAP = { text: 'text', options: 'options', sortOrder: 'sort_order', archived: 'archived' };
+const QUESTION_CAST_MAP = { options: '::jsonb' };
 
 router.patch('/questions/:id', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
   const parsed = questionUpdateSchema.safeParse(req.body);
@@ -52,8 +58,8 @@ router.patch('/questions/:id', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), asy
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-  const setClauses = entries.map(([key], i) => `${QUESTION_COLUMN_MAP[key]} = $${i + 1}`);
-  const values = entries.map(([, value]) => value);
+  const setClauses = entries.map(([key], i) => `${QUESTION_COLUMN_MAP[key]} = $${i + 1}${QUESTION_CAST_MAP[key] || ''}`);
+  const values = entries.map(([key, value]) => (key === 'options' ? JSON.stringify(value) : value));
   values.push(req.params.id);
 
   const { rows } = await pool.query(

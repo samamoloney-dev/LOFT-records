@@ -169,9 +169,13 @@ router.post('/check/:checkId/submit', async (req, res) => {
 // HOTC/HOFO only - average score per active question, over either all
 // submitted surveys ever or just the last 12 months, so trends in weak
 // areas can be spotted (see frontend/src/pages/ContinuousImprovement.jsx).
+// Broken down by the candidate's fleet and rank (snapshotted on the check
+// itself as details.actype/details.role at the time it was created - see
+// ProficiencyChecks.jsx) so e.g. "Fokker 100 Captain" and "Dash 8 FO" trend
+// separately rather than being averaged together.
 router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
   const range = req.query.range === '12m' ? '12m' : 'all';
-  const dateClause = range === '12m' ? "AND submitted_at >= now() - interval '12 months'" : '';
+  const dateClause = range === '12m' ? "AND cs.submitted_at >= now() - interval '12 months'" : '';
 
   // The date filter has to narrow which surveys count *before* joining to
   // responses - putting it on a plain LEFT JOIN's ON clause would only null
@@ -179,19 +183,27 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
   // scores from the aggregate.
   const { rows } = await pool.query(
     `WITH in_range_surveys AS (
-       SELECT id FROM check_surveys WHERE submitted_at IS NOT NULL ${dateClause}
+       SELECT cs.id,
+              COALESCE(NULLIF(c.details->>'actype', ''), 'Unspecified fleet') AS actype,
+              COALESCE(NULLIF(c.details->>'role', ''), 'UNSPECIFIED') AS role
+       FROM check_surveys cs
+       JOIN checks c ON c.id = cs.check_id
+       WHERE cs.submitted_at IS NOT NULL ${dateClause}
      )
-     SELECT q.id AS question_id, q.text, q.sort_order,
+     SELECT irs.actype, irs.role, q.id AS question_id, q.text, q.sort_order,
             COALESCE(AVG(r.score), 0) AS average_score,
             COUNT(r.score)::int AS response_count
-     FROM survey_questions q
+     FROM in_range_surveys irs
+     CROSS JOIN survey_questions q
      LEFT JOIN check_survey_responses r
-       ON r.question_id = q.id AND r.check_survey_id IN (SELECT id FROM in_range_surveys)
+       ON r.question_id = q.id AND r.check_survey_id = irs.id
      WHERE q.archived = false
-     GROUP BY q.id, q.text, q.sort_order
-     ORDER BY q.sort_order ASC, q.created_at ASC`,
+     GROUP BY irs.actype, irs.role, q.id, q.text, q.sort_order
+     ORDER BY irs.actype ASC, irs.role ASC, q.sort_order ASC, q.created_at ASC`,
   );
   res.json(rows.map((r) => ({
+    actype: r.actype,
+    role: r.role,
     questionId: r.question_id,
     text: r.text,
     averageScore: Number(r.average_score),

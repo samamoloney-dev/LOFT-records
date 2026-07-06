@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
+import { CrewMemberPicker } from '../components/CrewMemberPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -48,8 +49,8 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     setError(null);
     if (!newForm.name.trim()) return;
     try {
-      const { assignedTo, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'CABIN_ATTENDANT_LINE_CHECK', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, crewMemberId, details });
+      const { assignedTo, linkedCrewMemberId, ...details } = newForm;
+      await api.post('/api/checks', { checkType: 'CABIN_ATTENDANT_LINE_CHECK', appliesTo: 'CABIN_ATTENDANT', assignedTo: assignedTo || undefined, crewMemberId: crewMemberId || linkedCrewMemberId || undefined, details });
       setCreating(false);
       setNewForm({ ...emptyNewForm(), name: crewMemberName || '' });
       load();
@@ -266,6 +267,13 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
+          {!crewMemberId && (
+            <CrewMemberPicker
+              type="CABIN_ATTENDANT"
+              value={newForm.linkedCrewMemberId}
+              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name }))}
+            />
+          )}
           <div className="grid2">
             {crewMemberId
               ? <div className="field"><label>Candidate</label><input value={newForm.name} disabled /></div>

@@ -11,7 +11,33 @@ const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
+  userId: '',
 });
+
+// Splits a staff account's full name into the first_name/last_name pair
+// crew_members needs - best-effort (first word vs everything else), fine
+// since a linked profile reads its display name live from Staff anyway
+// (see serializeCrewMember) rather than these columns.
+function splitName(fullName) {
+  const [first, ...rest] = fullName.trim().split(/\s+/);
+  return { firstName: first || '', lastName: rest.join(' ') || first || '' };
+}
+
+// So a Training Captain (etc.) in Staff never ends up hand-typed as a
+// second, unlinked person here with the same name - link straight to the
+// staff account instead, or get warned if a typed name collides with one.
+function StaffLinkPicker({ staff, linkedUserIds, value, onLink }) {
+  const eligible = staff.filter((s) => !linkedUserIds.has(s.id) || s.id === value);
+  return (
+    <div className="field">
+      <label>Link to existing staff account (optional - keeps this the same profile as Staff)</label>
+      <select value={value || ''} onChange={(e) => onLink(eligible.find((s) => s.id === e.target.value) || null)}>
+        <option value="">— Not linked, new person —</option>
+        {eligible.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+    </div>
+  );
+}
 
 // Cabin attendants start qualified on Dash 8 and can only add Fokker 100
 // once they hold Dash 8 (real-world conversion-course requirement) - pilots
@@ -53,6 +79,7 @@ function FleetPicker({ type, value, onChange }) {
 
 function CrewRoster({ type }) {
   const [members, setMembers] = useState([]);
+  const [staff, setStaff] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm(type));
   const [error, setError] = useState(null);
@@ -62,12 +89,13 @@ function CrewRoster({ type }) {
     api.get(`/api/crew?type=${type}`).then(setMembers).catch((e) => setError(e.message));
   }
   useEffect(load, [type]);
+  useEffect(() => { api.get('/api/users').then(setStaff).catch(() => {}); }, []);
 
   async function handleCreate(e) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/crew', form);
+      await api.post('/api/crew', { ...form, userId: form.userId || undefined });
       setShowForm(false);
       setForm(emptyForm(type));
       load();
@@ -75,6 +103,22 @@ function CrewRoster({ type }) {
       setError(err.message);
     }
   }
+
+  function linkStaff(s) {
+    if (!s) { setForm((f) => ({ ...f, userId: '' })); return; }
+    setForm((f) => ({ ...f, userId: s.id, ...splitName(s.name) }));
+  }
+
+  const linkedUserIds = new Set(members.filter((m) => m.isLinked).map((m) => m.userId));
+  // Warns if the typed name collides with an existing staff account or
+  // another crew profile - the system's way of "knowing there aren't two
+  // people with the same name" even when the admin didn't use the link
+  // picker above.
+  const typedName = `${form.firstName} ${form.lastName}`.trim().toLowerCase();
+  const nameMatch = !form.userId && typedName && (
+    staff.find((s) => s.name.trim().toLowerCase() === typedName)
+    || members.find((m) => m.name.trim().toLowerCase() === typedName)
+  );
 
   const roles = type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
 
@@ -87,10 +131,19 @@ function CrewRoster({ type }) {
 
       {showForm && (
         <form className="card" onSubmit={handleCreate}>
+          <StaffLinkPicker staff={staff} linkedUserIds={linkedUserIds} value={form.userId} onLink={linkStaff} />
           <div className="grid2">
-            <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></div>
-            <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required /></div>
+            <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} disabled={!!form.userId} required /></div>
+            <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} disabled={!!form.userId} required /></div>
           </div>
+          {nameMatch && (
+            <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
+              "{nameMatch.name}" already exists{staff.includes(nameMatch) ? ' as a staff account' : ' as a crew member'} - this looks like a duplicate.
+              {staff.includes(nameMatch) && !linkedUserIds.has(nameMatch.id) && (
+                <> <button type="button" onClick={() => linkStaff(nameMatch)}>Link to it instead</button></>
+              )}
+            </div>
+          )}
           <div className="field">
             <label>Role</label>
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>

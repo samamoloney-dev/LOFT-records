@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { TabBar } from '../components/TabBar';
+import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ROLE_SCOPES = ['BOTH', 'CAPTAIN_ONLY', 'FO_ONLY'];
@@ -146,7 +149,10 @@ function GroundSchoolAdminSection() {
   );
 }
 
-export function SyllabusAdmin() {
+// Syllabus curriculum items, by fleet/section/phase - one sub-tab of the
+// Syllabus page (see SyllabusAdmin below), which is the single place all
+// courses/forms/surveys get edited from.
+function SyllabusItemsSection() {
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -316,8 +322,140 @@ export function SyllabusAdmin() {
           </div>
         );
       })}
+    </div>
+  );
+}
 
-      <GroundSchoolAdminSection />
+const OPTION_LABELS = ['1 — lowest', '2', '3', '4', '5 — highest'];
+
+// Add/edit form for one performance criteria and its 5 behavioural
+// descriptors (worst to best) - shared between "Add question" and
+// "Edit" so the two stay in sync.
+function QuestionForm({ initial, submitLabel, onSubmit, onCancel }) {
+  const [text, setText] = useState(initial?.text || '');
+  const [options, setOptions] = useState(initial?.options?.length === 5 ? initial.options : ['', '', '', '', '']);
+
+  function updateOption(i, value) {
+    setOptions((opts) => opts.map((o, idx) => (idx === i ? value : o)));
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!text.trim() || options.some((o) => !o.trim())) return;
+    onSubmit({ text: text.trim(), options: options.map((o) => o.trim()) });
+  }
+
+  return (
+    <form onSubmit={submit} className="card">
+      <div className="field"><label>Performance criteria (e.g. Technique)</label><input value={text} onChange={(e) => setText(e.target.value)} required /></div>
+      {OPTION_LABELS.map((label, i) => (
+        <div className="field" key={i}>
+          <label>{label}</label>
+          <textarea value={options[i]} onChange={(e) => updateOption(i, e.target.value)} style={{ minHeight: 60 }} required />
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="submit" className="primary">{submitLabel}</button>
+        {onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
+      </div>
+    </form>
+  );
+}
+
+// HOTC/HOFO manage the Continuous Improvement question bank here too -
+// archiving keeps historical data intact but removes the question from new
+// surveys going forward. Moved onto the Syllabus tab so all course/form/
+// survey editing lives in one place.
+function SurveyQuestionsSection() {
+  const [questions, setQuestions] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/survey/questions?includeArchived=true').then(setQuestions).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function addQuestion(data) {
+    setError(null);
+    try {
+      await api.post('/api/survey/questions', data);
+      setShowAddForm(false);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function updateQuestion(id, patch) {
+    setError(null);
+    try {
+      await api.patch(`/api/survey/questions/${id}`, patch);
+      setEditingId(null);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(q) {
+    setError(null);
+    try { await api.patch(`/api/survey/questions/${q.id}`, { archived: !q.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Continuous Improvement survey questions</div>
+        <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? 'Cancel' : 'Add question'}</button>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Each question is a performance criteria (e.g. "Technique") with 5 behavioural descriptors, worst to best - the assessor picks whichever one matches. Archiving keeps past data but drops the question from new surveys.
+      </div>
+      {error && <div className="error-text">{error}</div>}
+
+      {showAddForm && <QuestionForm submitLabel="Add question" onSubmit={addQuestion} />}
+
+      {questions.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No questions yet - add your first one above.</div>}
+      {questions.map((q) => (
+        <div key={q.id} className="card">
+          {editingId === q.id ? (
+            <QuestionForm initial={q} submitLabel="Save changes" onSubmit={(data) => updateQuestion(q.id, data)} onCancel={() => setEditingId(null)} />
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 500, opacity: q.archived ? 0.6 : 1 }}>{q.text}{q.archived ? ' (archived)' : ''}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setEditingId(q.id)}>Edit</button>
+                <button onClick={() => toggleArchive(q)}>{q.archived ? 'Unarchive' : 'Archive'}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Single home for all course/form/survey editing: Syllabus curriculum,
+// Ground School courses/exams, and the Continuous Improvement survey
+// question bank. Survey Questions is HOTC/HOFO only (mirrors the
+// Continuous Improvement analytics tab's own gating) even though the page
+// itself is reachable by Flight Ops Admin too.
+export function SyllabusAdmin() {
+  const { user } = useAuth();
+  const canManageSurveyQuestions = CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role);
+  const [tab, setTab] = useState('syllabus');
+
+  const tabs = [
+    { key: 'syllabus', label: 'Syllabus' },
+    { key: 'ground-school', label: 'Ground School' },
+    ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
+  ];
+
+  return (
+    <div>
+      <TabBar tabs={tabs} active={tab} onSelect={setTab} />
+      {tab === 'syllabus' && <SyllabusItemsSection />}
+      {tab === 'ground-school' && <GroundSchoolAdminSection />}
+      {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>
   );
 }

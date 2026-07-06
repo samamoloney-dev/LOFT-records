@@ -193,6 +193,12 @@ const quickAddSchema = z.object({
   lastPcDate: z.string().optional(),
   lineCheckAnchorDate: z.string().optional(),
   lastLineCheckDate: z.string().optional(),
+  // Links straight to a staff account at creation, e.g. a Training Captain
+  // who is themselves subject to recurrent currency - avoids ever having
+  // two separate records (Staff + a hand-typed Crew duplicate) for the
+  // same person. See CREW_SELECT/serializeCrewMember for how a linked
+  // member's name/fleets are then read live from Staff.
+  userId: z.string().uuid().nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -203,22 +209,29 @@ router.post('/', async (req, res) => {
   const fleetError = fleetOrderError(d.type, d.fleets);
   if (fleetError) return res.status(400).json({ error: fleetError });
 
-  const { rows } = await pool.query(
-    `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date)
-     VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10) RETURNING *`,
-    [
-      d.firstName,
-      d.lastName,
-      d.type,
-      d.role,
-      d.fleets,
-      d.type === 'PILOT' ? (d.lineCheckAnchorDate || null) : null,
-      d.lastEpDate || null,
-      d.type === 'PILOT' ? (d.lastIpcDate || null) : null,
-      d.type === 'PILOT' ? (d.lastPcDate || null) : null,
-      d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
-    ],
-  );
+  let rows;
+  try {
+    ({ rows } = await pool.query(
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [
+        d.firstName,
+        d.lastName,
+        d.type,
+        d.role,
+        d.fleets,
+        d.type === 'PILOT' ? (d.lineCheckAnchorDate || null) : null,
+        d.lastEpDate || null,
+        d.type === 'PILOT' ? (d.lastIpcDate || null) : null,
+        d.type === 'PILOT' ? (d.lastPcDate || null) : null,
+        d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
+        d.userId || null,
+      ],
+    ));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That staff account is already linked to another crew profile' });
+    throw err;
+  }
   const member = serializeCrewMember(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id });
   res.status(201).json(await withCurrency(member));

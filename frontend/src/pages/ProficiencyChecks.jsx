@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { CrewMemberPicker } from '../components/CrewMemberPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -12,6 +13,7 @@ import { SURVEY_FILL_ROLES } from '../lib/roles';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const RANK_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
@@ -65,7 +67,7 @@ function CandidateSurvey({ checkId }) {
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Continuous Improvement Survey</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        For each performance criteria, pick the descriptor that best matches the candidate - feeds HOTC/HOFO trend analytics only, not shown to the candidate.
+        For each performance criteria, pick the descriptor that best matches the candidate - feeds HOTC/HOFO trend analytics only, not shown to the candidate. Every question must be answered before the survey can be submitted.
       </div>
       {questions.map((q) => (
         <div key={q.id} style={{ marginBottom: 14 }}>
@@ -110,7 +112,7 @@ function variantAccessType(variant) {
   return variant === 'IPC_PC' ? 'IPC' : 'PC';
 }
 
-const emptyForm = (variant) => ({ name: '', date: '', assessor: '', actype: '', arn: '', variant, assignedTo: '', examinerName: '', examinerArn: '' });
+const emptyForm = (variant) => ({ name: '', date: '', assessor: '', actype: '', arn: '', role: '', variant, assignedTo: '', linkedCrewMemberId: '', examinerName: '', examinerArn: '' });
 
 const emptyDetails = (variant) => ({
   variant,
@@ -121,6 +123,10 @@ const emptyDetails = (variant) => ({
   fstdNumber: '', fstdType: '', groundTime: '', simulatorTime: '',
   examinerArn: '', examinerName: '', examinerSig: '',
   examinerComments: '',
+  // actype/role snapshot the candidate's fleet and rank at the time of the
+  // check - what Continuous Improvement analytics groups by (e.g. "Fokker
+  // 100 Captain"), see backend/src/routes/survey.js analytics route.
+  role: '',
 });
 
 function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
@@ -178,14 +184,14 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     try {
       const details = {
         ...emptyDetails(variant),
-        name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn,
+        name: newForm.name, date: newForm.date, assessor: newForm.assessor, actype: newForm.actype, arn: newForm.arn, role: newForm.role,
         examinerName: newForm.examinerName, examinerArn: newForm.examinerArn,
         // Carry the candidate's name/ARN (already given when the check was
         // assigned) straight into the Applicant section below, instead of
         // asking for the same information twice.
         applicantName: newForm.name, applicantArn: newForm.arn,
       };
-      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId, details });
+      await api.post('/api/checks', { checkType: 'RECURRENT_SIMULATOR', appliesTo: 'PILOT', assignedTo: newForm.assignedTo || undefined, crewMemberId: crewMemberId || newForm.linkedCrewMemberId || undefined, details });
       setCreating(false);
       setNewForm({ ...emptyForm(variant), name: crewMemberName || '' });
       load();
@@ -485,6 +491,13 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
 
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
+          {!crewMemberId && (
+            <CrewMemberPicker
+              type="PILOT"
+              value={newForm.linkedCrewMemberId}
+              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name, role: m?.role || f.role }))}
+            />
+          )}
           <div className="grid2">
             {crewMemberId
               ? <div className="field"><label>Candidate</label><input value={newForm.name} disabled /></div>
@@ -500,6 +513,13 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
                 {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+          </div>
+          <div className="field">
+            <label>Candidate's rank (used to group Continuous Improvement trends by fleet and rank)</label>
+            <select value={newForm.role} onChange={(e) => setNewForm({ ...newForm, role: e.target.value })}>
+              <option value="">—</option>
+              {RANK_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
           </div>
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
           <AssignedToPicker

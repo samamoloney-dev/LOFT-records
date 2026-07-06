@@ -9,7 +9,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
 
-const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Conquest', 'Metro', 'Dash8', 'Fokker 100'];
+const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const EP_ITEMS = [
   'Emergency Equipment Knowledge — location, duration, operation, precaution and post use',

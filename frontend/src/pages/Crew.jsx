@@ -11,7 +11,7 @@ const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
-  userId: '', arn: '',
+  userId: '', arn: '', newHire: false,
 });
 
 // Splits a staff account's full name into the first_name/last_name pair
@@ -136,7 +136,9 @@ function CrewRoster({ type }) {
             <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} disabled={!!form.userId} required /></div>
             <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} disabled={!!form.userId} required /></div>
           </div>
-          <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required /></div>
+          {type === 'PILOT' && (
+            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required /></div>
+          )}
           {nameMatch && (
             <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
               "{nameMatch.name}" already exists{staff.includes(nameMatch) ? ' as a staff account' : ' as a crew member'} - this looks like a duplicate.
@@ -154,6 +156,21 @@ function CrewRoster({ type }) {
           <div className="field">
             <label>Fleet{type === 'CABIN_ATTENDANT' ? 's' : ''}</label>
             <FleetPicker type={type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets })} />
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+              This is their own personal fleet (what they fly and get checked on) - set it here even for HOTC/HOFO, otherwise the system won't know which simulator form to assign them.
+            </div>
+          </div>
+
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={form.newHire}
+                onChange={(e) => setForm({ ...form, newHire: e.target.checked })}
+                style={{ width: 'auto' }}
+              />
+              New hire - also create their Trainees LOFT record
+            </label>
           </div>
 
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0.75rem 0 0.25rem' }}>

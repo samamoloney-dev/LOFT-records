@@ -152,6 +152,8 @@ function GroundSchoolAdminSection() {
 // Syllabus curriculum items, by fleet/section/phase - one sub-tab of the
 // Syllabus page (see SyllabusAdmin below), which is the single place all
 // courses/forms/surveys get edited from.
+const NEW_CATEGORY_VALUE = '__new__';
+
 function SyllabusItemsSection() {
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
@@ -159,6 +161,10 @@ function SyllabusItemsSection() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [expandedFleet, setExpandedFleet] = useState(null);
+  // Whether the Category field is showing a free-text box (for a brand new
+  // category) rather than a dropdown of ones already in use for this
+  // fleet/section - see categoryOptions below.
+  const [addingCategory, setAddingCategory] = useState(false);
 
   function load() {
     api.get('/api/syllabus/items').then(setItems).catch((e) => setError(e.message));
@@ -168,6 +174,7 @@ function SyllabusItemsSection() {
   function openCreateForm() {
     setEditingId(null);
     setForm(emptyForm());
+    setAddingCategory(false);
     setShowForm((v) => !v);
   }
 
@@ -183,8 +190,16 @@ function SyllabusItemsSection() {
       notes: item.notes || '',
       required: item.required,
     });
+    setAddingCategory(false);
     setShowForm(true);
   }
+
+  // Categories already used for this fleet/section - "the current list of
+  // categories from the relevant syllabus" the operator wants to pick from,
+  // with a way to add a new one when needed.
+  const categoryOptions = [...new Set(
+    items.filter((i) => i.fleet === form.fleet && i.section === form.section).map((i) => i.category),
+  )].sort();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -250,7 +265,29 @@ function SyllabusItemsSection() {
           </div>
           <div className="field">
             <label>Category (section heading, e.g. "Pre-Departure" or "Fuel and Refuelling")</label>
-            <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} required />
+            {addingCategory ? (
+              <>
+                <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="New category name" required />
+                {categoryOptions.length > 0 && (
+                  <button type="button" onClick={() => { setAddingCategory(false); setForm({ ...form, category: categoryOptions[0] }); }} style={{ marginTop: 6 }}>
+                    Choose an existing category instead
+                  </button>
+                )}
+              </>
+            ) : (
+              <select
+                value={form.category}
+                onChange={(e) => {
+                  if (e.target.value === NEW_CATEGORY_VALUE) { setAddingCategory(true); setForm({ ...form, category: '' }); }
+                  else setForm({ ...form, category: e.target.value });
+                }}
+                required
+              >
+                <option value="">— Select category —</option>
+                {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value={NEW_CATEGORY_VALUE}>+ Add new category</option>
+              </select>
+            )}
           </div>
           <div className="field">
             <label>Description</label>

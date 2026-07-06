@@ -170,6 +170,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   // Fetched once so the create form can both offer a picker and auto-match
   // a hand-typed candidate name against an existing crew member.
   const [crewOptions, setCrewOptions] = useState([]);
+  // The Continuous Improvement survey is kept out of view by default - it's
+  // a separate thing from the check form itself (the bar-graph analytics on
+  // its own tab is how that data actually gets used), not something that
+  // needs to be seen every time a completed check is opened.
+  const [showSurvey, setShowSurvey] = useState(false);
 
   function load() {
     api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -181,6 +186,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     if (crewMemberId) return;
     api.get('/api/crew?type=PILOT').then(setCrewOptions).catch(() => {});
   }, [crewMemberId]);
+  useEffect(() => setShowSurvey(false), [selectedId]);
 
   const selected = checks.find((c) => c.id === selectedId);
 
@@ -376,6 +382,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
+            {selected.completedAt && (
+              <button onClick={() => setShowSurvey((v) => !v)}>{showSurvey ? 'Hide Continuous Improvement Survey' : 'Continuous Improvement Survey'}</button>
+            )}
             {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton
               archived={selected.archived}
@@ -489,7 +498,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             </select>
           </div>
         </div>
-        {selected.completedAt && <CandidateSurvey checkId={selected.id} />}
+        {selected.completedAt && showSurvey && <CandidateSurvey checkId={selected.id} />}
         {error && <div className="error-text">{error}</div>}
       </div>
     );

@@ -11,17 +11,144 @@ import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 
+const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const COMPETENCY_OPTIONS = [
+  'Dangerous Goods', 'First Aid', 'SMS Training', 'Fatigue Management',
+  'Human Factor and NTS', 'DAMP', 'CFIT', 'CPR Training', 'Refresher Training',
+];
+
+// Anything overdue, or due within this many days, gets a small highlight on
+// the profile header so it stands out without dumping every due-date card
+// on screen by default - the detail all still lives under the Expiry tab.
+const HIGHLIGHT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+function isUrgent(dueDate) {
+  if (!dueDate) return true; // never completed - treat as due now
+  return new Date(dueDate).getTime() - Date.now() <= HIGHLIGHT_WINDOW_MS;
+}
+
+// Cabin attendants start qualified on Dash 8 and can only add Fokker 100
+// once they hold Dash 8 - mirrors Crew.jsx's FleetPicker (kept separate
+// since that one isn't exported for reuse here).
+function FleetPicker({ type, value, onChange }) {
+  const fleets = FLEETS.filter((f) => (type === 'PILOT' ? !f.startsWith('CA_') : f.startsWith('CA_')));
+  const isCabinAttendant = type === 'CABIN_ATTENDANT';
+
+  function toggle(f) {
+    if (!isCabinAttendant) {
+      onChange(value.includes(f) ? [] : [f]);
+      return;
+    }
+    if (f === 'CA_DASH_8' && value.includes('CA_FOKKER_100')) return;
+    onChange(value.includes(f) ? value.filter((x) => x !== f) : [...value, f]);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {fleets.map((f) => {
+        const disabled = isCabinAttendant && f === 'CA_FOKKER_100' && !value.includes('CA_DASH_8');
+        return (
+          <div
+            key={f}
+            onClick={() => !disabled && toggle(f)}
+            title={disabled ? 'Dash 8 must be added first' : undefined}
+            style={{
+              padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+              cursor: disabled ? 'default' : 'pointer', fontSize: 13, opacity: disabled ? 0.4 : 1,
+              background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
+              color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
+            }}
+          >{formatFleet(f)}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Edits the crew profile's own basic details - name/role/fleet are all
+// disabled/hidden for name once linked to a staff account (read live from
+// Staff instead - see the header display), but role and fleets always stay
+// editable here since they're specific to this crew profile.
+function CrewInfoEditor({ member, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets });
+  const [error, setError] = useState(null);
+
+  const roles = member.type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
+
+  async function save(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const patch = member.isLinked ? { role: form.role, fleets: form.fleets } : form;
+      onSaved(await api.patch(`/api/crew/${member.id}`, patch));
+      setEditing(false);
+    } catch (err) { setError(err.message); }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => {
+          setForm({ firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets });
+          setEditing(true);
+        }}
+      >Edit crew information</button>
+    );
+  }
+
+  return (
+    <form onSubmit={save} className="card">
+      {!member.isLinked && (
+        <div className="grid2">
+          <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></div>
+          <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required /></div>
+        </div>
+      )}
+      <div className="field">
+        <label>Role</label>
+        <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          {roles.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label>Fleet{member.type === 'CABIN_ATTENDANT' ? 's' : ''}</label>
+        <FleetPicker type={member.type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets })} />
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="submit" className="primary">Save changes</button>
+        <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 // HOTC/HOFO/Flight Ops Admin only (page already admin-gated) - links this
-// crew profile to an existing staff account (e.g. a Training Captain who
-// is also tracked for their own recurrency), so their name/fleets read
-// live from the Staff page instead of needing to be kept in sync by hand.
+// crew profile to an existing staff account once (e.g. a Training Captain
+// who is also tracked for their own recurrency), so their name reads live
+// from the Staff page instead of needing to be kept in sync by hand. Once
+// linked, this is a one-way action - not left as an easy-to-fumble dropdown
+// that could be casually re-pointed at a different account.
 function LinkedStaffPicker({ member, onSaved }) {
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (member.isLinked) return;
     api.get('/api/users').then(setStaff).catch(() => {});
-  }, []);
+  }, [member.isLinked]);
+
+  if (member.isLinked) {
+    const linkedStaff = staff.find((s) => s.id === member.userId);
+    return (
+      <div className="card">
+        <div style={{ fontWeight: 500, marginBottom: 4 }}>Linked staff account</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          This profile's name is read live from the Staff page{linkedStaff ? ` (${linkedStaff.name})` : ''} - edit it there instead.
+        </div>
+      </div>
+    );
+  }
 
   async function link(userId) {
     setError(null);
@@ -33,16 +160,41 @@ function LinkedStaffPicker({ member, onSaved }) {
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 500, marginBottom: 6 }}>Linked staff account</div>
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Link to existing staff account</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-        {member.isLinked
-          ? "This crew profile's name and fleets are read live from the linked staff account below - edit them on the Staff page instead."
-          : 'Link this crew profile to a staff account so name/fleet amendments on the Staff page carry over here automatically.'}
+        Link this crew profile to a staff account (e.g. a Training Captain who is themselves subject to recurrency) so name amendments on the Staff page carry over here automatically.
       </div>
-      <select value={member.userId || ''} onChange={(e) => link(e.target.value)}>
+      <select value="" onChange={(e) => link(e.target.value)}>
         <option value="">— Not linked —</option>
         {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({formatUserRole(s.role)})</option>)}
       </select>
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
+
+// Once entered, an ARN doesn't need editing day to day - shown as plain
+// text rather than a perpetually-editable field. Only a blank ARN (e.g. an
+// older profile from before this was required) still shows the input.
+function ArnDisplay({ member, onSaved }) {
+  const [value, setValue] = useState('');
+  const [error, setError] = useState(null);
+
+  if (member.arn) {
+    return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>ARN {member.arn}</div>;
+  }
+
+  async function save() {
+    if (!value.trim()) return;
+    setError(null);
+    try { onSaved(await api.patch(`/api/crew/${member.id}`, { arn: value.trim() })); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <label style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ARN</label>
+      <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={save} placeholder="Not yet entered" style={{ fontSize: 12, padding: '3px 6px', width: 120 }} />
       {error && <div className="error-text">{error}</div>}
     </div>
   );
@@ -105,17 +257,19 @@ function CurrencyFolder({ member }) {
 }
 
 // Ad-hoc competencies (e.g. Dangerous Goods, run by an external provider) -
-// just a name, completion date and due date, distinct from the fixed
-// recurrent-check types in the Currency folder above.
-function CompetencyList({ crewMemberId }) {
+// a name (from a fixed list), a completion date and a due date, distinct
+// from the fixed recurrent-check types in the Currency folder. onChange
+// fires after every load so the parent Expiry tab's due-soon/overdue
+// highlight can stay in sync.
+function CompetencyList({ crewMemberId, onChange }) {
   const [competencies, setCompetencies] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [form, setForm] = useState({ name: '', completedDate: '', dueDate: '', plannedDate: '' });
+  const [form, setForm] = useState({ name: COMPETENCY_OPTIONS[0], completedDate: '', dueDate: '', plannedDate: '' });
   const [error, setError] = useState(null);
 
   function load() {
-    api.get(`/api/crew/${crewMemberId}/competencies?archived=${showArchived}`).then(setCompetencies).catch((e) => setError(e.message));
+    api.get(`/api/crew/${crewMemberId}/competencies?archived=${showArchived}`).then((data) => { setCompetencies(data); onChange?.(); }).catch((e) => setError(e.message));
   }
   useEffect(load, [crewMemberId, showArchived]);
 
@@ -125,7 +279,7 @@ function CompetencyList({ crewMemberId }) {
     try {
       await api.post(`/api/crew/${crewMemberId}/competencies`, form);
       setShowForm(false);
-      setForm({ name: '', completedDate: '', dueDate: '', plannedDate: '' });
+      setForm({ name: COMPETENCY_OPTIONS[0], completedDate: '', dueDate: '', plannedDate: '' });
       load();
     } catch (err) { setError(err.message); }
   }
@@ -160,7 +314,12 @@ function CompetencyList({ crewMemberId }) {
 
       {!showArchived && showForm && (
         <form className="card" onSubmit={addCompetency}>
-          <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Dangerous Goods" required /></div>
+          <div className="field">
+            <label>Name</label>
+            <select value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}>
+              {COMPETENCY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
           <div className="grid2">
             <div className="field"><label>Completed date</label><input type="date" value={form.completedDate} onChange={(e) => setForm({ ...form, completedDate: e.target.value })} /></div>
             <div className="field"><label>Due date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
@@ -206,9 +365,46 @@ function CompetencyList({ crewMemberId }) {
   );
 }
 
+// Everything with a due date lives here: recurrent check currency (EP/IPC/
+// PC/Line Check) and ad-hoc competencies - kept out of the always-visible
+// profile header (see the highlight badge there instead) so the page isn't
+// cluttered with due-date cards nobody asked to see yet.
+function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
+  const isPilot = member.type === 'PILOT';
+  return (
+    <div>
+      <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        <div>
+          <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} />
+        </div>
+        {isPilot && (
+          <div>
+            <DueBadge label="IPC" info={member.currency.ipc} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} />
+          </div>
+        )}
+        {isPilot && (
+          <div>
+            <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} />
+          </div>
+        )}
+        <div>
+          <DueBadge label="Line Check" info={member.currency.lineCheck} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} />
+        </div>
+      </div>
+
+      <CompetencyList crewMemberId={member.id} onChange={onCompetenciesChanged} />
+    </div>
+  );
+}
+
 export function CrewDetail() {
   const { id } = useParams();
   const [member, setMember] = useState(null);
+  const [competencies, setCompetencies] = useState([]);
   const [error, setError] = useState(null);
   const [topTab, setTopTab] = useState('currency');
 
@@ -216,6 +412,11 @@ export function CrewDetail() {
     api.get(`/api/crew/${id}`).then(setMember).catch((e) => setError(e.message));
   }
   useEffect(load, [id]);
+
+  function loadCompetencies() {
+    api.get(`/api/crew/${id}/competencies?archived=false`).then(setCompetencies).catch(() => {});
+  }
+  useEffect(loadCompetencies, [id]);
 
   const isPilot = member?.type === 'PILOT';
 
@@ -234,7 +435,9 @@ export function CrewDetail() {
   if (!member) return null;
 
   const name = member.name;
-  const topTabs = [{ key: 'currency', label: 'Currency' }, { key: 'competencies', label: 'Competencies' }];
+  const currencyKeys = isPilot ? ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'] : ['emergencyProcedures', 'lineCheck'];
+  const needsAttention = currencyKeys.some((k) => isUrgent(member.currency[k].dueDate)) || competencies.some((c) => c.dueDate && isUrgent(c.dueDate));
+  const topTabs = [{ key: 'currency', label: 'Currency' }, { key: 'expiry', label: needsAttention ? 'Expiry ⚠' : 'Expiry' }];
 
   return (
     <div>
@@ -242,55 +445,18 @@ export function CrewDetail() {
         <div>
           <div style={{ fontSize: 18, fontWeight: 500 }}>{name}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{member.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(member.role)}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <label style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ARN</label>
-            <input
-              key={member.arn || ''}
-              defaultValue={member.arn || ''}
-              placeholder="Required"
-              style={{ fontSize: 12, padding: '3px 6px', width: 120 }}
-              onBlur={async (e) => {
-                const value = e.target.value.trim();
-                if (!value || value === (member.arn || '')) return;
-                setError(null);
-                try { setMember(await api.patch(`/api/crew/${id}`, { arn: value })); }
-                catch (err) { setError(err.message); }
-              }}
-            />
-          </div>
+          {member.type === 'PILOT' && <ArnDisplay member={member} onSaved={setMember} />}
         </div>
         <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
       </div>
 
+      <CrewInfoEditor member={member} onSaved={setMember} />
       <LinkedStaffPicker member={member} onSaved={setMember} />
-
-      <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <div>
-          <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={setMember} />
-        </div>
-        {isPilot && (
-          <div>
-            <DueBadge label="IPC" info={member.currency.ipc} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={setMember} />
-          </div>
-        )}
-        {isPilot && (
-          <div>
-            <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={setMember} />
-          </div>
-        )}
-        <div>
-          <DueBadge label="Line Check" info={member.currency.lineCheck} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={setMember} />
-        </div>
-      </div>
 
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />
 
       {topTab === 'currency' && <CurrencyFolder member={member} />}
-      {topTab === 'competencies' && <CompetencyList crewMemberId={member.id} />}
+      {topTab === 'expiry' && <ExpiryTab member={member} onSaved={setMember} onCompetenciesChanged={loadCompetencies} />}
     </div>
   );
 }

@@ -30,11 +30,20 @@ router.use(requireRole(...ADMIN_ROLES));
 
 // Some crew members are also staff accounts (e.g. a Training Captain who is
 // themselves subject to recurrent currency) - when crew_members.user_id
-// links to one, their name and fleets are read live from the users table
-// instead of the crew member's own (possibly stale) copies, so an
-// amendment on the Staff page carries straight over without re-entry.
+// links to one, their name is read live from the users table instead of
+// the crew member's own (possibly stale) copy, so an amendment on the
+// Staff page carries straight over without re-entry.
+//
+// fleets is deliberately NOT overlaid from the linked user: users.fleets is
+// fleet *access* (which fleets a staff member administers/can be assigned
+// checks for - HOTC/HOFO always have all of them), a different concept
+// from a crew member's *personal* fleet (what aircraft they themselves fly
+// and need checked on). Overlaying it used to clobber e.g. an HOTC's own
+// crew profile fleet with "every fleet", leaving no way to tell which
+// simulator form applied to them - see crew_members.fleets, set directly
+// on this profile regardless of any staff link.
 const CREW_SELECT = `
-  SELECT crew_members.*, u.name AS linked_user_name, u.fleets AS linked_user_fleets
+  SELECT crew_members.*, u.name AS linked_user_name
   FROM crew_members
   LEFT JOIN users u ON u.id = crew_members.user_id
 `;
@@ -42,10 +51,10 @@ const CREW_SELECT = `
 function serializeCrewMember(row) {
   const m = rowToCamel(row);
   const isLinked = !!m.userId;
-  const { linkedUserName, linkedUserFleets, ...rest } = m;
+  const { linkedUserName, ...rest } = m;
   return {
     ...rest,
-    fleets: isLinked ? parsePgArray(linkedUserFleets) : parsePgArray(rest.fleets),
+    fleets: parsePgArray(rest.fleets),
     name: isLinked ? linkedUserName : `${rest.firstName} ${rest.lastName}`,
     isLinked,
   };
@@ -126,7 +135,12 @@ async function withCurrency(member) {
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const ipc = latestOf(ipcChk, member.seedIpcDate);
-    const pc = latestOf(pcChk, member.seedPcDate);
+    // An IPC's requirements cover a Proficiency Check too (it includes a
+    // licence reissue on top of what a PC alone would test), so completing
+    // one resets the PC's 6-month clock as well - not just a dedicated
+    // PC-variant check. The reverse doesn't hold: a plain PC doesn't touch
+    // the IPC's own due date above.
+    const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
     const pcWin = pcWindow(pc);
     return {
       ...member,
@@ -185,9 +199,11 @@ const quickAddSchema = z.object({
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1),
   // The crew member's own ARN (distinct from a linked staff account's ARN,
-  // if any) - required so it can be autofilled into check forms (e.g. the
-  // Applicant's ARN on an IPC/PC) instead of retyped every time.
-  arn: z.string().min(1),
+  // if any) - required for pilots so it can be autofilled into check forms
+  // (e.g. the Applicant's ARN on an IPC/PC) instead of retyped every time.
+  // Cabin attendants don't hold one, so it's optional/ignored for them -
+  // see the superRefine below and the insert, which nulls it out for CA.
+  arn: z.string().optional(),
   // Seed dates - stored directly on crew_members (see 0028 migration) and
   // merged with any real completed check by withCurrency, rather than
   // creating a synthetic checks row for a check that was never conducted
@@ -201,8 +217,16 @@ const quickAddSchema = z.object({
   // who is themselves subject to recurrent currency - avoids ever having
   // two separate records (Staff + a hand-typed Crew duplicate) for the
   // same person. See CREW_SELECT/serializeCrewMember for how a linked
-  // member's name/fleets are then read live from Staff.
+  // member's name is then read live from Staff.
   userId: z.string().uuid().nullable().optional(),
+  // When set, also creates a matching trainee LOFT record (see the
+  // newHire handling in POST / below) - for someone joining who needs to
+  // go through initial training/phases, not just be tracked for currency.
+  newHire: z.boolean().optional(),
+}).superRefine((d, ctx) => {
+  if (d.type === 'PILOT' && !d.arn?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for pilots' });
+  }
 });
 
 router.post('/', async (req, res) => {
@@ -230,7 +254,7 @@ router.post('/', async (req, res) => {
         d.type === 'PILOT' ? (d.lastPcDate || null) : null,
         d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
         d.userId || null,
-        d.arn,
+        d.type === 'PILOT' ? d.arn : null,
       ],
     ));
   } catch (err) {
@@ -238,6 +262,24 @@ router.post('/', async (req, res) => {
     throw err;
   }
   const member = serializeCrewMember(rows[0]);
+
+  if (d.newHire) {
+    // Fire-and-forget-ish but awaited: a new hire needs a trainee LOFT
+    // record too (ground school/phases/flights), separate from this crew
+    // profile (which just tracks their ongoing recurrent currency). Best
+    // effort - if this fails, the crew member is still created; the admin
+    // can add the trainee record by hand from the Trainees tab instead.
+    try {
+      await pool.query(
+        `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase) VALUES ($1, $2, $3, $4, $5, 1)`,
+        [d.firstName, d.lastName, d.type, d.role, d.fleets[0]],
+      );
+    } catch (err) {
+      // Swallow - the crew profile creation above already succeeded and
+      // is the primary outcome of this request.
+    }
+  }
+
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id });
   res.status(201).json(await withCurrency(member));
 });
@@ -250,7 +292,7 @@ const updateSchema = z.object({
   lineCheckAnchorDate: z.string().nullable().optional(),
   arn: z.string().min(1).optional(),
   // Links this crew profile to an existing staff account (see CREW_SELECT)
-  // so name/fleets are read live from Staff instead of drifting out of sync.
+  // so name is read live from Staff instead of drifting out of sync.
   userId: z.string().uuid().nullable().optional(),
 });
 

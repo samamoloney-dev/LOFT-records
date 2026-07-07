@@ -153,6 +153,7 @@ function GroundSchoolAdminSection() {
 // Syllabus page (see SyllabusAdmin below), which is the single place all
 // courses/forms/surveys get edited from.
 const NEW_CATEGORY_VALUE = '__new__';
+const NEW_SECTION_VALUE = '__new__';
 
 function SyllabusItemsSection() {
   const [items, setItems] = useState([]);
@@ -474,7 +475,8 @@ function SurveyQuestionsSection() {
 const CHECK_FORM_TABS = [
   { key: 'EMERGENCY_PROCEDURES', label: 'Emergency Procedures' },
   { key: 'PROFICIENCY_CHECK', label: 'Proficiency Check / IPC' },
-  { key: 'CABIN_ATTENDANT_LINE_CHECK', label: 'Line Check' },
+  { key: 'CABIN_ATTENDANT_LINE_CHECK', label: 'Line Check (CA)' },
+  { key: 'PILOT_LINE_CHECK', label: 'Line Check (Pilot)' },
   { key: 'CHECK_TO_LINE', label: 'Check to Line (Pilot)' },
   { key: 'GROUND_INSTRUCTOR_COMPETENCY', label: 'Ground Instructor Check' },
 ];
@@ -490,12 +492,11 @@ const CTL_FLEET_TABS = [
 const emptyCheckFormItemForm = (formKey, fleet) => ({ formKey, fleet: fleet || '', section: '', kind: 'tick', description: '', notes: '', mos: '', ipcOnly: false });
 
 // One item list, editable here, drives the real Emergency Procedures,
-// Proficiency Check/IPC, Cabin Attendant Line Check, pilot Check to Line,
-// and Ground Instructor Competency Check forms (see
-// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx/CtlForm.jsx/
-// GroundInstructorCheckForm.jsx) instead of being fixed in source code. The
-// Pilot Line Check has no itemised checklist (just date/assessor/result),
-// so there's nothing to edit for it here.
+// Proficiency Check/IPC, Cabin Attendant Line Check, pilot Line Check,
+// pilot Check to Line, and Ground Instructor Competency Check forms (see
+// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx/PilotLineCheck.jsx/
+// CtlForm.jsx/GroundInstructorCheckForm.jsx) instead of being fixed in
+// source code.
 function CheckFormItemsSection() {
   const [formKey, setFormKey] = useState('EMERGENCY_PROCEDURES');
   const [ctlFleet, setCtlFleet] = useState('DASH_8');
@@ -505,6 +506,12 @@ function CheckFormItemsSection() {
   const [form, setForm] = useState(emptyCheckFormItemForm(formKey));
   const [error, setError] = useState(null);
   const isCtl = formKey === 'CHECK_TO_LINE';
+  const isPc = formKey === 'PROFICIENCY_CHECK';
+  // Proficiency Check/IPC items are grouped under named sections (e.g.
+  // "3.1 Pre-flight" etc.) - picking from the headings already in use
+  // avoids near-duplicate sections from a typo or slightly different
+  // wording, with a way to add a genuinely new one when needed.
+  const [addingSection, setAddingSection] = useState(false);
 
   function load() {
     const fleetParam = isCtl ? `&fleet=${ctlFleet}` : '';
@@ -512,15 +519,19 @@ function CheckFormItemsSection() {
   }
   useEffect(load, [formKey, ctlFleet]);
 
+  const sectionOptions = [...new Set(items.map((i) => i.section).filter(Boolean))].sort();
+
   function openCreateForm() {
     setEditingId(null);
     setForm(emptyCheckFormItemForm(formKey, isCtl ? ctlFleet : ''));
+    setAddingSection(false);
     setShowForm((v) => !v);
   }
 
   function openEditForm(item) {
     setEditingId(item.id);
     setForm({ formKey, fleet: item.fleet || '', section: item.section || '', kind: item.kind, description: item.description, notes: item.notes || '', mos: item.mos || '', ipcOnly: item.ipcOnly });
+    setAddingSection(false);
     setShowForm(true);
   }
 
@@ -560,11 +571,13 @@ function CheckFormItemsSection() {
       <TabBar
         tabs={CHECK_FORM_TABS}
         active={formKey}
-        onSelect={(key) => { setFormKey(key); setShowForm(false); setEditingId(null); setForm(emptyCheckFormItemForm(key, key === 'CHECK_TO_LINE' ? ctlFleet : '')); }}
+        onSelect={(key) => { setFormKey(key); setShowForm(false); setEditingId(null); setAddingSection(false); setForm(emptyCheckFormItemForm(key, key === 'CHECK_TO_LINE' ? ctlFleet : '')); }}
       />
-      {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (
+      {formKey === 'PILOT_LINE_CHECK' && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-          The Pilot Line Check has no itemised checklist, so there's nothing to edit for it here.
+          This is a minimal starter set for the Pilot Line Check (SA_490) - add the rest of the real
+          form's items here. "Refresher training and check" is a special case handled by name and is
+          always auto-ticked from the crew member's Refresher Training competency, not editable per check.
         </div>
       )}
       {isCtl && (
@@ -585,7 +598,35 @@ function CheckFormItemsSection() {
 
       {showForm && (
         <form className="card" onSubmit={handleSubmit}>
-          <div className="field"><label>Section (optional grouping heading)</label><input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} /></div>
+          <div className="field">
+            <label>Section (optional grouping heading)</label>
+            {isPc ? (
+              addingSection || sectionOptions.length === 0 ? (
+                <>
+                  <input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="New section name" />
+                  {sectionOptions.length > 0 && (
+                    <button type="button" onClick={() => { setAddingSection(false); setForm({ ...form, section: sectionOptions[0] }); }} style={{ marginTop: 6 }}>
+                      Choose an existing section instead
+                    </button>
+                  )}
+                </>
+              ) : (
+                <select
+                  value={form.section}
+                  onChange={(e) => {
+                    if (e.target.value === NEW_SECTION_VALUE) { setAddingSection(true); setForm({ ...form, section: '' }); }
+                    else setForm({ ...form, section: e.target.value });
+                  }}
+                >
+                  <option value="">— No section —</option>
+                  {sectionOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                  <option value={NEW_SECTION_VALUE}>+ Add new section</option>
+                </select>
+              )
+            ) : (
+              <input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} />
+            )}
+          </div>
           <div className="field"><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></div>
           {isCtl && (
             <div className="field"><label>Notes (optional)</label><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
@@ -599,6 +640,16 @@ function CheckFormItemsSection() {
               <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 <option value="tick">Tick (S/X/N)</option>
                 <option value="score_code">Score + code (NTS marker)</option>
+              </select>
+            </div>
+          )}
+          {formKey === 'PILOT_LINE_CHECK' && (
+            <div className="field">
+              <label>Item type</label>
+              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+                <option value="tick">Tick (satisfactory/not)</option>
+                <option value="text">Free text</option>
+                <option value="tick_approach">Tick + instrument approach type</option>
               </select>
             </div>
           )}
@@ -625,7 +676,10 @@ function CheckFormItemsSection() {
                 <div style={{ fontSize: 13 }}>{item.description}{item.archived ? ' (archived)' : ''}</div>
                 {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                  {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}{item.kind === 'score_code' ? ' · Score + code' : ''}
+                  {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}
+                  {item.kind === 'score_code' ? ' · Score + code' : ''}
+                  {item.kind === 'text' ? ' · Free text' : ''}
+                  {item.kind === 'tick_approach' ? ' · Tick + approach type' : ''}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>

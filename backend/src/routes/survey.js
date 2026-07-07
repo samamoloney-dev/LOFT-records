@@ -195,16 +195,23 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
        FROM check_surveys cs
        JOIN checks c ON c.id = cs.check_id
        WHERE cs.submitted_at IS NOT NULL ${dateClause}
+     ),
+     group_counts AS (
+       SELECT actype, role, COUNT(DISTINCT id)::int AS survey_count
+       FROM in_range_surveys
+       GROUP BY actype, role
      )
      SELECT irs.actype, irs.role, q.id AS question_id, q.text, q.sort_order,
             COALESCE(AVG(r.score), 0) AS average_score,
-            COUNT(r.score)::int AS response_count
+            COUNT(r.score)::int AS response_count,
+            gc.survey_count
      FROM in_range_surveys irs
      CROSS JOIN survey_questions q
      LEFT JOIN check_survey_responses r
        ON r.question_id = q.id AND r.check_survey_id = irs.id
+     JOIN group_counts gc ON gc.actype = irs.actype AND gc.role = irs.role
      WHERE q.archived = false
-     GROUP BY irs.actype, irs.role, q.id, q.text, q.sort_order
+     GROUP BY irs.actype, irs.role, q.id, q.text, q.sort_order, gc.survey_count
      ORDER BY irs.actype ASC, irs.role ASC, q.sort_order ASC, q.created_at ASC`,
   );
   res.json(rows.map((r) => ({
@@ -214,6 +221,7 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
     text: r.text,
     averageScore: Number(r.average_score),
     responseCount: r.response_count,
+    surveyCount: r.survey_count,
   })));
 });
 

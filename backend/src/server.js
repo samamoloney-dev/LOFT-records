@@ -19,6 +19,7 @@ const surveyRoutes = require('./routes/survey');
 const competencyTypeRoutes = require('./routes/competency-types');
 const checkFormItemRoutes = require('./routes/check-form-items');
 const instructorCheckRoutes = require('./routes/instructor-checks');
+const planningRoutes = require('./routes/planning');
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/survey', surveyRoutes);
 app.use('/api/competency-types', competencyTypeRoutes);
 app.use('/api/check-form-items', checkFormItemRoutes);
 app.use('/api/instructor-checks', instructorCheckRoutes);
+app.use('/api/planning', planningRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

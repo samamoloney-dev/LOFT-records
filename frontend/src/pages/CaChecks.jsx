@@ -275,7 +275,18 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             <CrewMemberPicker
               members={crewOptions}
               value={newForm.linkedCrewMemberId}
-              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name }))}
+              onSelect={(m) => {
+                // Carries over an examiner/instructor/check pilot already
+                // assigned to this candidate's upcoming Line Check from the
+                // Planning page, instead of re-picking it here.
+                const planned = m?.currency?.lineCheck?.plannedAssignedTo;
+                setNewForm((f) => ({
+                  ...f,
+                  linkedCrewMemberId: m?.id || '',
+                  name: m?.name || f.name,
+                  ...(planned && !f.assignedTo ? { assignedTo: planned.id, assessorId: planned.id, assessor: planned.name, assessorArn: planned.arn } : {}),
+                }));
+              }}
             />
           )}
           <div className="grid2">

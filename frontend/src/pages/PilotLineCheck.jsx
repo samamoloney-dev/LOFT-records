@@ -7,15 +7,96 @@ import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
+import { competencyStatus } from '../lib/dueStatus';
+import { APPROACH_TYPES } from './FlightRow';
 
-// Recurring pilot Line Check (365 days from the initial Check to Line date,
-// then every 365 days after - see backend/src/lib/currency.js). Deliberately
-// much lighter than the one-time Check to Line assessment: just a date,
-// assessor, result, comments and signatures. Only ever rendered scoped to
-// one Crew roster member (see CrewDetail.jsx) - there's no free-text/ad-hoc
-// use of this check type.
-const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', comments: '', assessorSig: '', candidateSig: '' });
+// Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
+// Line date, then every 365 days after - see backend/src/lib/currency.js).
+// One generic item catalogue for every pilot fleet (see check-form-items.js
+// FORM_KEYS/PILOT_LINE_CHECK, editable from Syllabus > Check Forms), keyed
+// by item.id rather than a fixed source-code list. Only ever rendered
+// scoped to one Crew roster member (see CrewDetail.jsx) - there's no
+// free-text/ad-hoc use of this check type.
+const REFRESHER_ITEM_NAME = 'Refresher training and check';
+
+const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', comments: '', assessorSig: '', candidateSig: '', results: {} });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
+
+function groupBySection(items) {
+  const map = new Map();
+  for (const item of items) {
+    const key = item.section || '—';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  }
+  return [...map.entries()];
+}
+
+// "Refresher training and check" isn't ticked by hand on this form - it
+// reflects whether the crew member's own Refresher Training competency
+// (see crew.js /:id/competencies) is currently held, so it can never fall
+// out of sync with the date actually on file for them.
+function RefresherTrainingRow({ refresherCompetency }) {
+  const isCurrent = !!refresherCompetency
+    && !refresherCompetency.na
+    && !!refresherCompetency.dueDate
+    && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
+
+  return (
+    <div className="row" style={{ cursor: 'default' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13 }}>{REFRESHER_ITEM_NAME}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          {refresherCompetency?.dueDate
+            ? `Refresher Training competency due ${formatDate(refresherCompetency.dueDate)}`
+            : 'No Refresher Training date on file for this crew member'}
+        </div>
+      </div>
+      <span className={`badge ${isCurrent ? 'pass' : 'fail'}`}>{isCurrent ? '✓ Current' : 'Not current'}</span>
+    </div>
+  );
+}
+
+function ItemRow({ item, value, disabled, onChange }) {
+  if (item.kind === 'text') {
+    return (
+      <div className="field" style={{ margin: '0 0 10px' }}>
+        <label>{item.description}</label>
+        <input defaultValue={value || ''} disabled={disabled} onBlur={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+
+  if (item.kind === 'tick_approach') {
+    const v = value || {};
+    return (
+      <div className="card" style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 13, flex: 1 }}>{item.description}</div>
+          <select disabled={disabled} value={v.approachType || ''} onChange={(e) => onChange({ ...v, approachType: e.target.value })} style={{ width: 130 }}>
+            <option value="">Approach type —</option>
+            {APPROACH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button type="button" className={`tick-btn ${v.satisfactory === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange({ ...v, satisfactory: true })}>✓</button>
+            <button type="button" className={`tick-btn ${v.satisfactory === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange({ ...v, satisfactory: false })}>✗</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Plain tick.
+  return (
+    <div className="row" style={{ cursor: 'default' }}>
+      <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button type="button" className={`tick-btn ${value === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange(true)}>✓</button>
+        <button type="button" className={`tick-btn ${value === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange(false)}>✗</button>
+      </div>
+    </div>
+  );
+}
 
 export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false, fleet }) {
   const [checks, setChecks] = useState([]);
@@ -23,6 +104,17 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(emptyNewForm());
   const [error, setError] = useState(null);
+  const [items, setItems] = useState([]);
+  const [refresherCompetency, setRefresherCompetency] = useState(null);
+
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=PILOT_LINE_CHECK').then(setItems).catch(() => {});
+  }, []);
+  useEffect(() => {
+    api.get(`/api/crew/${crewMemberId}/competencies`)
+      .then((rows) => setRefresherCompetency(rows.find((r) => r.name === 'Refresher Training') || null))
+      .catch(() => {});
+  }, [crewMemberId]);
 
   function load() {
     api.get(`/api/checks?checkType=PILOT_LINE_CHECK&archived=${archived}&crewMemberId=${crewMemberId}`)
@@ -32,6 +124,8 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   useEffect(load, [archived, crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
+  const tickableItems = items.filter((i) => i.description !== REFRESHER_ITEM_NAME);
+  const sections = groupBySection(tickableItems);
 
   async function createCheck(e) {
     e.preventDefault();
@@ -51,6 +145,10 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
       const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
+  }
+
+  function setItemResult(check, itemId, value) {
+    patchDetails(check, { results: { ...(check.details?.results || {}), [itemId]: value } });
   }
 
   async function setResult(check, result) {
@@ -96,22 +194,35 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
 
   function printCheck(check) {
     const d = check.details || {};
-    const html = `
+    const results = d.results || {};
+    const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
+    let body = `
       <h1>Line Check</h1>
       <div class="meta">${crewMemberName} · ${d.date || ''}</div>
-      ${section('Details', [
-        ['Assessor', d.assessor],
-        ['Assessor ARN', d.assessorArn],
-        ['Comments', d.comments],
-        ['Overall assessment', resultBadge(check.result)],
-      ])}
-      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+      ${section('General', [[REFRESHER_ITEM_NAME, isCurrent ? '✓ Current' : 'Not current']])}
     `;
-    openPrintWindow(`Line Check - ${crewMemberName}`, html);
+    for (const [sectionName, sectionItems] of sections) {
+      body += section(sectionName, sectionItems.map((item) => {
+        const v = results[item.id];
+        if (item.kind === 'text') return [item.description, v || ''];
+        if (item.kind === 'tick_approach') return [item.description, `${v?.satisfactory === true ? '✓' : v?.satisfactory === false ? '✗' : ''}${v?.approachType ? ` (${v.approachType})` : ''}`];
+        return [item.description, v === true ? '✓' : v === false ? '✗' : ''];
+      }));
+    }
+    body += section('Details', [
+      ['Assessor', d.assessor],
+      ['Assessor ARN', d.assessorArn],
+      ['Comments', d.comments],
+      ['Overall assessment', resultBadge(check.result)],
+    ]);
+    body += signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]]);
+    openPrintWindow(`Line Check - ${crewMemberName}`, body);
   }
 
   if (selected) {
     const d = selected.details || {};
+    const results = d.results || {};
+    const locked = !!selected.completedAt;
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -141,17 +252,39 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
 
         <div className="card">
           <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={locked} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
-          </div>
-          <div className="field"><label>Comments</label><textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} /></div>
-          <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
           </div>
         </div>
 
-        {!selected.completedAt && (
+        <div className="card">
+          <RefresherTrainingRow refresherCompetency={refresherCompetency} />
+        </div>
+
+        {sections.map(([sectionName, sectionItems]) => (
+          <div key={sectionName} className="card">
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>{sectionName}</div>
+            {sectionItems.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                value={results[item.id]}
+                disabled={locked}
+                onChange={(v) => setItemResult(selected, item.id, v)}
+              />
+            ))}
+          </div>
+        ))}
+
+        <div className="card">
+          <div className="field"><label>Comments</label><textarea defaultValue={d.comments} disabled={locked} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} /></div>
+          <div className="grid2">
+            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={locked} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+          </div>
+        </div>
+
+        {!locked && (
           <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
             DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
           </div>
@@ -159,7 +292,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         <div className="card">
           <div className="field">
             <label>Overall assessment</label>
-            <select disabled={!!selected.completedAt} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+            <select disabled={locked} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
               <option value="">—</option>
               <option value="PASS">PASS</option>
               <option value="FAIL">FAIL</option>

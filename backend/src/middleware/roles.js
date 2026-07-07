@@ -21,10 +21,11 @@ const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 
 // Every role the operator counts as able to check/train Emergency
 // Procedures - mirrors checks.js's canAccessCheckType default branch
-// (canAccessChecks/CHECK_ROLES). These are the staff who must hold a
-// current Ground Instructor Competency Check (SA_520), renewed every 12
-// months.
-const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
+// (canAccessChecks/CHECK_ROLES), plus CA Trainer/CA Checker who train and
+// check cabin attendant Emergency Procedures. These are the staff who must
+// hold a current Ground Instructor Competency Check (SA_520), renewed
+// every 12 months.
+const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
 
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
 // is deliberately narrower than the usual admin trio - Flight Ops Admin is

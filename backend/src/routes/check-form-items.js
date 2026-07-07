@@ -12,8 +12,12 @@ router.use(requireAuth);
 
 const FORM_KEYS = [
   'EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
-  'CHECK_TO_LINE', 'GROUND_INSTRUCTOR_COMPETENCY',
+  'CHECK_TO_LINE', 'GROUND_INSTRUCTOR_COMPETENCY', 'PILOT_LINE_CHECK',
 ];
+// tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
+// answer (e.g. which aircraft system was discussed). tick_approach: a tick
+// plus which instrument approach type was flown (Pilot Line Check only).
+const ITEM_KINDS = ['tick', 'score_code', 'text', 'tick_approach'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
 // Anyone who can reach a check form needs to be able to read its item
@@ -44,7 +48,7 @@ const createSchema = z.object({
   formKey: z.enum(FORM_KEYS),
   fleet: z.enum(FLEET_VALUES).nullable().optional(),
   section: z.string().nullable().optional(),
-  kind: z.enum(['tick', 'score_code']).optional(),
+  kind: z.enum(ITEM_KINDS).optional(),
   description: z.string().min(1),
   notes: z.string().nullable().optional(),
   mos: z.string().nullable().optional(),
@@ -73,7 +77,7 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
 const updateSchema = z.object({
   fleet: z.enum(FLEET_VALUES).nullable().optional(),
   section: z.string().nullable().optional(),
-  kind: z.enum(['tick', 'score_code']).optional(),
+  kind: z.enum(ITEM_KINDS).optional(),
   description: z.string().min(1).optional(),
   notes: z.string().nullable().optional(),
   mos: z.string().nullable().optional(),

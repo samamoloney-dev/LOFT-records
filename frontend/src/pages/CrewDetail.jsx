@@ -13,6 +13,10 @@ import { competencyStatus } from '../lib/dueStatus';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
+// Not every crew member is required to hold every competency - see
+// CompetencyList's Not Applicable toggle below.
+const NA_ELIGIBLE_COMPETENCIES = ['First Aid', 'CPR Training'];
+
 // Cabin attendants start qualified on Dash 8 and can only add Fokker 100
 // once they hold Dash 8 - mirrors Crew.jsx's FleetPicker (kept separate
 // since that one isn't exported for reuse here).
@@ -216,6 +220,7 @@ function CompetencyList({ crewMemberId, onChange }) {
         completedDate: current.completedDate || null,
         dueDate: current.dueDate || null,
         plannedDate: current.plannedDate || null,
+        na: current.na || false,
         ...patch,
       });
       load();
@@ -232,26 +237,47 @@ function CompetencyList({ crewMemberId, onChange }) {
       )}
       {competencies.map((c) => {
         const status = competencyStatus(c.dueDate);
+        // Not every crew member is required to hold every competency - e.g.
+        // First Aid is Metro/Conquest-only (mirrors the Ground School N/A
+        // toggle for the same item), and some crew are exempt from CPR
+        // Training. Scoped to exactly these two names rather than a
+        // blanket feature.
+        const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
         return (
           <div key={c.competencyTypeId} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 500 }}>{c.name}</div>
-              {status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
+              {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
             </div>
-            <div className="grid2" style={{ marginTop: 8 }}>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Completed date</label>
-                <input type="date" defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Due date</label>
-                <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
-              </div>
-            </div>
-            <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
-              <label>Planned date</label>
-              <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
-            </div>
+            {canBeNa && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={!!c.na}
+                  onChange={(e) => updateCompetency(c.competencyTypeId, { na: e.target.checked })}
+                  style={{ width: 'auto' }}
+                />
+                Not applicable to this crew member
+              </label>
+            )}
+            {!c.na && (
+              <>
+                <div className="grid2" style={{ marginTop: 8 }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Completed date</label>
+                    <input type="date" defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Due date</label>
+                    <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
+                  </div>
+                </div>
+                <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+                  <label>Planned date</label>
+                  <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
+                </div>
+              </>
+            )}
           </div>
         );
       })}

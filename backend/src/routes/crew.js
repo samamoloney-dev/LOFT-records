@@ -5,6 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -90,25 +91,36 @@ async function completedPilotLineCheckCount(crewMemberId) {
   return rows[0]?.n || 0;
 }
 
-function dueInfo(dueDate, completedDate, plannedDate) {
+function dueInfo(dueDate, completedDate, planned) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
-  const planned = plannedDate ? new Date(plannedDate).toISOString() : null;
-  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed, plannedDate: planned };
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate: planned };
+  const plannedDate = planned?.plannedDate ? new Date(planned.plannedDate).toISOString() : null;
+  const plannedAssignedTo = planned?.assignedToName
+    ? { id: planned.assignedTo, name: planned.assignedToName, arn: planned.assignedToArn, role: planned.assignedToRole }
+    : null;
+  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed, plannedDate, plannedAssignedTo };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate, plannedAssignedTo };
 }
 
 // HOTC/HOFO/Flight Ops Admin can note a planned date for an upcoming check
-// (e.g. "PC booked for 15 Aug") before it's actually conducted - purely
-// informational, shown alongside the computed due date on Currency
-// Overview and the crew member's own profile.
+// (e.g. "PC booked for 15 Aug") before it's actually conducted, optionally
+// with an examiner/instructor/check pilot already assigned (see the new
+// Planning page) - purely informational, shown alongside the computed due
+// date on Currency Overview and the crew member's own profile, and used to
+// prefill the assignee when the real check is later created.
 const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'];
 
 async function plannedDatesFor(crewMemberId) {
   const { rows } = await pool.query(
-    'SELECT check_key, planned_date FROM crew_planned_checks WHERE crew_member_id = $1',
+    'SELECT check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role FROM crew_planned_checks WHERE crew_member_id = $1',
     [crewMemberId],
   );
-  return Object.fromEntries(rows.map((r) => [r.check_key, r.planned_date]));
+  return Object.fromEntries(rows.map((r) => [r.check_key, {
+    plannedDate: r.planned_date,
+    assignedTo: r.assigned_to,
+    assignedToName: r.assigned_to_name,
+    assignedToArn: r.assigned_to_arn,
+    assignedToRole: r.assigned_to_role,
+  }]));
 }
 
 // Quick-add lets an admin seed a crew member's currency clock with a date
@@ -135,7 +147,7 @@ const CURRENCY_LABELS = {
 // than requiring a crew_competencies row to already exist.
 async function activeCompetencies(crewMemberId) {
   const { rows } = await pool.query(
-    `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date
+    `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false`,
@@ -168,6 +180,7 @@ async function urgentItemsFor(member, currency) {
 
   const competencies = await activeCompetencies(member.id);
   const fromCompetencies = competencies
+    .filter((c) => !c.na)
     .map((c) => ({
       label: c.name,
       status: competencyStatus(c.due_date),
@@ -392,7 +405,10 @@ router.patch('/:id', async (req, res) => {
   res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
-const plannedCheckSchema = z.object({ plannedDate: z.string().nullable() });
+const plannedCheckSchema = z.object({
+  plannedDate: z.string().nullable(),
+  assignedTo: z.string().uuid().nullable().optional(),
+});
 
 router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const member = await findCrewMember(req.params.id);
@@ -402,14 +418,31 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const parsed = plannedCheckSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { plannedDate } = parsed.data;
+  // Distinguish "assignedTo not sent, leave as-is" from "assignedTo: null,
+  // unassign" - mirrors checks.js/ctl.js's own assignee-patch handling.
+  const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');
 
   if (!plannedDate) {
     await pool.query('DELETE FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2', [member.id, req.params.checkKey]);
   } else {
+    const assignee = hasAssignedTo
+      ? await resolveAssignee(parsed.data.assignedTo)
+      : { assignedToName: null, assignedToArn: null, assignedToRole: null };
     await pool.query(
-      `INSERT INTO crew_planned_checks (crew_member_id, check_key, planned_date) VALUES ($1, $2, $3)
-       ON CONFLICT (crew_member_id, check_key) DO UPDATE SET planned_date = $3`,
-      [member.id, req.params.checkKey, plannedDate],
+      `INSERT INTO crew_planned_checks (crew_member_id, check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (crew_member_id, check_key) DO UPDATE SET
+         planned_date = $3,
+         assigned_to = CASE WHEN $8 THEN $4::uuid ELSE crew_planned_checks.assigned_to END,
+         assigned_to_name = CASE WHEN $8 THEN $5 ELSE crew_planned_checks.assigned_to_name END,
+         assigned_to_arn = CASE WHEN $8 THEN $6 ELSE crew_planned_checks.assigned_to_arn END,
+         assigned_to_role = CASE WHEN $8 THEN $7 ELSE crew_planned_checks.assigned_to_role END`,
+      [
+        member.id, req.params.checkKey, plannedDate,
+        hasAssignedTo ? (parsed.data.assignedTo || null) : null,
+        assignee.assignedToName, assignee.assignedToArn, assignee.assignedToRole,
+        hasAssignedTo,
+      ],
     );
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_planned_checks', targetId: member.id });
@@ -445,7 +478,7 @@ router.get('/:id/competencies', async (req, res) => {
   if (!member) return res.status(404).json({ error: 'Not found' });
 
   const { rows } = await pool.query(
-    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date
+    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false
@@ -459,6 +492,10 @@ const competencyDatesSchema = z.object({
   completedDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   plannedDate: z.string().nullable().optional(),
+  // Scoped in the frontend to just First Aid/CPR Training (see
+  // CrewDetail.jsx) - not every crew member is required to hold every
+  // competency.
+  na: z.boolean().optional(),
 });
 
 // Upserts this crew member's dates for one competency type - there's no
@@ -470,15 +507,15 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
 
   const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { completedDate, dueDate, plannedDate } = parsed.data;
+  const { completedDate, dueDate, plannedDate, na } = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (crew_member_id, competency_type_id)
-     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5
+     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6
      RETURNING *`,
-    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null],
+    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false],
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));

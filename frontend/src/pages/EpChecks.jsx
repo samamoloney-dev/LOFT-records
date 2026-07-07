@@ -274,7 +274,18 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
             <CrewMemberPicker
               members={crewOptions}
               value={newForm.linkedCrewMemberId}
-              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name }))}
+              onSelect={(m) => {
+                // If this candidate already has an examiner/instructor
+                // assigned from the Planning page for their upcoming EP
+                // check, carry it straight over instead of re-picking it.
+                const planned = m?.currency?.emergencyProcedures?.plannedAssignedTo;
+                setNewForm((f) => ({
+                  ...f,
+                  linkedCrewMemberId: m?.id || '',
+                  name: m?.name || f.name,
+                  ...(planned && !f.assignedTo ? { assignedTo: planned.id, assessorId: planned.id, assessor: planned.name, assessorArn: planned.arn } : {}),
+                }));
+              }}
             />
           )}
           <div className="grid2">

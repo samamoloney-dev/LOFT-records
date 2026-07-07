@@ -58,7 +58,7 @@ export function ContinuousImprovement() {
     const map = new Map();
     for (const d of data) {
       const key = `${d.actype}::${d.role}`;
-      if (!map.has(key)) map.set(key, { actype: d.actype, role: d.role, questions: [] });
+      if (!map.has(key)) map.set(key, { actype: d.actype, role: d.role, surveyCount: d.surveyCount, questions: [] });
       map.get(key).questions.push(d);
     }
     return [...map.values()].sort((a, b) => groupLabel(a.actype, a.role).localeCompare(groupLabel(b.actype, b.role)));
@@ -90,7 +90,10 @@ export function ContinuousImprovement() {
         const totalResponses = g.questions.reduce((sum, q) => sum + q.responseCount, 0);
         return (
           <div key={`${g.actype}::${g.role}`} className="card">
-            <div style={{ fontWeight: 500, marginBottom: 10 }}>{groupLabel(g.actype, g.role)}</div>
+            <div style={{ fontWeight: 500, marginBottom: 2 }}>{groupLabel(g.actype, g.role)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+              {g.surveyCount} survey{g.surveyCount === 1 ? '' : 's'} completed
+            </div>
             {totalResponses === 0 ? (
               <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Surveys submitted, but no performance criteria answered yet.</div>
             ) : (

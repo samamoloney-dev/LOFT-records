@@ -197,117 +197,98 @@ function CurrencyFolder({ member }) {
   );
 }
 
+// One competency's status badge + editable dates - shared by the always-
+// visible top block (Medical, alongside EP/IPC/PC/Line Check - see
+// ExpiryTab) and the general Competencies list below (everything else).
+// `compact` drops the card background for the ones nested inside the top
+// block's own card, so they don't look like a card-within-a-card.
+function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, compact }) {
+  const status = competencyStatus(c.dueDate);
+  // Not every crew member is required to hold every competency - e.g.
+  // First Aid is Metro/Conquest-only (mirrors the Ground School N/A
+  // toggle for the same item), and some crew are exempt from CPR
+  // Training. Scoped to exactly these two names rather than a
+  // blanket feature.
+  const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
+  const datesSet = !!(c.completedDate && c.plannedDate);
+  const datesLocked = datesSet && !unlocked[c.competencyTypeId];
+  return (
+    <div className={compact ? undefined : 'card'} style={compact ? { minWidth: 220 } : undefined}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 500 }}>{c.name}</div>
+        {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
+      </div>
+      {canBeNa && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={!!c.na}
+            onChange={(e) => onUpdate(c.competencyTypeId, { na: e.target.checked })}
+            style={{ width: 'auto' }}
+          />
+          Not applicable to this crew member
+        </label>
+      )}
+      {!c.na && (
+        <>
+          {datesSet && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={!!unlocked[c.competencyTypeId]}
+                onChange={(e) => setUnlocked((u) => ({ ...u, [c.competencyTypeId]: e.target.checked }))}
+                style={{ width: 'auto' }}
+              />
+              Edit dates
+            </label>
+          )}
+          <div className="grid2" style={{ marginTop: 8 }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Completed date</label>
+              <input type="date" disabled={datesLocked} defaultValue={c.completedDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { completedDate: e.target.value || null })} />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Due date</label>
+              <input type="date" disabled={datesLocked} defaultValue={c.dueDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { dueDate: e.target.value || null })} />
+            </div>
+          </div>
+          <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+            <label>Planned date</label>
+            <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { plannedDate: e.target.value || null })} />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={!!c.courseSent}
+              onChange={(e) => onUpdate(c.competencyTypeId, { courseSent: e.target.checked })}
+              style={{ width: 'auto' }}
+            />
+            Course sent to candidate
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Every active competency (managed on the Syllabus tab - see
 // competency-types.js) is required for every crew member automatically -
 // this always shows one row per active type, whether or not any dates
 // have been entered yet, rather than needing them added one at a time
-// from a dropdown. onChange fires after every load so the parent Expiry
-// tab's due-soon/overdue highlight can stay in sync.
-function CompetencyList({ crewMemberId, onChange }) {
-  const [competencies, setCompetencies] = useState([]);
-  const [error, setError] = useState(null);
-  // Once completed + planned dates are both set, the dates are locked to
-  // avoid accidental edits - this remembers which rows were explicitly
-  // unlocked via the "Edit dates" checkbox, reset on every reload.
-  const [unlocked, setUnlocked] = useState({});
-
-  function load() {
-    api.get(`/api/crew/${crewMemberId}/competencies`).then((data) => { setCompetencies(data); onChange?.(); }).catch((e) => setError(e.message));
-  }
-  useEffect(load, [crewMemberId]);
-
-  async function updateCompetency(competencyTypeId, patch) {
-    setError(null);
-    try {
-      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
-      await api.put(`/api/crew/${crewMemberId}/competencies/${competencyTypeId}`, {
-        completedDate: current.completedDate || null,
-        dueDate: current.dueDate || null,
-        plannedDate: current.plannedDate || null,
-        na: current.na || false,
-        courseSent: current.courseSent || false,
-        ...patch,
-      });
-      load();
-    } catch (err) { setError(err.message); }
-  }
-
+// from a dropdown. Medical is pulled out and shown in the top block instead
+// (see ExpiryTab) - state/fetching for both live in ExpiryTab so they share
+// one source of truth rather than fetching the same data twice.
+function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked }) {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Competencies</div>
-      {error && <div className="error-text">{error}</div>}
 
       {competencies.length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No competencies set up yet - add some on the Syllabus tab.</div>
       )}
-      {competencies.map((c) => {
-        const status = competencyStatus(c.dueDate);
-        // Not every crew member is required to hold every competency - e.g.
-        // First Aid is Metro/Conquest-only (mirrors the Ground School N/A
-        // toggle for the same item), and some crew are exempt from CPR
-        // Training. Scoped to exactly these two names rather than a
-        // blanket feature.
-        const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
-        const datesSet = !!(c.completedDate && c.plannedDate);
-        const datesLocked = datesSet && !unlocked[c.competencyTypeId];
-        return (
-          <div key={c.competencyTypeId} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontWeight: 500 }}>{c.name}</div>
-              {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
-            </div>
-            {canBeNa && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  checked={!!c.na}
-                  onChange={(e) => updateCompetency(c.competencyTypeId, { na: e.target.checked })}
-                  style={{ width: 'auto' }}
-                />
-                Not applicable to this crew member
-              </label>
-            )}
-            {!c.na && (
-              <>
-                {datesSet && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
-                    <input
-                      type="checkbox"
-                      checked={!!unlocked[c.competencyTypeId]}
-                      onChange={(e) => setUnlocked((u) => ({ ...u, [c.competencyTypeId]: e.target.checked }))}
-                      style={{ width: 'auto' }}
-                    />
-                    Edit dates
-                  </label>
-                )}
-                <div className="grid2" style={{ marginTop: 8 }}>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label>Completed date</label>
-                    <input type="date" disabled={datesLocked} defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
-                  </div>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label>Due date</label>
-                    <input type="date" disabled={datesLocked} defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
-                  </div>
-                </div>
-                <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
-                  <label>Planned date</label>
-                  <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
-                  <input
-                    type="checkbox"
-                    checked={!!c.courseSent}
-                    onChange={(e) => updateCompetency(c.competencyTypeId, { courseSent: e.target.checked })}
-                    style={{ width: 'auto' }}
-                  />
-                  Course sent to candidate
-                </label>
-              </>
-            )}
-          </div>
-        );
-      })}
+      {competencies.map((c) => (
+        <CompetencyRow key={c.competencyTypeId} c={c} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} />
+      ))}
     </div>
   );
 }
@@ -318,6 +299,40 @@ function CompetencyList({ crewMemberId, onChange }) {
 // cluttered with due-date cards nobody asked to see yet.
 function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
   const isPilot = member.type === 'PILOT';
+  const [competencies, setCompetencies] = useState([]);
+  const [competencyError, setCompetencyError] = useState(null);
+  // Once completed + planned dates are both set, the dates are locked to
+  // avoid accidental edits - this remembers which rows were explicitly
+  // unlocked via the "Edit dates" checkbox, reset on every reload.
+  const [unlocked, setUnlocked] = useState({});
+
+  function loadCompetencies() {
+    api.get(`/api/crew/${member.id}/competencies`).then((data) => { setCompetencies(data); onCompetenciesChanged?.(); }).catch((e) => setCompetencyError(e.message));
+  }
+  useEffect(loadCompetencies, [member.id]);
+
+  async function updateCompetency(competencyTypeId, patch) {
+    setCompetencyError(null);
+    try {
+      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
+      await api.put(`/api/crew/${member.id}/competencies/${competencyTypeId}`, {
+        completedDate: current.completedDate || null,
+        dueDate: current.dueDate || null,
+        plannedDate: current.plannedDate || null,
+        na: current.na || false,
+        courseSent: current.courseSent || false,
+        ...patch,
+      });
+      loadCompetencies();
+    } catch (err) { setCompetencyError(err.message); }
+  }
+
+  // Medical sits in the top block alongside EP/IPC/PC/Line Check (it's
+  // important enough to want at-a-glance, same as those) rather than down
+  // in the general Competencies list with everything else.
+  const medical = competencies.find((c) => c.name === 'Medical');
+  const otherCompetencies = competencies.filter((c) => c.name !== 'Medical');
+
   return (
     <div>
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
@@ -341,9 +356,13 @@ function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} />
         </div>
+        {medical && (
+          <CompetencyRow c={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} compact />
+        )}
       </div>
+      {competencyError && <div className="error-text">{competencyError}</div>}
 
-      <CompetencyList crewMemberId={member.id} onChange={onCompetenciesChanged} />
+      <CompetencyList competencies={otherCompetencies} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} />
     </div>
   );
 }

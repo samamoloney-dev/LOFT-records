@@ -184,13 +184,13 @@ const CURRENCY_LABELS = {
 // (see 0037_competency_types.sql) - this is a LEFT JOIN so a type with no
 // dates entered yet for this person still comes back (with nulls), rather
 // than requiring a crew_competencies row to already exist.
-async function activeCompetencies(crewMemberId) {
+async function activeCompetencies(crewMemberId, crewType) {
   const { rows } = await pool.query(
     `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
-     WHERE ct.archived = false`,
-    [crewMemberId],
+     WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)`,
+    [crewMemberId, crewType],
   );
   return rows;
 }
@@ -217,7 +217,7 @@ async function urgentItemsFor(member, currency) {
       plannedDate: info.plannedDate,
     }));
 
-  const competencies = await activeCompetencies(member.id);
+  const competencies = await activeCompetencies(member.id, member.type);
   const fromCompetencies = competencies
     .filter((c) => !c.na)
     .map((c) => ({
@@ -571,9 +571,9 @@ router.get('/:id/competencies', async (req, res) => {
     `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
-     WHERE ct.archived = false
+     WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
      ORDER BY ct.sort_order ASC, ct.created_at ASC`,
-    [member.id],
+    [member.id, member.type],
   );
   res.json(rows.map(rowToCamel));
 });

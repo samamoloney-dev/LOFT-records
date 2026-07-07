@@ -694,11 +694,15 @@ function CheckFormItemsSection() {
 // /:id/competencies), so managing this list is the only "add a
 // competency" step there is. No dropdown on the crew side - just this
 // shared, extensible catalog.
+const APPLIES_TO_LABELS = { PILOT: 'Pilots only', CABIN_ATTENDANT: 'Cabin attendants only' };
+
 function CompetencyTypesSection() {
   const [types, setTypes] = useState([]);
   const [name, setName] = useState('');
+  const [appliesTo, setAppliesTo] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [editingAppliesTo, setEditingAppliesTo] = useState('');
   const [error, setError] = useState(null);
 
   function load() {
@@ -711,8 +715,9 @@ function CompetencyTypesSection() {
     if (!name.trim()) return;
     setError(null);
     try {
-      await api.post('/api/competency-types', { name: name.trim() });
+      await api.post('/api/competency-types', { name: name.trim(), appliesTo: appliesTo || null });
       setName('');
+      setAppliesTo('');
       load();
     } catch (err) { setError(err.message); }
   }
@@ -721,7 +726,7 @@ function CompetencyTypesSection() {
     if (!editingName.trim()) return;
     setError(null);
     try {
-      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim() });
+      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim(), appliesTo: editingAppliesTo || null });
       setEditingId(null);
       load();
     } catch (err) { setError(err.message); }
@@ -736,10 +741,18 @@ function CompetencyTypesSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Every active competency here is required for every crew member - archiving one removes it from crew profiles going forward without losing past dates.
+        Every active competency here is required for every crew member (unless scoped to pilots or cabin attendants only) - archiving one removes it from crew profiles going forward without losing past dates.
       </div>
       <form className="card" onSubmit={addType}>
         <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
+        <div className="field">
+          <label>Applies to</label>
+          <select value={appliesTo} onChange={(e) => setAppliesTo(e.target.value)}>
+            <option value="">All crew</option>
+            <option value="PILOT">Pilots only</option>
+            <option value="CABIN_ATTENDANT">Cabin attendants only</option>
+          </select>
+        </div>
         <button type="submit" className="primary">Add</button>
       </form>
       {error && <div className="error-text">{error}</div>}
@@ -748,7 +761,14 @@ function CompetencyTypesSection() {
         <div key={t.id} className="card row" style={{ cursor: 'default' }}>
           {editingId === t.id ? (
             <>
-              <input style={{ flex: 1, marginRight: 8 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
+              <div style={{ flex: 1, display: 'flex', gap: 8, marginRight: 8 }}>
+                <input style={{ flex: 1 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
+                <select value={editingAppliesTo} onChange={(e) => setEditingAppliesTo(e.target.value)} style={{ width: 180 }}>
+                  <option value="">All crew</option>
+                  <option value="PILOT">Pilots only</option>
+                  <option value="CABIN_ATTENDANT">Cabin attendants only</option>
+                </select>
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => saveName(t.id)}>Save</button>
                 <button onClick={() => setEditingId(null)}>Cancel</button>
@@ -756,9 +776,13 @@ function CompetencyTypesSection() {
             </>
           ) : (
             <>
-              <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>{t.name}{t.archived ? ' (archived)' : ''}</div>
+              <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>
+                {t.name}
+                {t.appliesTo ? ` (${APPLIES_TO_LABELS[t.appliesTo]})` : ''}
+                {t.archived ? ' (archived)' : ''}
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); }}>Edit</button>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); }}>Edit</button>
                 <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
               </div>
             </>

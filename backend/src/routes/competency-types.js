@@ -24,7 +24,12 @@ router.get('/', async (req, res) => {
   res.json(rows.map(rowToCamel));
 });
 
-const createSchema = z.object({ name: z.string().min(1) });
+const createSchema = z.object({
+  name: z.string().min(1),
+  // Most competencies apply to every crew member (null) - scoping to one
+  // type is the exception (e.g. Medical, pilot-only).
+  appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
+});
 
 router.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
@@ -33,8 +38,8 @@ router.post('/', async (req, res) => {
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM competency_types');
   try {
     const { rows } = await pool.query(
-      'INSERT INTO competency_types (name, sort_order) VALUES ($1, $2) RETURNING *',
-      [parsed.data.name, maxRows[0].next],
+      'INSERT INTO competency_types (name, sort_order, applies_to) VALUES ($1, $2, $3) RETURNING *',
+      [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null],
     );
     await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id });
     res.status(201).json(rowToCamel(rows[0]));
@@ -47,8 +52,9 @@ router.post('/', async (req, res) => {
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   archived: z.boolean().optional(),
+  appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
 });
-const COLUMN_MAP = { name: 'name', archived: 'archived' };
+const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to' };
 
 router.patch('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);

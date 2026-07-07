@@ -59,18 +59,27 @@ function FleetPicker({ type, value, onChange }) {
 // disabled/hidden for name once linked to a staff account (read live from
 // Staff instead - see the header display), but role and fleets always stay
 // editable here since they're specific to this crew profile.
+function initCrewInfoForm(member) {
+  return {
+    firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets,
+    lineCheckAnchorDate: member.lineCheckAnchorDate ? member.lineCheckAnchorDate.slice(0, 10) : '',
+  };
+}
+
 function CrewInfoEditor({ member, onSaved }) {
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets });
+  const [form, setForm] = useState(() => initCrewInfoForm(member));
   const [error, setError] = useState(null);
 
   const roles = member.type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
+  const isPilot = member.type === 'PILOT';
 
   async function save(e) {
     e.preventDefault();
     setError(null);
     try {
-      const patch = member.isLinked ? { role: form.role, fleets: form.fleets } : form;
+      const base = member.isLinked ? { role: form.role, fleets: form.fleets } : form;
+      const patch = isPilot ? { ...base, lineCheckAnchorDate: form.lineCheckAnchorDate || null } : base;
       onSaved(await api.patch(`/api/crew/${member.id}`, patch));
       setEditing(false);
     } catch (err) { setError(err.message); }
@@ -80,7 +89,7 @@ function CrewInfoEditor({ member, onSaved }) {
     return (
       <button
         onClick={() => {
-          setForm({ firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets });
+          setForm(initCrewInfoForm(member));
           setEditing(true);
         }}
       >Edit crew information</button>
@@ -105,6 +114,13 @@ function CrewInfoEditor({ member, onSaved }) {
         <label>Fleet{member.type === 'CABIN_ATTENDANT' ? 's' : ''}</label>
         <FleetPicker type={member.type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets })} />
       </div>
+      {isPilot && (
+        <div className="field">
+          <label>Initial Check to Line date</label>
+          <input type="date" value={form.lineCheckAnchorDate} onChange={(e) => setForm({ ...form, lineCheckAnchorDate: e.target.value })} />
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will always be due 365 days on from this date, then every 365 days after.</div>
+        </div>
+      )}
       {error && <div className="error-text">{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="primary">Save changes</button>
@@ -162,6 +178,34 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
   );
 }
 
+// Medical, styled to match the other boxes in this row (DueBadge + a
+// compact date input) rather than the fuller Competencies-list card - the
+// one difference is there's no check form behind it to derive a due date
+// from, so (unlike EP/IPC/PC/Line Check) the due date itself is a direct
+// manual entry here, not just a "planned" future date.
+function MedicalBox({ medical, onUpdate }) {
+  const status = competencyStatus(medical.dueDate);
+  return (
+    <div>
+      <DueBadge label="Medical" info={{ dueDate: medical.dueDate, status, plannedDate: medical.plannedDate }} />
+      <div style={{ marginTop: 4 }}>
+        <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Medical due date</label>
+        <input
+          type="date" defaultValue={medical.dueDate || ''} style={{ fontSize: 11, padding: '4px 6px' }}
+          onBlur={(e) => onUpdate(medical.competencyTypeId, { dueDate: e.target.value || null })}
+        />
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
+        <input
+          type="date" defaultValue={medical.plannedDate || ''} style={{ fontSize: 11, padding: '4px 6px' }}
+          onBlur={(e) => onUpdate(medical.competencyTypeId, { plannedDate: e.target.value || null })}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Recurrent checks archived from here (once redone/superseded) still need to
 // be visible from this person's own profile, not just the general Archive
 // tab - this toggle flips the archived prop the check list already supports.
@@ -197,12 +241,10 @@ function CurrencyFolder({ member }) {
   );
 }
 
-// One competency's status badge + editable dates - shared by the always-
-// visible top block (Medical, alongside EP/IPC/PC/Line Check - see
-// ExpiryTab) and the general Competencies list below (everything else).
-// `compact` drops the card background for the ones nested inside the top
-// block's own card, so they don't look like a card-within-a-card.
-function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, compact }) {
+// One competency's status badge + editable dates - used by the general
+// Competencies list below the top block (Medical is special-cased into its
+// own compact MedicalBox above instead - see ExpiryTab).
+function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   const status = competencyStatus(c.dueDate);
   // Not every crew member is required to hold every competency - e.g.
   // First Aid is Metro/Conquest-only (mirrors the Ground School N/A
@@ -213,7 +255,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, compact }) {
   const datesSet = !!(c.completedDate && c.plannedDate);
   const datesLocked = datesSet && !unlocked[c.competencyTypeId];
   return (
-    <div className={compact ? undefined : 'card'} style={compact ? { minWidth: 220 } : undefined}>
+    <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 500 }}>{c.name}</div>
         {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
@@ -356,9 +398,7 @@ function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} />
         </div>
-        {medical && (
-          <CompetencyRow c={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} compact />
-        )}
+        {medical && <MedicalBox medical={medical} onUpdate={updateCompetency} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}
 

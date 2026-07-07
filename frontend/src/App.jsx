@@ -28,15 +28,15 @@ function Shell({ children }) {
         <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
       </div>
       <nav className="top-nav">
-        <NavLink to="/" end>Trainees</NavLink>
-        {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
+        <NavLink to="/" end>LOFT Trainees</NavLink>
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
+        {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
+        {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
         {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
       </nav>
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>

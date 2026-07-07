@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -297,8 +298,20 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         <div className="card">
           <div className="field"><label>Comments</label><textarea defaultValue={d.comments} disabled={locked} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} /></div>
           <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={locked} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            {selected.assignedTo ? (
+              <PinSignature
+                label="Assessor signature" personType="user" personId={selected.assignedTo}
+                signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={locked}
+                onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
+              />
+            ) : (
+              <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            )}
+            <PinSignature
+              label="Candidate signature" personType="crewMember" personId={crewMemberId}
+              signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={locked}
+              onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
+            />
           </div>
         </div>
 

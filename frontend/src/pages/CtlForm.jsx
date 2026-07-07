@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate, formatUserRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
@@ -363,24 +364,28 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
           )}
           {!isCabinAttendant && (
             <div className="grid2">
-              <div className="field">
-                <label>Assessor's signature</label>
-                <input
-                  disabled={locked}
-                  value={form.assessorSignature || ''}
-                  onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, assessorSignature: e.target.value } }))}
-                  onBlur={() => save({ assessorSignature: form.assessorSignature })}
+              {form.assignedTo ? (
+                <PinSignature
+                  label="Assessor's signature" personType="user" personId={form.assignedTo}
+                  signedName={form.assessorSignature} signedAt={form.assessorSignatureAt} disabled={locked}
+                  onSigned={(name, at) => save({ assessorSignature: name, assessorSignatureAt: at })}
                 />
-              </div>
-              <div className="field">
-                <label>Candidate signature</label>
-                <input
-                  disabled={locked}
-                  value={form.candidateSignature || ''}
-                  onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, candidateSignature: e.target.value } }))}
-                  onBlur={() => save({ candidateSignature: form.candidateSignature })}
-                />
-              </div>
+              ) : (
+                <div className="field">
+                  <label>Assessor's signature</label>
+                  <input
+                    disabled={locked}
+                    value={form.assessorSignature || ''}
+                    onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, assessorSignature: e.target.value } }))}
+                    onBlur={() => save({ assessorSignature: form.assessorSignature })}
+                  />
+                </div>
+              )}
+              <PinSignature
+                label="Candidate signature" personType="trainee" personId={traineeId}
+                signedName={form.candidateSignature} signedAt={form.candidateSignatureAt} disabled={locked}
+                onSigned={(name, at) => save({ candidateSignature: name, candidateSignatureAt: at })}
+              />
             </div>
           )}
 

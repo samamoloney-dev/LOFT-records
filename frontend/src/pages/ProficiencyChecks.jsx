@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { CrewMemberPicker } from '../components/CrewMemberPicker';
+import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -492,7 +493,15 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             <div className="field"><label>Applicant ARN</label><input defaultValue={d.applicantArn} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantArn: e.target.value })} /></div>
             <div className="field"><label>Applicant name</label><input defaultValue={d.applicantName} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantName: e.target.value })} /></div>
           </div>
-          <div className="field"><label>Applicant signature</label><input defaultValue={d.applicantSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantSig: e.target.value })} /></div>
+          {selected.crewMemberId ? (
+            <PinSignature
+              label="Applicant signature" personType="crewMember" personId={selected.crewMemberId}
+              signedName={d.applicantSig} signedAt={d.applicantSigAt} disabled={!!selected.completedAt}
+              onSigned={(name, at) => patchDetails(selected, { applicantSig: name, applicantSigAt: at })}
+            />
+          ) : (
+            <div className="field"><label>Applicant signature</label><input defaultValue={d.applicantSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantSig: e.target.value })} /></div>
+          )}
         </div>
 
         <div className="card">
@@ -518,7 +527,15 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             <div className="field"><label>Examiner ARN</label><input defaultValue={d.examinerArn} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerArn: e.target.value })} /></div>
             <div className="field"><label>Examiner name</label><input defaultValue={d.examinerName} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerName: e.target.value })} /></div>
           </div>
-          <div className="field"><label>Examiner signature</label><input defaultValue={d.examinerSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerSig: e.target.value })} /></div>
+          {selected.assignedTo ? (
+            <PinSignature
+              label="Examiner signature" personType="user" personId={selected.assignedTo}
+              signedName={d.examinerSig} signedAt={d.examinerSigAt} disabled={!!selected.completedAt}
+              onSigned={(name, at) => patchDetails(selected, { examinerSig: name, examinerSigAt: at })}
+            />
+          ) : (
+            <div className="field"><label>Examiner signature</label><input defaultValue={d.examinerSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerSig: e.target.value })} /></div>
+          )}
           <div className="field"><label>Examiner's comments</label><textarea defaultValue={d.examinerComments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerComments: e.target.value })} style={{ minHeight: 70 }} /></div>
         </div>
 

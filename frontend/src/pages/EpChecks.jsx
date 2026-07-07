@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { CrewMemberPicker } from '../components/CrewMemberPicker';
+import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -133,7 +134,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
       ])}
       ${section('Assessment items', itemRows)}
       ${section('Assessment', [
-        ['Life Jacket Training (Wet Drill) date', d.lifeJacketDate],
+        ['Life Jacket Training (Wet Drill) date', d.lifeJacketNa ? 'N/A' : d.lifeJacketDate],
         ['Scenarios selected', d.scenarios],
         ['Comments', d.comments],
         ['Overall assessment', resultBadge(check.result)],
@@ -206,8 +207,22 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
 
         <div className="card">
           <div className="field">
-            <label>Life Jacket Training (Wet Drill) date — initial qualification only</label>
-            <input type="date" defaultValue={d.lifeJacketDate} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { lifeJacketDate: e.target.value })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <label style={{ margin: 0 }}>Life Jacket Training (Wet Drill) date — initial qualification only</label>
+              <button
+                type="button"
+                className={`tick-btn ${d.lifeJacketNa ? 'active-pass' : ''}`}
+                disabled={!!selected.completedAt}
+                onClick={() => patchDetails(selected, { lifeJacketNa: !d.lifeJacketNa, ...(d.lifeJacketNa ? {} : { lifeJacketDate: '' }) })}
+              >N/A</button>
+            </div>
+            <input
+              key={`lifeJacketDate-${d.lifeJacketNa}`}
+              type="date"
+              defaultValue={d.lifeJacketDate}
+              disabled={!!selected.completedAt || d.lifeJacketNa}
+              onBlur={(e) => patchDetails(selected, { lifeJacketDate: e.target.value })}
+            />
           </div>
         </div>
 
@@ -227,8 +242,24 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
             Applicant in each and every procedure carried out.
           </div>
           <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            {selected.assignedTo ? (
+              <PinSignature
+                label="Assessor signature" personType="user" personId={selected.assignedTo}
+                signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={!!selected.completedAt}
+                onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
+              />
+            ) : (
+              <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            )}
+            {selected.crewMemberId ? (
+              <PinSignature
+                label="Candidate signature" personType="crewMember" personId={selected.crewMemberId}
+                signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={!!selected.completedAt}
+                onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
+              />
+            ) : (
+              <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            )}
           </div>
         </div>
 

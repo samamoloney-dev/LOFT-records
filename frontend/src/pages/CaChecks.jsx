@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { CrewMemberPicker } from '../components/CrewMemberPicker';
+import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
@@ -232,8 +233,24 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
           </div>
           <div className="grid2">
-            <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            {selected.assignedTo ? (
+              <PinSignature
+                label="Assessor signature" personType="user" personId={selected.assignedTo}
+                signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={!!selected.completedAt}
+                onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
+              />
+            ) : (
+              <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+            )}
+            {selected.crewMemberId ? (
+              <PinSignature
+                label="Candidate signature" personType="crewMember" personId={selected.crewMemberId}
+                signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={!!selected.completedAt}
+                onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
+              />
+            ) : (
+              <div className="field"><label>Candidate signature</label><input defaultValue={d.candidateSig} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { candidateSig: e.target.value })} /></div>
+            )}
           </div>
         </div>
 

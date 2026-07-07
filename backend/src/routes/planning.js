@@ -35,6 +35,11 @@ router.get('/planned-checks', async (req, res) => {
     const r = rowToCamel(row);
     return {
       ...r,
+      // pg returns DATE columns as JS Date objects, which would otherwise
+      // serialize to a full ISO timestamp - plain YYYY-MM-DD is what the
+      // <input type="date"> on the Planning tab (and anything re-sending
+      // this value, like picking an examiner) actually needs.
+      plannedDate: r.plannedDate ? new Date(r.plannedDate).toISOString().slice(0, 10) : null,
       fleets: parsePgArray(r.fleets),
       crewMemberName: `${r.firstName} ${r.lastName}`,
       label: CHECK_LABELS[r.checkKey] || r.checkKey,

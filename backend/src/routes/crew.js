@@ -121,6 +121,19 @@ const CHECK_KEY_TO_CHECK_TYPE = {
   lineCheck: (crewType) => ({ checkType: crewType === 'CABIN_ATTENDANT' ? 'CABIN_ATTENDANT_LINE_CHECK' : 'PILOT_LINE_CHECK' }),
 };
 
+// Mirrors frontend/src/lib/format.js's FLEET_LABELS, but for the plain
+// aircraft-type string the check forms themselves store in details.actype
+// (see ProficiencyChecks.jsx/CaChecks.jsx AIRCRAFT_TYPES) - the cabin
+// attendant fleet values map to the same aircraft type as their pilot
+// counterpart, just without the "Cabin" prefix used elsewhere in the UI.
+const FLEET_TO_AIRCRAFT_TYPE = {
+  DASH_8: 'Dash 8',
+  FOKKER_100: 'Fokker 100',
+  METRO_23: 'Metro',
+  CA_DASH_8: 'Dash 8',
+  CA_FOKKER_100: 'Fokker 100',
+};
+
 async function plannedDatesFor(crewMemberId) {
   const { rows } = await pool.query(
     'SELECT check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role FROM crew_planned_checks WHERE crew_member_id = $1',
@@ -470,13 +483,27 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
       [member.id, checkType, variant || null],
     );
     if (existingChecks.length === 0) {
+      const singleFleet = member.fleets?.length === 1 ? member.fleets[0] : undefined;
+      // plannedDate can arrive as a full ISO timestamp (crew_planned_checks.planned_date
+      // comes back from Postgres as a Date object, which the Planning tab's
+      // "assign examiner" action then echoes straight back) - normalize to a
+      // plain YYYY-MM-DD before it lands in details.date, which check forms
+      // display as-is with no further formatting.
+      const dateOnly = new Date(plannedDate).toISOString().slice(0, 10);
       await createCheckRecord({
         crewMemberId: member.id,
         checkType,
-        fleet: member.fleets?.length === 1 ? member.fleets[0] : undefined,
+        fleet: singleFleet,
         appliesTo: member.type,
         assignedTo: hasAssignedTo ? (parsed.data.assignedTo || null) : null,
-        details: { name: member.name, role: member.role, arn: member.arn, date: plannedDate, ...(variant ? { variant } : {}) },
+        details: {
+          name: member.name,
+          role: member.role,
+          arn: member.arn,
+          date: dateOnly,
+          actype: singleFleet ? FLEET_TO_AIRCRAFT_TYPE[singleFleet] : undefined,
+          ...(variant ? { variant } : {}),
+        },
       });
     }
   }

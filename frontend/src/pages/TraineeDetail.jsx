@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { FlightRow, APPROACH_TYPES } from './FlightRow';
 import { CtlForm } from './CtlForm';
-import { SyllabusItemsList, PhaseCompletionPanel, CaSyllabusOverview } from './SyllabusPanel';
+import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { LandingAssessmentForm } from './LandingAssessmentForm';
@@ -46,7 +46,6 @@ function pilotTabs(fleet) {
 // cumulatively across training flights rather than gated by phase.
 const CA_TABS = [
   { key: 'flights', label: 'Flights' },
-  { key: 'syllabus', label: 'Syllabus' },
   { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'ctl', label: 'Check to Line' },
 ];
@@ -66,8 +65,13 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
   const [error, setError] = useState(null);
   const [newFlightDate, setNewFlightDate] = useState('');
   const [newFlightHours, setNewFlightHours] = useState('');
-  const canCreateFlight = FLIGHT_CREATOR_ROLES.includes(user.role);
+  const canCreateFlightRole = FLIGHT_CREATOR_ROLES.includes(user.role);
   const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
+  // Cabin attendant flights are logged one at a time - the current one must
+  // be marked Completed before another can be added (mirrors the backend
+  // check in POST /api/flights).
+  const hasOpenFlight = isCabinAttendant && flights.some((f) => !f.locked && !f.archived);
+  const canCreateFlight = canCreateFlightRole && !hasOpenFlight;
 
   async function createFlight(e) {
     e.preventDefault();
@@ -134,6 +138,11 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
                 {t}: {tally[t]}
               </span>
             ))}
+          </div>
+        )}
+        {canCreateFlightRole && hasOpenFlight && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            Complete the current flight before adding another.
           </div>
         )}
         {canCreateFlight && (
@@ -279,7 +288,7 @@ export function TraineeDetail() {
 
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
 
-      {tab === 'syllabus' && (isCabinAttendant ? <CaSyllabusOverview trainee={trainee} /> : <SyllabusItemsList trainee={trainee} section="SYLLABUS" />)}
+      {tab === 'syllabus' && !isCabinAttendant && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
       {tab === 'groundSchool' && !isCabinAttendant && <GroundSchoolPanel trainee={trainee} />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}

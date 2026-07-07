@@ -253,62 +253,6 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
   );
 }
 
-// Read-only overview for the top-level trainee "Syllabus" tab, cabin crew
-// only - actual sign-off happens per flight (see FlightSyllabusList above),
-// so this just shows the curriculum structure and subject-level comments.
-export function CaSyllabusOverview({ trainee }) {
-  const { user } = useAuth();
-  const [items, setItems] = useState([]);
-  const [categoryNotes, setCategoryNotes] = useState([]);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    api.get(`/api/syllabus/trainee/${trainee.id}`).then(setItems).catch((e) => setError(e.message));
-  }, [trainee.id]);
-  useEffect(() => {
-    api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
-  }, [trainee.id]);
-
-  const sectionItems = items.filter((i) => i.section === 'SYLLABUS');
-  const grouped = groupByCategory(sectionItems);
-  const noteFor = (category) => categoryNotes.find((n) => n.category === category && n.section === 'SYLLABUS')?.notes || '';
-
-  return (
-    <div>
-      <div className="card">
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>Syllabus</div>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Required tasks are signed off individually on each training flight — open a flight under the Flights tab to record sign-offs.
-        </div>
-      </div>
-
-      {error && <div className="error-text">{error}</div>}
-
-      {[...grouped.entries()].map(([category, categoryItems]) => (
-        <div key={category} className="card">
-          <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
-          {categoryItems.map((item) => (
-            <div key={item.id} className="row" style={{ cursor: 'default' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13 }}>
-                  {item.description}
-                  {TRAINER_ROLES.includes(user.role) && <NoteInfoIcon note={item.notes} />}
-                </div>
-              </div>
-            </div>
-          ))}
-          <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} />
-        </div>
-      ))}
-      {sectionItems.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-          No syllabus items for this fleet yet.
-        </div>
-      )}
-    </div>
-  );
-}
-
 function PhaseCompletionCard({ traineeId, phase, completion, outstandingCount, onChange, onPhaseAdvance }) {
   const { user } = useAuth();
   const [tcSig, setTcSig] = useState(completion?.trainingCaptainSignature || '');

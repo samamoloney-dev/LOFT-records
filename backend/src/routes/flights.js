@@ -92,6 +92,19 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, parsed.data.traineeId);
   if (!trainee) return;
 
+  // Cabin attendant LOFT flights are logged one at a time - the current one
+  // must be marked Completed before another can be added (pilots aren't
+  // restricted this way, so this is scoped to CA trainees only).
+  if (trainee.type === 'CABIN_ATTENDANT') {
+    const { rows: openRows } = await pool.query(
+      'SELECT id FROM flights WHERE trainee_id = $1 AND locked = false AND archived = false',
+      [parsed.data.traineeId],
+    );
+    if (openRows.length > 0) {
+      return res.status(409).json({ error: 'Complete the current flight before adding another' });
+    }
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO flights (trainee_id, training_captain_id, training_captain_name, training_captain_role, date, sector_details, hours)
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -168,6 +181,23 @@ router.post('/:id/finalize', async (req, res) => {
 
   await pool.query('UPDATE flights SET locked = true WHERE id = $1', [flight.id]);
   await logAction({ userId: req.user.id, action: 'FINALIZE', targetTable: 'flights', targetId: flight.id });
+  res.json(await findFlight(flight.id));
+});
+
+// Cabin attendant flights only - once marked Completed, only the training
+// captain who owns this flight (same ownership check as canEditFlight) can
+// reopen it, same as they're the only one who could edit it beforehand.
+router.post('/:id/reopen', async (req, res) => {
+  const flight = await findFlight(req.params.id);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+  const trainee = await assertTraineeVisible(req, res, flight.traineeId);
+  if (!trainee) return;
+  if (trainee.type !== 'CABIN_ATTENDANT') return res.status(400).json({ error: 'Reopening is only available for cabin attendant flights' });
+  if (!canEditFlight(req.user, flight)) return res.status(403).json({ error: 'Only the training captain who completed this flight can reopen it' });
+  if (!flight.locked) return res.status(409).json({ error: 'Flight is not completed' });
+
+  await pool.query('UPDATE flights SET locked = false WHERE id = $1', [flight.id]);
+  await logAction({ userId: req.user.id, action: 'REOPEN', targetTable: 'flights', targetId: flight.id });
   res.json(await findFlight(flight.id));
 });
 

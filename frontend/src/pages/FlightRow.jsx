@@ -46,6 +46,9 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   // is an ownership lock (mirrors backend canEditFlight).
   const canEdit = user.id === flight.trainingCaptainId && !flight.locked;
   const canAcknowledge = user.role === 'TRAINEE' && user.traineeId === flight.traineeId && flight.locked && !flight.acknowledgedByTrainee;
+  // Once completed, only the training captain who completed it can reopen
+  // it - cabin attendant flights only (see backend flights.js /:id/reopen).
+  const canReopen = isCabinAttendant && flight.locked && user.id === flight.trainingCaptainId;
 
   async function saveComments() {
     setError(null);
@@ -112,6 +115,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
     catch (err) { setError(err.message); }
   }
 
+  async function reopen() {
+    setError(null);
+    try { onChange(await api.post(`/api/flights/${flight.id}/reopen`)); }
+    catch (err) { setError(err.message); }
+  }
+
   async function acknowledge() {
     setError(null);
     try { onChange(await api.post(`/api/flights/${flight.id}/acknowledge`)); }
@@ -127,13 +136,16 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
             {formatDate(flight.date)}{!isCabinAttendant && ` · ${Number(flight.hours)}h`}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {flight.locked ? 'Finalised' : 'Draft'}
+            {flight.locked ? (isCabinAttendant ? 'Completed' : 'Finalised') : 'Draft'}
             {flight.locked && flight.trainingCaptainName ? ` · ${flight.trainingCaptainRole ? formatUserRole(flight.trainingCaptainRole) : 'Trainer'}: ${flight.trainingCaptainName}` : ''}
             {flight.acknowledgedByTrainee ? ' · Acknowledged by trainee' : ''}
             {flight.archived ? ' · Archived' : ''}
           </div>
         </div>
-        <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {canReopen && <button onClick={reopen}>Reopen</button>}
+          <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
+        </div>
       </div>
 
       {isCabinAttendant ? (
@@ -306,7 +318,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
                 </div>
               </div>
 
-              {canEdit && <button className="primary" onClick={finalize}>Finalise flight</button>}
+              {canEdit && <button className="primary" onClick={finalize}>{isCabinAttendant ? 'Completed' : 'Finalise flight'}</button>}
               {canAcknowledge && <button className="primary" onClick={acknowledge}>Acknowledge debrief</button>}
             </>
           )}

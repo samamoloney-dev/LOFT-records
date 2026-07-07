@@ -11,16 +11,6 @@ import { formatUserRole } from '../lib/format';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
-const EP_ITEMS = [
-  'Emergency Equipment Knowledge — location, duration, operation, precaution and post use',
-  'Emergency Equipment Practical Demonstration',
-  'Emergency Evacuation Procedures',
-  'Emergency Evacuation Procedures Practical Demonstration',
-  'Emergency Exit Operation',
-  'Survival Knowledge',
-  'Unlawful Interference',
-  'Emergency Escape Slide',
-];
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
@@ -38,6 +28,13 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
   // a hand-typed candidate name against an existing crew member - see
   // createCheck below.
   const [crewOptions, setCrewOptions] = useState([]);
+  // The item list itself is editable from the Syllabus tab (see
+  // check-form-items.js) rather than fixed in source - results are keyed
+  // by each item's id instead of its position in the list.
+  const [epItems, setEpItems] = useState([]);
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=EMERGENCY_PROCEDURES').then(setEpItems).catch(() => {});
+  }, []);
 
   function load() {
     api.get(`/api/checks?checkType=EMERGENCY_PROCEDURES&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -125,7 +122,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
 
   function printCheck(check) {
     const d = check.details || {};
-    const itemRows = EP_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N (Not Tested)' : '']);
+    const itemRows = epItems.map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N (Not Tested)' : '']);
     const html = `
       <h1>Emergency Procedures Check</h1>
       <div class="meta">${d.name || ''} · ${d.date || ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
@@ -190,16 +187,16 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         </div>
 
         <div className="card">
-          {EP_ITEMS.map((item, i) => (
-            <div key={i} className="row" style={{ cursor: 'default' }}>
-              <div style={{ flex: 1, fontSize: 13 }}>{item}</div>
+          {epItems.map((item) => (
+            <div key={item.id} className="row" style={{ cursor: 'default' }}>
+              <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['S', 'X', 'N'].map((v) => (
                   <button
                     key={v}
                     disabled={!!selected.completedAt}
-                    className={`tick-btn ${d.items?.[i] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
-                    onClick={() => patchDetails(selected, { items: { ...d.items, [i]: d.items?.[i] === v ? undefined : v } })}
+                    className={`tick-btn ${d.items?.[item.id] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
+                    onClick={() => patchDetails(selected, { items: { ...d.items, [item.id]: d.items?.[item.id] === v ? undefined : v } })}
                   >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N'}</button>
                 ))}
               </div>

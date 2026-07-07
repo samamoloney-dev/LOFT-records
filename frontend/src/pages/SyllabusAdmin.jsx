@@ -471,11 +471,225 @@ function SurveyQuestionsSection() {
   );
 }
 
+const CHECK_FORM_TABS = [
+  { key: 'EMERGENCY_PROCEDURES', label: 'Emergency Procedures' },
+  { key: 'PROFICIENCY_CHECK', label: 'Proficiency Check / IPC' },
+  { key: 'CABIN_ATTENDANT_LINE_CHECK', label: 'Line Check' },
+];
+
+const emptyCheckFormItemForm = (formKey) => ({ formKey, section: '', kind: 'tick', description: '', mos: '', ipcOnly: false });
+
+// One item list, editable here, drives the real Emergency Procedures,
+// Proficiency Check/IPC, and Cabin Attendant Line Check forms (see
+// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx) instead of being fixed
+// in source code. The Pilot Line Check has no itemised checklist (just
+// date/assessor/result), so there's nothing to edit for it here.
+function CheckFormItemsSection() {
+  const [formKey, setFormKey] = useState('EMERGENCY_PROCEDURES');
+  const [items, setItems] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyCheckFormItemForm(formKey));
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get(`/api/check-form-items?formKey=${formKey}&includeArchived=true`).then(setItems).catch((e) => setError(e.message));
+  }
+  useEffect(load, [formKey]);
+
+  function openCreateForm() {
+    setEditingId(null);
+    setForm(emptyCheckFormItemForm(formKey));
+    setShowForm((v) => !v);
+  }
+
+  function openEditForm(item) {
+    setEditingId(item.id);
+    setForm({ formKey, section: item.section || '', kind: item.kind, description: item.description, mos: item.mos || '', ipcOnly: item.ipcOnly });
+    setShowForm(true);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const payload = { section: form.section || null, kind: form.kind, description: form.description, mos: form.mos || null, ipcOnly: form.ipcOnly };
+      if (editingId) {
+        await api.patch(`/api/check-form-items/${editingId}`, payload);
+      } else {
+        await api.post('/api/check-form-items', { ...payload, formKey });
+      }
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyCheckFormItemForm(formKey));
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(item) {
+    setError(null);
+    try { await api.patch(`/api/check-form-items/${item.id}`, { archived: !item.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  const bySection = items.reduce((acc, item) => {
+    (acc[item.section || '—'] ||= []).push(item);
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <TabBar
+        tabs={CHECK_FORM_TABS}
+        active={formKey}
+        onSelect={(key) => { setFormKey(key); setShowForm(false); setEditingId(null); setForm(emptyCheckFormItemForm(key)); }}
+      />
+      {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+          The Pilot Line Check has no itemised checklist, so there's nothing to edit for it here.
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add item'}</button>
+      </div>
+
+      {showForm && (
+        <form className="card" onSubmit={handleSubmit}>
+          <div className="field"><label>Section (optional grouping heading)</label><input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} /></div>
+          <div className="field"><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></div>
+          <div className="field"><label>MOS reference (optional)</label><input value={form.mos} onChange={(e) => setForm({ ...form, mos: e.target.value })} /></div>
+          {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (
+            <div className="field">
+              <label>Item type</label>
+              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+                <option value="tick">Tick (S/X/N)</option>
+                <option value="score_code">Score + code (NTS marker)</option>
+              </select>
+            </div>
+          )}
+          {formKey === 'PROFICIENCY_CHECK' && (
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={form.ipcOnly} onChange={(e) => setForm({ ...form, ipcOnly: e.target.checked })} style={{ width: 'auto' }} />
+                IPC and Proficiency Check only (not shown on a plain Proficiency Check)
+              </label>
+            </div>
+          )}
+          <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
+        </form>
+      )}
+      {error && <div className="error-text">{error}</div>}
+
+      {items.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No items yet.</div>}
+      {Object.entries(bySection).map(([section, sectionItems]) => (
+        <div key={section} className="card">
+          <div style={{ fontWeight: 500, marginBottom: 8 }}>{section}</div>
+          {sectionItems.map((item) => (
+            <div key={item.id} className="row" style={{ cursor: 'default' }}>
+              <div style={{ flex: 1, opacity: item.archived ? 0.6 : 1 }}>
+                <div style={{ fontSize: 13 }}>{item.description}{item.archived ? ' (archived)' : ''}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                  {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}{item.kind === 'score_code' ? ' · Score + code' : ''}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => openEditForm(item)}>Edit</button>
+                <button onClick={() => toggleArchive(item)}>{item.archived ? 'Unarchive' : 'Archive'}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Competency types (Dangerous Goods, First Aid, etc.) - every active one
+// is required for every crew member automatically (see crew.js GET
+// /:id/competencies), so managing this list is the only "add a
+// competency" step there is. No dropdown on the crew side - just this
+// shared, extensible catalog.
+function CompetencyTypesSection() {
+  const [types, setTypes] = useState([]);
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/competency-types?includeArchived=true').then(setTypes).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function addType(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    try {
+      await api.post('/api/competency-types', { name: name.trim() });
+      setName('');
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function saveName(id) {
+    if (!editingName.trim()) return;
+    setError(null);
+    try {
+      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim() });
+      setEditingId(null);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(t) {
+    setError(null);
+    try { await api.patch(`/api/competency-types/${t.id}`, { archived: !t.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Every active competency here is required for every crew member - archiving one removes it from crew profiles going forward without losing past dates.
+      </div>
+      <form className="card" onSubmit={addType}>
+        <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
+        <button type="submit" className="primary">Add</button>
+      </form>
+      {error && <div className="error-text">{error}</div>}
+
+      {types.map((t) => (
+        <div key={t.id} className="card row" style={{ cursor: 'default' }}>
+          {editingId === t.id ? (
+            <>
+              <input style={{ flex: 1, marginRight: 8 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => saveName(t.id)}>Save</button>
+                <button onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>{t.name}{t.archived ? ' (archived)' : ''}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); }}>Edit</button>
+                <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Single home for all course/form/survey editing: Syllabus curriculum,
-// Ground School courses/exams, and the Continuous Improvement survey
-// question bank. Survey Questions is HOTC/HOFO only (mirrors the
-// Continuous Improvement analytics tab's own gating) even though the page
-// itself is reachable by Flight Ops Admin too.
+// Ground School courses/exams, check form item lists, the competency
+// catalog, and the Continuous Improvement survey question bank. Survey
+// Questions is HOTC/HOFO only (mirrors the Continuous Improvement
+// analytics tab's own gating) even though the page itself is reachable by
+// Flight Ops Admin too.
 export function SyllabusAdmin() {
   const { user } = useAuth();
   const canManageSurveyQuestions = CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role);
@@ -484,6 +698,8 @@ export function SyllabusAdmin() {
   const tabs = [
     { key: 'syllabus', label: 'Syllabus' },
     { key: 'ground-school', label: 'Ground School' },
+    { key: 'check-forms', label: 'Check Forms' },
+    { key: 'competencies', label: 'Competencies' },
     ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
   ];
 
@@ -492,6 +708,8 @@ export function SyllabusAdmin() {
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       {tab === 'syllabus' && <SyllabusItemsSection />}
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
+      {tab === 'check-forms' && <CheckFormItemsSection />}
+      {tab === 'competencies' && <CompetencyTypesSection />}
       {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>
   );

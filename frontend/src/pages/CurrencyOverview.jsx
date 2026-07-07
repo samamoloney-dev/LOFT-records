@@ -66,8 +66,10 @@ function StatusPill({ status }) {
 
 // Flattens a crew member's urgentItems (see backend/src/routes/crew.js
 // withCurrency/urgentItemsFor) into rows for this page - already filtered
-// server-side to just what's overdue or due soon with nothing planned, so
-// there's nothing left to compute here.
+// server-side to just what's overdue or due soon, so there's nothing left
+// to compute here. A planned date doesn't drop an item off this list (it's
+// still due) - it's just shown alongside the status as a reminder it's in
+// hand.
 function urgentRows(member) {
   return member.urgentItems.map((item) => ({
     memberId: member.id,
@@ -76,6 +78,7 @@ function urgentRows(member) {
     item: item.label,
     dueDate: item.dueDate,
     completedDate: item.completedDate,
+    plannedDate: item.plannedDate,
     status: item.status,
   }));
 }
@@ -106,7 +109,7 @@ export function CurrencyOverview() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        Recurrent checks and competencies overdue or due soon, excluding anything already planned
+        Recurrent checks and competencies overdue or due soon
       </div>
       <StatusFilterBar value={statusFilter} onChange={setStatusFilter} />
 
@@ -118,6 +121,7 @@ export function CurrencyOverview() {
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)} (${expiryText(r.dueDate)})` : ''}
             </div>
+            {r.plannedDate && <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>}
           </div>
           <StatusPill status={r.status} />
         </div>

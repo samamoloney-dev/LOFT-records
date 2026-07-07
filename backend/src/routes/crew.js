@@ -129,18 +129,26 @@ const CURRENCY_LABELS = {
   lineCheck: 'Line Check',
 };
 
+// Every active competency type applies to every crew member automatically
+// (see 0037_competency_types.sql) - this is a LEFT JOIN so a type with no
+// dates entered yet for this person still comes back (with nulls), rather
+// than requiring a crew_competencies row to already exist.
 async function activeCompetencies(crewMemberId) {
   const { rows } = await pool.query(
-    'SELECT name, due_date, planned_date, completed_date FROM crew_competencies WHERE crew_member_id = $1 AND archived = false',
+    `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date
+     FROM competency_types ct
+     LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
+     WHERE ct.archived = false`,
     [crewMemberId],
   );
   return rows;
 }
 
 // The single place that decides "does this need a highlight" - a recurrent
-// check or competency counts as urgent only when it's overdue or due
-// within the soon-window AND nothing's already been planned for it (an
-// admin who's already booked it in doesn't need to be nagged about it).
+// check or competency counts as urgent when it's overdue or due within the
+// soon-window. A planned date doesn't remove it from this list (an admin
+// who's already booked it in still needs to see it's due) - it's just
+// carried through so the UI can show "Planned for X" alongside the status.
 // Reused by the Crew roster row, Currency Overview, and the crew profile's
 // own Expiry tab highlight, so all three agree on the same definition.
 function isUrgent(status) {
@@ -149,7 +157,7 @@ function isUrgent(status) {
 
 async function urgentItemsFor(member, currency) {
   const fromCurrency = Object.entries(currency)
-    .filter(([, info]) => info && isUrgent(info.status) && !info.plannedDate)
+    .filter(([, info]) => info && isUrgent(info.status))
     .map(([key, info]) => ({
       label: CURRENCY_LABELS[key] || key,
       status: info.status,
@@ -167,7 +175,7 @@ async function urgentItemsFor(member, currency) {
       completedDate: c.completed_date,
       plannedDate: c.planned_date,
     }))
-    .filter((c) => isUrgent(c.status) && !c.plannedDate);
+    .filter((c) => isUrgent(c.status));
 
   return [...fromCurrency, ...fromCompetencies];
 }
@@ -431,85 +439,51 @@ router.post('/:id/unarchive', async (req, res) => {
   res.json(await findCrewMember(req.params.id));
 });
 
-// Ad-hoc competencies (e.g. Dangerous Goods, run by an external provider) -
-// just a name, a completion date and a due date, tracked separately from
-// the fixed recurrent-check types above.
+// Every active competency type (managed on the Syllabus tab - see
+// competency-types.js) is required for every crew member, so this always
+// returns one row per active type rather than needing them added one at a
+// time - dates just get filled in against whichever ones apply.
 router.get('/:id/competencies', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
 
   const { rows } = await pool.query(
-    'SELECT * FROM crew_competencies WHERE crew_member_id = $1 AND archived = $2 ORDER BY due_date ASC NULLS LAST',
-    [member.id, req.query.archived === 'true'],
+    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date
+     FROM competency_types ct
+     LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
+     WHERE ct.archived = false
+     ORDER BY ct.sort_order ASC, ct.created_at ASC`,
+    [member.id],
   );
   res.json(rows.map(rowToCamel));
 });
 
-const competencySchema = z.object({
-  name: z.string().min(1),
+const competencyDatesSchema = z.object({
   completedDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   plannedDate: z.string().nullable().optional(),
 });
 
-router.post('/:id/competencies', async (req, res) => {
+// Upserts this crew member's dates for one competency type - there's no
+// separate "add" step since every active type already shows up (with
+// blank dates) via GET above.
+router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
 
-  const parsed = competencySchema.safeParse(req.body);
+  const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { name, completedDate, dueDate, plannedDate } = parsed.data;
+  const { completedDate, dueDate, plannedDate } = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [member.id, name, completedDate || null, dueDate || null, plannedDate || null],
+    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (crew_member_id, competency_type_id)
+     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5
+     RETURNING *`,
+    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null],
   );
-  const competency = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_competencies', targetId: competency.id });
-  res.status(201).json(competency);
-});
-
-const competencyUpdateSchema = competencySchema.partial();
-const COMPETENCY_COLUMN_MAP = { name: 'name', completedDate: 'completed_date', dueDate: 'due_date', plannedDate: 'planned_date' };
-
-router.patch('/:id/competencies/:competencyId', async (req, res) => {
-  const parsed = competencyUpdateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const entries = Object.entries(parsed.data);
-  if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
-
-  const setClauses = entries.map(([key], i) => `${COMPETENCY_COLUMN_MAP[key]} = $${i + 1}`);
-  const values = entries.map(([, value]) => value);
-  values.push(req.params.id, req.params.competencyId);
-
-  const { rows } = await pool.query(
-    `UPDATE crew_competencies SET ${setClauses.join(', ')}
-     WHERE crew_member_id = $${values.length - 1} AND id = $${values.length} RETURNING *`,
-    values,
-  );
-  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
-  res.json(rowToCamel(rows[0]));
-});
-
-router.post('/:id/competencies/:competencyId/archive', async (req, res) => {
-  const { rows } = await pool.query(
-    'UPDATE crew_competencies SET archived = true, archived_at = now() WHERE crew_member_id = $1 AND id = $2 RETURNING *',
-    [req.params.id, req.params.competencyId],
-  );
-  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'crew_competencies', targetId: req.params.competencyId });
-  res.json(rowToCamel(rows[0]));
-});
-
-router.post('/:id/competencies/:competencyId/unarchive', async (req, res) => {
-  const { rows } = await pool.query(
-    'UPDATE crew_competencies SET archived = false, archived_at = null WHERE crew_member_id = $1 AND id = $2 RETURNING *',
-    [req.params.id, req.params.competencyId],
-  );
-  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'crew_competencies', targetId: req.params.competencyId });
   res.json(rowToCamel(rows[0]));
 });
 

@@ -12,10 +12,6 @@ import { formatFleet, formatTraineeRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
-const COMPETENCY_OPTIONS = [
-  'Dangerous Goods', 'First Aid', 'SMS Training', 'Fatigue Management',
-  'Human Factor and NTS', 'DAMP', 'CFIT', 'CPR Training', 'Refresher Training',
-];
 
 // Cabin attendants start qualified on Dash 8 and can only add Fokker 100
 // once they hold Dash 8 - mirrors Crew.jsx's FleetPicker (kept separate
@@ -197,87 +193,47 @@ function CurrencyFolder({ member }) {
   );
 }
 
-// Ad-hoc competencies (e.g. Dangerous Goods, run by an external provider) -
-// a name (from a fixed list), a completion date and a due date, distinct
-// from the fixed recurrent-check types in the Currency folder. onChange
-// fires after every load so the parent Expiry tab's due-soon/overdue
-// highlight can stay in sync.
+// Every active competency (managed on the Syllabus tab - see
+// competency-types.js) is required for every crew member automatically -
+// this always shows one row per active type, whether or not any dates
+// have been entered yet, rather than needing them added one at a time
+// from a dropdown. onChange fires after every load so the parent Expiry
+// tab's due-soon/overdue highlight can stay in sync.
 function CompetencyList({ crewMemberId, onChange }) {
   const [competencies, setCompetencies] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const [form, setForm] = useState({ name: COMPETENCY_OPTIONS[0], completedDate: '', dueDate: '', plannedDate: '' });
   const [error, setError] = useState(null);
 
   function load() {
-    api.get(`/api/crew/${crewMemberId}/competencies?archived=${showArchived}`).then((data) => { setCompetencies(data); onChange?.(); }).catch((e) => setError(e.message));
+    api.get(`/api/crew/${crewMemberId}/competencies`).then((data) => { setCompetencies(data); onChange?.(); }).catch((e) => setError(e.message));
   }
-  useEffect(load, [crewMemberId, showArchived]);
+  useEffect(load, [crewMemberId]);
 
-  async function addCompetency(e) {
-    e.preventDefault();
+  async function updateCompetency(competencyTypeId, patch) {
     setError(null);
     try {
-      await api.post(`/api/crew/${crewMemberId}/competencies`, form);
-      setShowForm(false);
-      setForm({ name: COMPETENCY_OPTIONS[0], completedDate: '', dueDate: '', plannedDate: '' });
+      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
+      await api.put(`/api/crew/${crewMemberId}/competencies/${competencyTypeId}`, {
+        completedDate: current.completedDate || null,
+        dueDate: current.dueDate || null,
+        plannedDate: current.plannedDate || null,
+        ...patch,
+      });
       load();
     } catch (err) { setError(err.message); }
   }
 
-  async function updateCompetency(competencyId, patch) {
-    setError(null);
-    try { await api.patch(`/api/crew/${crewMemberId}/competencies/${competencyId}`, patch); load(); }
-    catch (err) { setError(err.message); }
-  }
-
-  async function archiveCompetency(competencyId) {
-    setError(null);
-    try { await api.post(`/api/crew/${crewMemberId}/competencies/${competencyId}/archive`); load(); }
-    catch (err) { setError(err.message); }
-  }
-
-  async function unarchiveCompetency(competencyId) {
-    setError(null);
-    try { await api.post(`/api/crew/${crewMemberId}/competencies/${competencyId}/unarchive`); load(); }
-    catch (err) { setError(err.message); }
-  }
-
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Competencies</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Show active' : 'Show archived'}</button>
-          {!showArchived && <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Add competency'}</button>}
-        </div>
-      </div>
-
-      {!showArchived && showForm && (
-        <form className="card" onSubmit={addCompetency}>
-          <div className="field">
-            <label>Name</label>
-            <select value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}>
-              {COMPETENCY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className="grid2">
-            <div className="field"><label>Completed date</label><input type="date" value={form.completedDate} onChange={(e) => setForm({ ...form, completedDate: e.target.value })} /></div>
-            <div className="field"><label>Due date</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
-          </div>
-          <div className="field"><label>Planned date (optional - e.g. booked with the provider)</label><input type="date" value={form.plannedDate} onChange={(e) => setForm({ ...form, plannedDate: e.target.value })} /></div>
-          <button type="submit" className="primary">Add</button>
-        </form>
-      )}
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Competencies</div>
       {error && <div className="error-text">{error}</div>}
 
       {competencies.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {showArchived ? 'archived ' : ''}competencies.</div>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No competencies set up yet - add some on the Syllabus tab.</div>
       )}
       {competencies.map((c) => {
         const status = competencyStatus(c.dueDate);
         return (
-          <div key={c.id} className="card">
+          <div key={c.competencyTypeId} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 500 }}>{c.name}</div>
               {status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
@@ -285,20 +241,17 @@ function CompetencyList({ crewMemberId, onChange }) {
             <div className="grid2" style={{ marginTop: 8 }}>
               <div className="field" style={{ margin: 0 }}>
                 <label>Completed date</label>
-                <input type="date" defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.id, { completedDate: e.target.value || null })} />
+                <input type="date" defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
               </div>
               <div className="field" style={{ margin: 0 }}>
                 <label>Due date</label>
-                <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.id, { dueDate: e.target.value || null })} />
+                <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
               </div>
             </div>
             <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
               <label>Planned date</label>
-              <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.id, { plannedDate: e.target.value || null })} />
+              <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
             </div>
-            <button style={{ marginTop: 8 }} onClick={() => (showArchived ? unarchiveCompetency(c.id) : archiveCompetency(c.id))}>
-              {showArchived ? 'Unarchive' : 'Archive'}
-            </button>
           </div>
         );
       })}
@@ -371,7 +324,7 @@ export function CrewDetail() {
 
   const name = member.name;
   const needsAttention = member.urgentItems.length > 0;
-  const topTabs = [{ key: 'currency', label: 'Currency' }, { key: 'expiry', label: needsAttention ? 'Expiry ⚠' : 'Expiry' }];
+  const topTabs = [{ key: 'currency', label: 'Dates' }, { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' }];
 
   return (
     <div>

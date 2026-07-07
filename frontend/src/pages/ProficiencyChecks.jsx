@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { RECURRENT_TRAINING_ITEMS, KNOWLEDGE_ITEMS, FLIGHT_COMPONENT_SECTIONS } from './proficiency-check-items';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { CrewMemberPicker } from '../components/CrewMemberPicker';
 import { ArchiveButton } from '../components/ArchiveButton';
@@ -16,6 +15,24 @@ const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const RANK_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+
+// The Recurrent Training and Knowledge sections are their own fixed
+// blocks (see check-form-items.js seed data); everything else in the
+// PROFICIENCY_CHECK item catalog is a Flight Component section, grouped
+// by its section name in item order (which is already IPC-only items
+// before regular items within a section, where that applies).
+const RECURRENT_SECTION = 'Recurrent Training (121.50 (1B))';
+const KNOWLEDGE_SECTION = 'Knowledge requirements (Ground Component)';
+
+function groupFlightSections(items) {
+  const bySection = new Map();
+  for (const item of items) {
+    if (item.section === RECURRENT_SECTION || item.section === KNOWLEDGE_SECTION) continue;
+    if (!bySection.has(item.section)) bySection.set(item.section, []);
+    bySection.get(item.section).push(item);
+  }
+  return [...bySection.entries()].map(([sectionName, sectionItems]) => ({ section: sectionName, items: sectionItems }));
+}
 
 // Continuous Improvement: once this check is completed, whoever conducted
 // it rates the candidate 1-5 on a HOTC/HOFO-managed question bank, so
@@ -177,6 +194,16 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   // completed, so the examiner/check captain can fill it in right away in
   // the same sitting rather than hunting for a button afterwards.
   const [showSurvey, setShowSurvey] = useState(false);
+  // The item list is editable from the Syllabus tab (see
+  // check-form-items.js) rather than fixed in source - results are keyed
+  // by each item's id instead of its position in the list.
+  const [pcItems, setPcItems] = useState([]);
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=PROFICIENCY_CHECK').then(setPcItems).catch(() => {});
+  }, []);
+  const recurrentItems = pcItems.filter((item) => item.section === RECURRENT_SECTION);
+  const knowledgeItems = pcItems.filter((item) => item.section === KNOWLEDGE_SECTION);
+  const flightSectionGroups = groupFlightSections(pcItems);
 
   function load() {
     api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -306,13 +333,13 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     const isIpc = d.variant === 'IPC_PC';
     const results = d.results || {};
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : (d.seatCheck ? [d.seatCheck] : []);
-    const flightSections = FLIGHT_COMPONENT_SECTIONS.map((s) => ({
+    const flightSections = flightSectionGroups.map((s) => ({
       ...s,
-      allItems: isIpc && s.ipcOnlyItems ? [...s.ipcOnlyItems, ...s.items] : s.items,
+      allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
     }));
 
-    const recurrentRows = RECURRENT_TRAINING_ITEMS.map((item, i) => [item.description, resultMark(results[`rt-${i}`])]);
-    const knowledgeRows = isIpc ? KNOWLEDGE_ITEMS.map((item, i) => [item.description, resultMark(results[`kn-${i}`])]) : [];
+    const recurrentRows = recurrentItems.map((item) => [item.description, resultMark(results[item.id])]);
+    const knowledgeRows = isIpc ? knowledgeItems.map((item) => [item.description, resultMark(results[item.id])]) : [];
     // Wrapped in compact-section so the 2-column layout below never splits
     // a table across the column break, and columns-2 so the long checklist
     // (up to ~56 rows for IPC) uses the page's full width instead of just
@@ -320,7 +347,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     const recurrentHtml = `<div class="compact-section">${section('Recurrent Training (121.50 (1B))', recurrentRows)}</div>`;
     const knowledgeHtml = isIpc ? `<div class="compact-section">${section('Knowledge requirements (Ground Component)', knowledgeRows)}</div>` : '';
     const flightHtml = flightSections
-      .map((s) => `<div class="compact-section">${section(`${s.section} (Flight Component)`, s.allItems.map((item, i) => [item.description, resultMark(results[`fc-${s.section}-${i}`])]))}</div>`)
+      .map((s) => `<div class="compact-section">${section(`${s.section} (Flight Component)`, s.allItems.map((item) => [item.description, resultMark(results[item.id])]))}</div>`)
       .join('');
 
     // Only page 1 (the long checklists) needs the compact/2-column
@@ -378,9 +405,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       patchDetails(selected, { results: { ...results, [id]: value } });
     }
 
-    const flightSections = FLIGHT_COMPONENT_SECTIONS.map((s) => ({
+    const flightSections = flightSectionGroups.map((s) => ({
       ...s,
-      allItems: isIpc && s.ipcOnlyItems ? [...s.ipcOnlyItems, ...s.items] : s.items,
+      allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
     }));
 
     return (
@@ -415,16 +442,16 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
 
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>Recurrent Training (121.50 (1B))</div>
-          {RECURRENT_TRAINING_ITEMS.map((item, i) => (
-            <ItemRow key={i} id={`rt-${i}`} description={item.description} mos={item.mos} result={results[`rt-${i}`]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+          {recurrentItems.map((item) => (
+            <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
           ))}
         </div>
 
         {isIpc && (
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 6 }}>Knowledge requirements (Ground Component)</div>
-            {KNOWLEDGE_ITEMS.map((item, i) => (
-              <ItemRow key={i} id={`kn-${i}`} description={item.description} mos={item.mos} result={results[`kn-${i}`]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+            {knowledgeItems.map((item) => (
+              <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
             ))}
           </div>
         )}
@@ -432,8 +459,8 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         {flightSections.map((s) => (
           <div key={s.section} className="card">
             <div style={{ fontWeight: 500, marginBottom: 6 }}>{s.section} (Flight Component)</div>
-            {s.allItems.map((item, i) => (
-              <ItemRow key={i} id={`fc-${s.section}-${i}`} description={item.description} mos={item.mos} result={results[`fc-${s.section}-${i}`]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+            {s.allItems.map((item) => (
+              <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
             ))}
           </div>
         ))}

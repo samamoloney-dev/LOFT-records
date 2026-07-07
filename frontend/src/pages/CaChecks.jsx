@@ -9,19 +9,6 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
 
-const CA_CHECK_ITEMS = [
-  'Personal Presentation',
-  'On Time Performance',
-  'Pre Flight Duties and Pre Flight Checks',
-  'Pre Embarkation and Passenger Boarding',
-  'Passenger Briefings and Passenger Announcements',
-  'In-Flight Service',
-  'Management and Communication',
-  'Post Flight Duties',
-  'General Knowledge of Skippers Regulations',
-  'Knowledge of how to manage Restricted, Unruly and Passengers with reduced mobility',
-];
-const CA_NTS_MARKERS = ['Communication and Teamwork', 'Leadership and Workload Management', 'Situational Awareness', 'Decision Making Process'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
@@ -37,6 +24,17 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
   const [newForm, setNewForm] = useState(() => ({ ...emptyNewForm(), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
   const [crewOptions, setCrewOptions] = useState([]);
+  // The item list (and NTS markers) are editable from the Syllabus tab
+  // (see check-form-items.js) rather than fixed in source - results are
+  // keyed by each item's id instead of its position in the list.
+  const [caItems, setCaItems] = useState([]);
+  const [ntsMarkers, setNtsMarkers] = useState([]);
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=CABIN_ATTENDANT_LINE_CHECK').then((items) => {
+      setCaItems(items.filter((i) => i.kind === 'tick'));
+      setNtsMarkers(items.filter((i) => i.kind === 'score_code'));
+    }).catch(() => {});
+  }, []);
 
   function load() {
     api.get(`/api/checks?checkType=CABIN_ATTENDANT_LINE_CHECK&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`).then(setChecks).catch((e) => setError(e.message));
@@ -119,8 +117,8 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
   function printCheck(check) {
     const d = check.details || {};
-    const itemRows = CA_CHECK_ITEMS.map((item, i) => [item, d.items?.[i] === 'S' ? '✓' : d.items?.[i] === 'X' ? '✗' : d.items?.[i] === 'N' ? 'N/A' : '']);
-    const ntsRows = CA_NTS_MARKERS.map((m, i) => [m, `Score ${d.nts?.[`score${i}`] || '—'} · Code ${d.nts?.[`code${i}`] || '—'}`]);
+    const itemRows = caItems.map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N/A' : '']);
+    const ntsRows = ntsMarkers.map((m) => [m.description, `Score ${d.nts?.[`score-${m.id}`] || '—'} · Code ${d.nts?.[`code-${m.id}`] || '—'}`]);
     const html = `
       <h1>Cabin Attendant Line Check (SA 540)</h1>
       <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
@@ -173,22 +171,22 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
         <div className="card">
           <div className="section-tag" style={{ fontWeight: 500, marginBottom: 8 }}>ASSESSMENT</div>
-          {CA_CHECK_ITEMS.map((item, i) => (
-            <div key={i} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
+          {caItems.map((item) => (
+            <div key={item.id} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, fontSize: 13 }}>{item}</div>
+                <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {['S', 'X', 'N'].map((v) => (
                     <button
                       key={v}
                       disabled={!!selected.completedAt}
-                      className={`tick-btn ${d.items?.[i] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
-                      onClick={() => patchDetails(selected, { items: { ...d.items, [i]: d.items?.[i] === v ? undefined : v } })}
+                      className={`tick-btn ${d.items?.[item.id] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
+                      onClick={() => patchDetails(selected, { items: { ...d.items, [item.id]: d.items?.[item.id] === v ? undefined : v } })}
                     >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N/A'}</button>
                   ))}
                 </div>
               </div>
-              {item === 'In-Flight Service' && (
+              {item.description === 'In-Flight Service' && (
                 <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 12 }}>
                   <label style={{ display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
                     <input type="radio" disabled={!!selected.completedAt} checked={d.serviceMode === 'demo'} onChange={() => patchDetails(selected, { serviceMode: 'demo' })} /> Demonstrated
@@ -205,17 +203,17 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 8 }}>NON TECHNICAL SKILL ASSESSMENT</div>
           <div className="grid2">
-            {CA_NTS_MARKERS.map((m, i) => (
-              <div key={i} style={{ padding: '6px 0' }}>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{m}</div>
+            {ntsMarkers.map((m) => (
+              <div key={m.id} style={{ padding: '6px 0' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{m.description}</div>
                 <div className="grid2" style={{ gap: 6 }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Score</label>
-                    <input defaultValue={d.nts?.[`score${i}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`score${i}`]: e.target.value } })} />
+                    <input defaultValue={d.nts?.[`score-${m.id}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`score-${m.id}`]: e.target.value } })} />
                   </div>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Code</label>
-                    <input defaultValue={d.nts?.[`code${i}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`code${i}`]: e.target.value } })} />
+                    <input defaultValue={d.nts?.[`code-${m.id}`] || ''} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { nts: { ...d.nts, [`code-${m.id}`]: e.target.value } })} />
                   </div>
                 </div>
               </div>

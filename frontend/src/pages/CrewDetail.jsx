@@ -206,6 +206,10 @@ function CurrencyFolder({ member }) {
 function CompetencyList({ crewMemberId, onChange }) {
   const [competencies, setCompetencies] = useState([]);
   const [error, setError] = useState(null);
+  // Once completed + planned dates are both set, the dates are locked to
+  // avoid accidental edits - this remembers which rows were explicitly
+  // unlocked via the "Edit dates" checkbox, reset on every reload.
+  const [unlocked, setUnlocked] = useState({});
 
   function load() {
     api.get(`/api/crew/${crewMemberId}/competencies`).then((data) => { setCompetencies(data); onChange?.(); }).catch((e) => setError(e.message));
@@ -221,6 +225,7 @@ function CompetencyList({ crewMemberId, onChange }) {
         dueDate: current.dueDate || null,
         plannedDate: current.plannedDate || null,
         na: current.na || false,
+        courseSent: current.courseSent || false,
         ...patch,
       });
       load();
@@ -243,6 +248,8 @@ function CompetencyList({ crewMemberId, onChange }) {
         // Training. Scoped to exactly these two names rather than a
         // blanket feature.
         const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
+        const datesSet = !!(c.completedDate && c.plannedDate);
+        const datesLocked = datesSet && !unlocked[c.competencyTypeId];
         return (
           <div key={c.competencyTypeId} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -262,20 +269,40 @@ function CompetencyList({ crewMemberId, onChange }) {
             )}
             {!c.na && (
               <>
+                {datesSet && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!unlocked[c.competencyTypeId]}
+                      onChange={(e) => setUnlocked((u) => ({ ...u, [c.competencyTypeId]: e.target.checked }))}
+                      style={{ width: 'auto' }}
+                    />
+                    Edit dates
+                  </label>
+                )}
                 <div className="grid2" style={{ marginTop: 8 }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Completed date</label>
-                    <input type="date" defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
+                    <input type="date" disabled={datesLocked} defaultValue={c.completedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { completedDate: e.target.value || null })} />
                   </div>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Due date</label>
-                    <input type="date" defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
+                    <input type="date" disabled={datesLocked} defaultValue={c.dueDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { dueDate: e.target.value || null })} />
                   </div>
                 </div>
                 <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
                   <label>Planned date</label>
-                  <input type="date" defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
+                  <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => updateCompetency(c.competencyTypeId, { plannedDate: e.target.value || null })} />
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!c.courseSent}
+                    onChange={(e) => updateCompetency(c.competencyTypeId, { courseSent: e.target.checked })}
+                    style={{ width: 'auto' }}
+                  />
+                  Course sent to candidate
+                </label>
               </>
             )}
           </div>

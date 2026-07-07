@@ -98,17 +98,11 @@ const createSchema = z.object({
   details: z.record(z.any()).optional(),
 });
 
-router.post('/', async (req, res) => {
-  const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  if (!canAccessCheckType(req.user, parsed.data.checkType)) return res.status(403).json({ error: 'Forbidden' });
-  if (parsed.data.assignedTo && !isAdmin(req.user)) {
-    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
-  }
-
-  const d = parsed.data;
-  // Snapshot the assignee's and crew member's name now, so they survive
-  // either later being deleted from the system - plain text, not a live join.
+// Shared by the POST route below and by the Planning tab's auto-create (see
+// crew.js planned-checks handler) - snapshots the assignee's and crew
+// member's name now, so they survive either later being deleted from the
+// system (plain text, not a live join).
+async function createCheckRecord(d) {
   const assignee = await resolveAssignee(d.assignedTo);
   const crewMember = await resolveCrewMember(d.crewMemberId);
   const { rows } = await pool.query(
@@ -130,7 +124,18 @@ router.post('/', async (req, res) => {
       JSON.stringify(d.details || {}),
     ],
   );
-  const check = rowToCamel(rows[0]);
+  return rowToCamel(rows[0]);
+}
+
+router.post('/', async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!canAccessCheckType(req.user, parsed.data.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  if (parsed.data.assignedTo && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
+  }
+
+  const check = await createCheckRecord(parsed.data);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });
   res.status(201).json(check);
 });
@@ -251,3 +256,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.createCheckRecord = createCheckRecord;

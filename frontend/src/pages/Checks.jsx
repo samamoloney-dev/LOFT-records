@@ -15,8 +15,15 @@ export function Checks() {
   // Simulator-only staff can reach the Pilots tab, but only its IPC/PC
   // sub-tabs - not Emergency Procedures.
   const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
-  const canAccessPilots = CHECK_ROLES.includes(user.role) || isSimulatorOnly;
-  const canAccessEpForCa = CHECK_ROLES.includes(user.role);
+  // A staff member ticked for Emergency Procedures on their Staff profile
+  // (checkAccess) can conduct/check EP for both pilots and cabin attendants,
+  // even if their broader role isn't one of the roles that otherwise unlocks
+  // the Pilots/Cabin Attendants tabs (e.g. a CA_CHECKER or CA_TRAINER).
+  const hasEpAccess = (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  const canAccessPilotChecks = CHECK_ROLES.includes(user.role) || isSimulatorOnly;
+  const canAccessPilotEp = !isSimulatorOnly && (CHECK_ROLES.includes(user.role) || hasEpAccess);
+  const canAccessPilots = canAccessPilotChecks || canAccessPilotEp;
+  const canAccessEpForCa = CHECK_ROLES.includes(user.role) || hasEpAccess;
   const canAccessCaOnly = CA_CHECK_ROLES.includes(user.role);
   const canAccessCabinAttendants = canAccessEpForCa || canAccessCaOnly;
   const canAccessOthers = ADMIN_ROLES.includes(user.role);
@@ -30,11 +37,11 @@ export function Checks() {
   const [topTab, setTopTab] = useState(topTabs[0]?.key);
 
   const pilotTabs = [
-    { key: 'ipc', label: 'IPC' },
-    { key: 'pc', label: 'PC' },
-    !isSimulatorOnly && { key: 'ep', label: 'Emergency Procedures' },
+    canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
+    canAccessPilotChecks && { key: 'pc', label: 'PC' },
+    canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
   ].filter(Boolean);
-  const [pilotTab, setPilotTab] = useState('ipc');
+  const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
   const caTabs = [
     canAccessEpForCa && { key: 'ep', label: 'Emergency Procedures' },
@@ -50,9 +57,9 @@ export function Checks() {
       {topTab === 'pilots' && canAccessPilots && (
         <div>
           <TabBar tabs={pilotTabs} active={pilotTab} onSelect={setPilotTab} />
-          {pilotTab === 'ipc' && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
-          {pilotTab === 'pc' && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
-          {pilotTab === 'ep' && <EpChecks appliesTo="PILOT" />}
+          {pilotTab === 'ipc' && canAccessPilotChecks && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
+          {pilotTab === 'pc' && canAccessPilotChecks && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
+          {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
         </div>
       )}
 

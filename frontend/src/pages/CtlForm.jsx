@@ -149,6 +149,10 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     }
   }
 
+  const allItemsAnswered = isCabinAttendant
+    ? CA_ASSESSMENT_ITEMS.every((item) => form.assessmentItems[item] !== undefined)
+    : data.items.length > 0 && data.items.every((item) => form.assessmentItems[itemKey(item)] !== undefined);
+
   function printForm() {
     const statusLabel = (v) => (v === true ? '✓' : v === false ? '✗' : v === 'SATISFACTORY' ? '✓' : v === 'UNSATISFACTORY' ? '✗' : v === 'NA' ? 'N/A' : '');
     let body = `<h1>Check to Line Assessment</h1>`;
@@ -312,9 +316,14 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
             </>
           )}
 
+          {!locked && !allItemsAnswered && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
+              Every item above must be ticked before the overall result can be set.
+            </div>
+          )}
           <div className="field" style={{ marginTop: 12 }}>
             <label>Overall result</label>
-            <select disabled={locked} value={form.overallResult || ''} onChange={(e) => setResult(e.target.value || null)}>
+            <select disabled={locked || !allItemsAnswered} value={form.overallResult || ''} onChange={(e) => setResult(e.target.value || null)}>
               <option value="">—</option>
               <option value="PASS">PASS</option>
               <option value="FAIL">FAIL</option>

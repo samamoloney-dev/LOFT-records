@@ -51,6 +51,7 @@ async function requireAuth(req, res, next) {
       email: row.email,
       role: row.role,
       fleets: parsePgArray(row.fleets),
+      checkAccess: parsePgArray(row.checkAccess),
       trainee: row.traineeId ? { id: row.traineeId } : null,
     };
     next();

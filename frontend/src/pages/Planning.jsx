@@ -106,7 +106,10 @@ function PlannedCompetenciesSection() {
             <div style={{ fontWeight: 500 }}>{r.crewMemberName}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.fleets.map(formatFleet).join(', ')} · {r.name}</div>
           </div>
-          <div style={{ fontSize: 13 }}>Planned for {formatDate(r.plannedDate)}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 13 }}>Planned for {formatDate(r.plannedDate)}</div>
+            {r.courseSent && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Course sent</div>}
+          </div>
         </div>
       ))}
     </div>

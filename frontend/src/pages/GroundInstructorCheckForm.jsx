@@ -120,6 +120,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
       {checks.map((check) => {
         const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
+        const allItemsAnswered = items.length > 0 && items.every((item) => check.items?.[item.id] !== undefined);
         return (
           <div key={check.id} className="card" style={{ marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -232,8 +233,13 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                   />
                 </div>
 
+                {canEdit && !check.completedAt && !allItemsAnswered && (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+                    Every item above must be ticked before the check can be completed.
+                  </div>
+                )}
                 {canEdit && !check.completedAt && (
-                  <button className="primary" onClick={() => complete(check)} style={{ marginTop: 8 }}>Complete check</button>
+                  <button className="primary" onClick={() => complete(check)} disabled={!allItemsAnswered} style={{ marginTop: 8 }}>Complete check</button>
                 )}
               </div>
             )}

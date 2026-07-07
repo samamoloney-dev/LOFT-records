@@ -142,6 +142,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
   if (selected) {
     const d = selected.details || {};
+    const allItemsAnswered = caItems.length > 0 && caItems.every((item) => d.items?.[item.id] !== undefined);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -241,11 +242,16 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
           </div>
         )}
+        {!selected.completedAt && !allItemsAnswered && (
+          <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            Every item above must be ticked before the overall assessment can be set.
+          </div>
+        )}
         <div className="card">
           <div className="grid2">
             <div className="field">
               <label>Overall assessment</label>
-              <select disabled={!!selected.completedAt} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+              <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
                 <option value="">—</option>
                 <option value="PASS">PASS</option>
                 <option value="FAIL">FAIL</option>

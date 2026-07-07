@@ -7,7 +7,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
-import { formatUserRole } from '../lib/format';
+import { formatUserRole, formatFleet } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
@@ -409,6 +409,12 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       ...s,
       allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
     }));
+    const allRequiredItems = [
+      ...recurrentItems,
+      ...(isIpc ? knowledgeItems : []),
+      ...flightSections.flatMap((s) => s.allItems),
+    ];
+    const allItemsAnswered = allRequiredItems.length > 0 && allRequiredItems.every((item) => results[item.id] !== undefined);
 
     return (
       <div>
@@ -521,10 +527,15 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
           </div>
         )}
+        {!selected.completedAt && !allItemsAnswered && (
+          <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            Every item above must be ticked before the overall assessment can be set.
+          </div>
+        )}
         <div className="card">
           <div className="field">
             <label>Overall assessment</label>
-            <select disabled={!!selected.completedAt} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+            <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
               <option value="">—</option>
               <option value="PASS">PASS</option>
               <option value="FAIL">FAIL</option>
@@ -550,9 +561,31 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             <CrewMemberPicker
               members={crewOptions}
               value={newForm.linkedCrewMemberId}
-              onSelect={(m) => setNewForm((f) => ({ ...f, linkedCrewMemberId: m?.id || '', name: m?.name || f.name, role: m?.role || f.role, arn: m?.arn || f.arn }))}
+              onSelect={(m) => {
+                // Carries over an examiner/instructor already assigned to
+                // this candidate's upcoming IPC/PC from the Planning page.
+                const planned = m?.currency?.[variant === 'IPC_PC' ? 'ipc' : 'proficiencyCheck']?.plannedAssignedTo;
+                setNewForm((f) => ({
+                  ...f,
+                  linkedCrewMemberId: m?.id || '',
+                  name: m?.name || f.name,
+                  role: m?.role || f.role,
+                  arn: m?.arn || f.arn,
+                  // Aircraft type wasn't following the picked crew member -
+                  // derive it from their fleet (FLEET_LABELS values line up
+                  // exactly with AIRCRAFT_TYPES) rather than leaving it blank.
+                  actype: (m?.fleets?.[0] && formatFleet(m.fleets[0])) || f.actype,
+                  ...(planned && !f.assignedTo ? { assignedTo: planned.id, assessor: planned.name, examinerName: planned.name, examinerArn: planned.arn } : {}),
+                }));
+              }}
             />
           )}
+          <AssignedToPicker
+            value={newForm.assignedTo}
+            accessType={variantAccessType(variant)}
+            fleet={fleet}
+            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
+          />
           <div className="grid2">
             {crewMemberId
               ? <div className="field"><label>Candidate</label><input value={newForm.name} disabled /></div>
@@ -577,12 +610,6 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             </select>
           </div>
           <div className="field"><label>Applicant's ARN</label><input value={newForm.arn} onChange={(e) => setNewForm({ ...newForm, arn: e.target.value })} /></div>
-          <AssignedToPicker
-            value={newForm.assignedTo}
-            accessType={variantAccessType(variant)}
-            fleet={fleet}
-            onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessor: s?.name || f.assessor, examinerName: s?.name || f.examinerName, examinerArn: s?.arn || f.examinerArn }))}
-          />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}

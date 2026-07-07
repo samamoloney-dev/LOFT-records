@@ -57,6 +57,11 @@ function RefresherTrainingRow({ refresherCompetency }) {
   );
 }
 
+function isItemAnswered(item, value) {
+  if (item.kind === 'tick_approach') return value?.satisfactory !== undefined;
+  return value !== undefined;
+}
+
 function ItemRow({ item, value, disabled, onChange }) {
   if (item.kind === 'text') {
     return (
@@ -113,6 +118,18 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   useEffect(() => {
     api.get(`/api/crew/${crewMemberId}/competencies`)
       .then((rows) => setRefresherCompetency(rows.find((r) => r.name === 'Refresher Training') || null))
+      .catch(() => {});
+  }, [crewMemberId]);
+  useEffect(() => {
+    // Carries over an examiner/instructor/check pilot already assigned to
+    // this crew member's upcoming Line Check from the Planning page.
+    api.get(`/api/crew/${crewMemberId}`)
+      .then((m) => setNewForm((f) => {
+        const planned = m.currency?.lineCheck?.plannedAssignedTo;
+        return planned && !f.assignedTo
+          ? { ...f, assignedTo: planned.id, assessorId: planned.id, assessor: planned.name, assessorArn: planned.arn }
+          : f;
+      }))
       .catch(() => {});
   }, [crewMemberId]);
 
@@ -223,6 +240,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const d = selected.details || {};
     const results = d.results || {};
     const locked = !!selected.completedAt;
+    const allItemsAnswered = tickableItems.length > 0 && tickableItems.every((item) => isItemAnswered(item, results[item.id]));
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -289,10 +307,15 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
             DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
           </div>
         )}
+        {!locked && !allItemsAnswered && (
+          <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            Every item above must be ticked before the overall assessment can be set.
+          </div>
+        )}
         <div className="card">
           <div className="field">
             <label>Overall assessment</label>
-            <select disabled={locked} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+            <select disabled={locked || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
               <option value="">—</option>
               <option value="PASS">PASS</option>
               <option value="FAIL">FAIL</option>

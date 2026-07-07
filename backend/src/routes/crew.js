@@ -7,6 +7,7 @@ const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
+const { createCheckRecord } = require('./checks');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -108,6 +109,17 @@ function dueInfo(dueDate, completedDate, planned) {
 // date on Currency Overview and the crew member's own profile, and used to
 // prefill the assignee when the real check is later created.
 const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'];
+
+// Maps a planned-check key to what the real check record needs once it's
+// auto-created (see the planned-checks PUT handler below): the checks.check_type
+// value, and - for RECURRENT_SIMULATOR, which covers both PC and IPC under
+// one checkType - the details.variant ProficiencyChecks.jsx filters on.
+const CHECK_KEY_TO_CHECK_TYPE = {
+  emergencyProcedures: () => ({ checkType: 'EMERGENCY_PROCEDURES' }),
+  ipc: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'IPC_PC' }),
+  proficiencyCheck: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'PC' }),
+  lineCheck: (crewType) => ({ checkType: crewType === 'CABIN_ATTENDANT' ? 'CABIN_ATTENDANT_LINE_CHECK' : 'PILOT_LINE_CHECK' }),
+};
 
 async function plannedDatesFor(crewMemberId) {
   const { rows } = await pool.query(
@@ -444,6 +456,29 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
         hasAssignedTo,
       ],
     );
+
+    // Setting a planned date used to only prefill the assignee once someone
+    // later clicked "Add check" by hand - now it creates the actual
+    // (incomplete) check record right away, so it shows up on the relevant
+    // Checks page immediately. Skipped if one's already in progress for
+    // this crew member/check type, so re-editing the planned date or
+    // assignee doesn't spawn duplicates.
+    const { checkType, variant } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);
+    const { rows: existingChecks } = await pool.query(
+      `SELECT id FROM checks WHERE crew_member_id = $1 AND check_type = $2 AND completed_at IS NULL
+       AND ($3::text IS NULL OR details->>'variant' = $3)`,
+      [member.id, checkType, variant || null],
+    );
+    if (existingChecks.length === 0) {
+      await createCheckRecord({
+        crewMemberId: member.id,
+        checkType,
+        fleet: member.fleets?.length === 1 ? member.fleets[0] : undefined,
+        appliesTo: member.type,
+        assignedTo: hasAssignedTo ? (parsed.data.assignedTo || null) : null,
+        details: { name: member.name, role: member.role, arn: member.arn, date: plannedDate, ...(variant ? { variant } : {}) },
+      });
+    }
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_planned_checks', targetId: member.id });
   res.json(await withCurrency(member));
@@ -478,7 +513,7 @@ router.get('/:id/competencies', async (req, res) => {
   if (!member) return res.status(404).json({ error: 'Not found' });
 
   const { rows } = await pool.query(
-    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na
+    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false
@@ -496,6 +531,7 @@ const competencyDatesSchema = z.object({
   // CrewDetail.jsx) - not every crew member is required to hold every
   // competency.
   na: z.boolean().optional(),
+  courseSent: z.boolean().optional(),
 });
 
 // Upserts this crew member's dates for one competency type - there's no
@@ -507,15 +543,15 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
 
   const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { completedDate, dueDate, plannedDate, na } = parsed.data;
+  const { completedDate, dueDate, plannedDate, na, courseSent } = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na, course_sent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (crew_member_id, competency_type_id)
-     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6
+     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6, course_sent = $7
      RETURNING *`,
-    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false],
+    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false, courseSent || false],
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));

@@ -44,7 +44,7 @@ router.get('/planned-checks', async (req, res) => {
 
 router.get('/planned-competencies', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT cc.crew_member_id, cc.planned_date, ct.name, cm.first_name, cm.last_name, cm.fleets
+    `SELECT cc.crew_member_id, cc.planned_date, COALESCE(cc.course_sent, false) AS course_sent, ct.name, cm.first_name, cm.last_name, cm.fleets
      FROM crew_competencies cc
      JOIN competency_types ct ON ct.id = cc.competency_type_id
      JOIN crew_members cm ON cm.id = cc.crew_member_id

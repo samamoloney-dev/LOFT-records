@@ -506,11 +506,10 @@ function CheckFormItemsSection() {
   const [form, setForm] = useState(emptyCheckFormItemForm(formKey));
   const [error, setError] = useState(null);
   const isCtl = formKey === 'CHECK_TO_LINE';
-  const isPc = formKey === 'PROFICIENCY_CHECK';
-  // Proficiency Check/IPC items are grouped under named sections (e.g.
-  // "3.1 Pre-flight" etc.) - picking from the headings already in use
-  // avoids near-duplicate sections from a typo or slightly different
-  // wording, with a way to add a genuinely new one when needed.
+  // Sections are grouped under named headings (e.g. "3.1 Pre-flight" etc.) -
+  // picking from the headings already in use avoids near-duplicate sections
+  // from a typo or slightly different wording, with a way to add a
+  // genuinely new one when needed.
   const [addingSection, setAddingSection] = useState(false);
 
   function load() {
@@ -600,31 +599,27 @@ function CheckFormItemsSection() {
         <form className="card" onSubmit={handleSubmit}>
           <div className="field">
             <label>Section (optional grouping heading)</label>
-            {isPc ? (
-              addingSection || sectionOptions.length === 0 ? (
-                <>
-                  <input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="New section name" />
-                  {sectionOptions.length > 0 && (
-                    <button type="button" onClick={() => { setAddingSection(false); setForm({ ...form, section: sectionOptions[0] }); }} style={{ marginTop: 6 }}>
-                      Choose an existing section instead
-                    </button>
-                  )}
-                </>
-              ) : (
-                <select
-                  value={form.section}
-                  onChange={(e) => {
-                    if (e.target.value === NEW_SECTION_VALUE) { setAddingSection(true); setForm({ ...form, section: '' }); }
-                    else setForm({ ...form, section: e.target.value });
-                  }}
-                >
-                  <option value="">— No section —</option>
-                  {sectionOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                  <option value={NEW_SECTION_VALUE}>+ Add new section</option>
-                </select>
-              )
+            {addingSection || sectionOptions.length === 0 ? (
+              <>
+                <input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="New section name" />
+                {sectionOptions.length > 0 && (
+                  <button type="button" onClick={() => { setAddingSection(false); setForm({ ...form, section: sectionOptions[0] }); }} style={{ marginTop: 6 }}>
+                    Choose an existing section instead
+                  </button>
+                )}
+              </>
             ) : (
-              <input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} />
+              <select
+                value={form.section}
+                onChange={(e) => {
+                  if (e.target.value === NEW_SECTION_VALUE) { setAddingSection(true); setForm({ ...form, section: '' }); }
+                  else setForm({ ...form, section: e.target.value });
+                }}
+              >
+                <option value="">— No section —</option>
+                {sectionOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                <option value={NEW_SECTION_VALUE}>+ Add new section</option>
+              </select>
             )}
           </div>
           <div className="field"><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></div>

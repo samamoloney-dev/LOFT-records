@@ -20,6 +20,7 @@ function serializeUser(user) {
     email: user.email,
     role: user.role,
     fleets: user.fleets,
+    checkAccess: user.checkAccess,
     traineeId: user.trainee ? user.trainee.id : null,
   };
 }
@@ -48,6 +49,7 @@ router.post('/login', async (req, res) => {
     email: row.email,
     role: row.role,
     fleets: parsePgArray(row.fleets),
+    checkAccess: parsePgArray(row.checkAccess),
     trainee: row.traineeId ? { id: row.traineeId } : null,
   };
 

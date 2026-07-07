@@ -475,37 +475,52 @@ const CHECK_FORM_TABS = [
   { key: 'EMERGENCY_PROCEDURES', label: 'Emergency Procedures' },
   { key: 'PROFICIENCY_CHECK', label: 'Proficiency Check / IPC' },
   { key: 'CABIN_ATTENDANT_LINE_CHECK', label: 'Line Check' },
+  { key: 'CHECK_TO_LINE', label: 'Check to Line (Pilot)' },
+  { key: 'GROUND_INSTRUCTOR_COMPETENCY', label: 'Ground Instructor Check' },
 ];
 
-const emptyCheckFormItemForm = (formKey) => ({ formKey, section: '', kind: 'tick', description: '', mos: '', ipcOnly: false });
+// Check to Line items vary per pilot fleet (the cabin attendant Check to
+// Line items are a fixed 6-item list, not admin-editable here).
+const CTL_FLEET_TABS = [
+  { key: 'DASH_8', label: 'Dash 8' },
+  { key: 'FOKKER_100', label: 'Fokker 100' },
+  { key: 'METRO_23', label: 'Metro 23' },
+];
+
+const emptyCheckFormItemForm = (formKey, fleet) => ({ formKey, fleet: fleet || '', section: '', kind: 'tick', description: '', notes: '', mos: '', ipcOnly: false });
 
 // One item list, editable here, drives the real Emergency Procedures,
-// Proficiency Check/IPC, and Cabin Attendant Line Check forms (see
-// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx) instead of being fixed
-// in source code. The Pilot Line Check has no itemised checklist (just
-// date/assessor/result), so there's nothing to edit for it here.
+// Proficiency Check/IPC, Cabin Attendant Line Check, pilot Check to Line,
+// and Ground Instructor Competency Check forms (see
+// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx/CtlForm.jsx/
+// GroundInstructorCheckForm.jsx) instead of being fixed in source code. The
+// Pilot Line Check has no itemised checklist (just date/assessor/result),
+// so there's nothing to edit for it here.
 function CheckFormItemsSection() {
   const [formKey, setFormKey] = useState('EMERGENCY_PROCEDURES');
+  const [ctlFleet, setCtlFleet] = useState('DASH_8');
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyCheckFormItemForm(formKey));
   const [error, setError] = useState(null);
+  const isCtl = formKey === 'CHECK_TO_LINE';
 
   function load() {
-    api.get(`/api/check-form-items?formKey=${formKey}&includeArchived=true`).then(setItems).catch((e) => setError(e.message));
+    const fleetParam = isCtl ? `&fleet=${ctlFleet}` : '';
+    api.get(`/api/check-form-items?formKey=${formKey}${fleetParam}&includeArchived=true`).then(setItems).catch((e) => setError(e.message));
   }
-  useEffect(load, [formKey]);
+  useEffect(load, [formKey, ctlFleet]);
 
   function openCreateForm() {
     setEditingId(null);
-    setForm(emptyCheckFormItemForm(formKey));
+    setForm(emptyCheckFormItemForm(formKey, isCtl ? ctlFleet : ''));
     setShowForm((v) => !v);
   }
 
   function openEditForm(item) {
     setEditingId(item.id);
-    setForm({ formKey, section: item.section || '', kind: item.kind, description: item.description, mos: item.mos || '', ipcOnly: item.ipcOnly });
+    setForm({ formKey, fleet: item.fleet || '', section: item.section || '', kind: item.kind, description: item.description, notes: item.notes || '', mos: item.mos || '', ipcOnly: item.ipcOnly });
     setShowForm(true);
   }
 
@@ -513,7 +528,10 @@ function CheckFormItemsSection() {
     e.preventDefault();
     setError(null);
     try {
-      const payload = { section: form.section || null, kind: form.kind, description: form.description, mos: form.mos || null, ipcOnly: form.ipcOnly };
+      const payload = {
+        fleet: form.fleet || null, section: form.section || null, kind: form.kind,
+        description: form.description, notes: form.notes || null, mos: form.mos || null, ipcOnly: form.ipcOnly,
+      };
       if (editingId) {
         await api.patch(`/api/check-form-items/${editingId}`, payload);
       } else {
@@ -521,7 +539,7 @@ function CheckFormItemsSection() {
       }
       setShowForm(false);
       setEditingId(null);
-      setForm(emptyCheckFormItemForm(formKey));
+      setForm(emptyCheckFormItemForm(formKey, isCtl ? ctlFleet : ''));
       load();
     } catch (err) { setError(err.message); }
   }
@@ -542,12 +560,24 @@ function CheckFormItemsSection() {
       <TabBar
         tabs={CHECK_FORM_TABS}
         active={formKey}
-        onSelect={(key) => { setFormKey(key); setShowForm(false); setEditingId(null); setForm(emptyCheckFormItemForm(key)); }}
+        onSelect={(key) => { setFormKey(key); setShowForm(false); setEditingId(null); setForm(emptyCheckFormItemForm(key, key === 'CHECK_TO_LINE' ? ctlFleet : '')); }}
       />
       {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
           The Pilot Line Check has no itemised checklist, so there's nothing to edit for it here.
         </div>
+      )}
+      {isCtl && (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            The cabin attendant Check to Line uses a fixed 6-item list and isn't editable here.
+          </div>
+          <TabBar
+            tabs={CTL_FLEET_TABS}
+            active={ctlFleet}
+            onSelect={(fleet) => { setCtlFleet(fleet); setShowForm(false); setEditingId(null); setForm(emptyCheckFormItemForm(formKey, fleet)); }}
+          />
+        </>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
         <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add item'}</button>
@@ -557,7 +587,12 @@ function CheckFormItemsSection() {
         <form className="card" onSubmit={handleSubmit}>
           <div className="field"><label>Section (optional grouping heading)</label><input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} /></div>
           <div className="field"><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required /></div>
-          <div className="field"><label>MOS reference (optional)</label><input value={form.mos} onChange={(e) => setForm({ ...form, mos: e.target.value })} /></div>
+          {isCtl && (
+            <div className="field"><label>Notes (optional)</label><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+          )}
+          {!isCtl && formKey !== 'GROUND_INSTRUCTOR_COMPETENCY' && (
+            <div className="field"><label>MOS reference (optional)</label><input value={form.mos} onChange={(e) => setForm({ ...form, mos: e.target.value })} /></div>
+          )}
           {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (
             <div className="field">
               <label>Item type</label>
@@ -588,6 +623,7 @@ function CheckFormItemsSection() {
             <div key={item.id} className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1, opacity: item.archived ? 0.6 : 1 }}>
                 <div style={{ fontSize: 13 }}>{item.description}{item.archived ? ' (archived)' : ''}</div>
+                {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
                   {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}{item.kind === 'score_code' ? ' · Score + code' : ''}
                 </div>

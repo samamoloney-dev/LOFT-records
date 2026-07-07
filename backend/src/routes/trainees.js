@@ -129,19 +129,34 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     return res.status(400).json({ error: 'Check to Line must be completed before adding this trainee to the Crew roster' });
   }
 
-  const { rows } = await pool.query(
-    `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
-     VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
-    [
-      trainee.firstName,
-      trainee.lastName,
-      trainee.type,
-      trainee.role,
-      [trainee.fleet],
-      trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
-    ],
-  );
-  const crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
+  const client = await pool.connect();
+  let crewMember;
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
+      [
+        trainee.firstName,
+        trainee.lastName,
+        trainee.type,
+        trainee.role,
+        [trainee.fleet],
+        trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
+      ],
+    );
+    // The trainee record becomes redundant once they're on the Crew roster -
+    // archive it now rather than at Check to Line completion time, so the
+    // trainee stays visible/active right up until this point.
+    await client.query('UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1', [trainee.id]);
+    await client.query('COMMIT');
+    crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   await logAction({ userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id });
   res.status(201).json(crewMember);
 });

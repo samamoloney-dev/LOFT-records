@@ -22,3 +22,10 @@ export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // backend/src/middleware/roles.js's CONTINUOUS_IMPROVEMENT_ROLES/SURVEY_FILL_ROLES.
 export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO'];
 export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'SIMULATOR_ONLY'];
+
+// Every role eligible to check/train Emergency Procedures - these are the
+// staff who must hold a current Ground Instructor Competency Check
+// (SA_520, renewed every 12 months), and also who can conduct one on a
+// colleague. Mirrors backend/src/middleware/roles.js's
+// GROUND_INSTRUCTOR_CHECK_ROLES.
+export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];

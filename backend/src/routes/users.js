@@ -4,8 +4,9 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, GROUND_INSTRUCTOR_CHECK_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { nextDueRolling, statusFor } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -40,6 +41,26 @@ function serialize(row) {
   };
 }
 
+// Ground Instructor Competency Check (SA_520) currency - only eligible
+// roles (see GROUND_INSTRUCTOR_CHECK_ROLES) need this, computed the same
+// way as EP/IPC/CA Line Check recurrency (365 days from the most recent
+// completed check of that type).
+async function withGroundInstructorCheck(user) {
+  if (!GROUND_INSTRUCTOR_CHECK_ROLES.includes(user.role)) return user;
+  const { rows } = await pool.query(
+    `SELECT completed_at FROM instructor_competency_checks
+     WHERE user_id = $1 AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC LIMIT 1`,
+    [user.id],
+  );
+  const completedDate = rows[0]?.completed_at || null;
+  const dueDate = nextDueRolling(completedDate);
+  return {
+    ...user,
+    groundInstructorCheck: { status: statusFor(dueDate), dueDate, completedDate },
+  };
+}
+
 router.use(requireAuth);
 
 // Open to any authenticated staff member (not admin-only) - lets check forms
@@ -52,7 +73,8 @@ router.get('/roster', async (req, res) => {
 
 router.get('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM users ORDER BY name ASC');
-  res.json(rows.map(serialize));
+  const users = await Promise.all(rows.map(serialize).map(withGroundInstructorCheck));
+  res.json(users);
 });
 
 router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {

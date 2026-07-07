@@ -9,7 +9,7 @@ import { openPrintWindow, section, signatureBlock } from '../lib/print';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 const OBSERVATION_COUNT = 4;
-const DEMONSTRATION_COUNT = 3;
+const DEMONSTRATION_COUNT = 6;
 
 function padded(list, count) {
   const arr = Array.isArray(list) ? list : [];
@@ -48,6 +48,9 @@ function LandingAssessmentAssigneePicker({ value, fleet, disabled, onAssign }) {
   );
 }
 
+// Observation sectors are a simple log of which sectors the candidate flew
+// as an observer - no per-sector conditions/comments, per the operator's
+// updated SA_575 form.
 function ObservationSector({ index, value, disabled, onChange }) {
   const v = value || {};
   const update = (field, fieldValue) => onChange(index, { ...v, [field]: fieldValue });
@@ -59,24 +62,28 @@ function ObservationSector({ index, value, disabled, onChange }) {
         <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
         <div className="field"><label>Route</label><input disabled={disabled} value={v.route || ''} onChange={(e) => update('route', e.target.value)} /></div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        <div className="field"><label>Wind</label><input disabled={disabled} value={v.wind || ''} onChange={(e) => update('wind', e.target.value)} /></div>
-        <div className="field"><label>Rwy</label><input disabled={disabled} value={v.rwy || ''} onChange={(e) => update('rwy', e.target.value)} /></div>
-        <div className="field"><label>Temp</label><input disabled={disabled} value={v.temp || ''} onChange={(e) => update('temp', e.target.value)} /></div>
-        <div className="field"><label>Turb</label><input disabled={disabled} value={v.turb || ''} onChange={(e) => update('turb', e.target.value)} /></div>
-      </div>
-      <div className="field"><label>Comments</label><textarea disabled={disabled} value={v.comments || ''} onChange={(e) => update('comments', e.target.value)} style={{ minHeight: 50 }} /></div>
     </div>
   );
 }
 
+// Demonstration - up to 6 flights (minimum 3 take-offs and 3 landings),
+// each with its own take-off/landing result, airport/runway/wind, and an
+// overall Competent judgement.
 function DemonstrationSector({ index, value, disabled, onChange }) {
   const v = value || {};
   const update = (field, fieldValue) => onChange(index, { ...v, [field]: fieldValue });
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 500, marginBottom: 6 }}>Sector {index + 1}</div>
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Flight {index + 1}</div>
+      <div className="grid2">
+        <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
+        <div className="field"><label>Airport</label><input disabled={disabled} value={v.airport || ''} onChange={(e) => update('airport', e.target.value)} /></div>
+      </div>
+      <div className="grid2">
+        <div className="field"><label>Rwy</label><input disabled={disabled} value={v.rwy || ''} onChange={(e) => update('rwy', e.target.value)} /></div>
+        <div className="field"><label>Wind</label><input disabled={disabled} value={v.wind || ''} onChange={(e) => update('wind', e.target.value)} /></div>
+      </div>
       <div className="grid2">
         <div className="field">
           <label>Take-Off</label>
@@ -95,13 +102,14 @@ function DemonstrationSector({ index, value, disabled, onChange }) {
           </select>
         </div>
       </div>
-      <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
       <div className="field">
-        <label>Comments</label>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>If take over was required it must be reported to FSM</div>
-        <textarea disabled={disabled} value={v.comments || ''} onChange={(e) => update('comments', e.target.value)} style={{ minHeight: 50 }} />
+        <label>Competent</label>
+        <select disabled={disabled} value={v.competent || ''} onChange={(e) => update('competent', e.target.value)}>
+          <option value="">—</option>
+          <option value="YES">Yes</option>
+          <option value="NO">No</option>
+        </select>
       </div>
-      <div className="field"><label>FS Pilot Sign</label><input disabled={disabled} value={v.fsPilotSign || ''} onChange={(e) => update('fsPilotSign', e.target.value)} /></div>
     </div>
   );
 }
@@ -123,7 +131,7 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
   useEffect(load, [traineeId]);
 
   const canEdit = LANDING_ASSESSMENT_EDIT_ROLES.includes(user.role);
-  const form = data?.form || { observationSectors: [], demonstrationSectors: [], releaseSignature: '', releaseDate: '', exempt: false, fsmSignature: '' };
+  const form = data?.form || { observationSectors: [], demonstrationSectors: [], comments: '', releaseSignature: '', releaseDate: '', exempt: false, hotcHofoSignature: '' };
   const locked = !canEdit || !!form.completedAt;
 
   async function save(patch) {
@@ -180,25 +188,23 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
     let body = '<h1>Initial Take-Off & Landing Assessment</h1>';
     body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
     padded(form.observationSectors, OBSERVATION_COUNT).forEach((s, i) => {
-      body += section(`Observation - Sector ${i + 1}`, [
-        ['Date', s.date], ['Route', s.route],
-        ['Conditions', [s.wind && `Wind ${s.wind}`, s.rwy && `Rwy ${s.rwy}`, s.temp && `Temp ${s.temp}`, s.turb && `Turb ${s.turb}`].filter(Boolean).join(' · ')],
-        ['Comments', s.comments],
-      ]);
+      body += section(`Observation - Sector ${i + 1}`, [['Date', s.date], ['Route', s.route]]);
     });
     padded(form.demonstrationSectors, DEMONSTRATION_COUNT).forEach((s, i) => {
-      body += section(`Demonstration (PH only) - Sector ${i + 1}`, [
+      body += section(`Demonstration - Flight ${i + 1}`, [
+        ['Date', s.date], ['Airport', s.airport], ['Rwy', s.rwy], ['Wind', s.wind],
         ['Take-Off', s.takeOff === 'X' ? 'Take over required' : s.takeOff === 'S' ? 'Satisfactory' : ''],
         ['Land', s.land === 'X' ? 'Take over required' : s.land === 'S' ? 'Satisfactory' : ''],
-        ['Date', s.date], ['Comments', s.comments], ['FS Pilot Sign', s.fsPilotSign],
+        ['Competent', s.competent === 'YES' ? 'Yes' : s.competent === 'NO' ? 'No' : ''],
       ]);
     });
+    body += section('Comments / Observations', [['Comments', form.comments]]);
     body += section('Release', [
       ['Exempt', form.exempt ? 'Yes' : 'No'],
-      ['FSM/FOM signature', form.fsmSignature],
+      ['HOTC/HOFO signature', form.hotcHofoSignature],
       ['Release date', form.releaseDate],
     ]);
-    body += signatureBlock([['Flight Standards Pilot signature', form.releaseSignature]]);
+    body += signatureBlock([['Sign to release Candidate to normal LOFT (Check Captain)', form.releaseSignature]]);
     openPrintWindow('Initial Take-Off & Landing Assessment', body);
   }
 
@@ -235,16 +241,28 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
             <ObservationSector key={i} index={i} value={s} disabled={locked} onChange={updateObservation} />
           ))}
 
-          <div style={{ fontWeight: 500, margin: '1rem 0 6px' }}>Demonstration (PH only)</div>
+          <div style={{ fontWeight: 500, margin: '1rem 0 6px' }}>Demonstration</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 8px' }}>Minimum 3 take-offs and 3 landings</div>
           {padded(form.demonstrationSectors, DEMONSTRATION_COUNT).map((s, i) => (
             <DemonstrationSector key={i} index={i} value={s} disabled={locked} onChange={updateDemonstration} />
           ))}
 
+          <div className="field">
+            <label>Comments / Observations</label>
+            <textarea
+              disabled={locked}
+              value={form.comments || ''}
+              onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, comments: e.target.value } }))}
+              onBlur={() => save({ comments: form.comments })}
+              style={{ minHeight: 80 }}
+            />
+          </div>
+
           <div className="card">
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>Release to normal ops</div>
+            <div style={{ fontWeight: 500, marginBottom: 6 }}>Release to normal LOFT</div>
             <div className="grid2">
               <div className="field">
-                <label>Sign to release Pilot to normal ops (Flight Standards Pilot)</label>
+                <label>Sign to release Candidate to normal LOFT (Check Captain)</label>
                 <input disabled={locked} value={form.releaseSignature || ''} onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, releaseSignature: e.target.value } }))} onBlur={() => save({ releaseSignature: form.releaseSignature })} />
               </div>
               <div className="field">
@@ -260,14 +278,14 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
             </div>
             {form.exempt && (
               <div className="field">
-                <label>FSM/FOM Signature</label>
-                <input disabled={locked} value={form.fsmSignature || ''} onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, fsmSignature: e.target.value } }))} onBlur={() => save({ fsmSignature: form.fsmSignature })} />
+                <label>HOTC/HOFO Signature</label>
+                <input disabled={locked} value={form.hotcHofoSignature || ''} onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, hotcHofoSignature: e.target.value } }))} onBlur={() => save({ hotcHofoSignature: form.hotcHofoSignature })} />
               </div>
             )}
           </div>
 
           {canEdit && !form.completedAt && (
-            <button className="primary" onClick={complete} disabled={!((form.releaseSignature && form.releaseDate) || (form.exempt && form.fsmSignature))}>
+            <button className="primary" onClick={complete} disabled={!((form.releaseSignature && form.releaseDate) || (form.exempt && form.hotcHofoSignature))}>
               Complete assessment
             </button>
           )}

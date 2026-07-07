@@ -25,7 +25,7 @@ const STATUSES = [
 ];
 
 function itemKey(item) {
-  return `${item.category}||${item.description}`;
+  return item.id;
 }
 
 function SectorFields({ label, value, progressiveLabel, disabled, onChange }) {
@@ -144,8 +144,8 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   const grouped = new Map();
   if (!isCabinAttendant) {
     for (const item of data.items) {
-      if (!grouped.has(item.category)) grouped.set(item.category, []);
-      grouped.get(item.category).push(item);
+      if (!grouped.has(item.section)) grouped.set(item.section, []);
+      grouped.get(item.section).push(item);
     }
   }
 
@@ -356,7 +356,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
 
           {canEdit && !form.completedAt && (
             <button className="primary" onClick={complete} disabled={!form.overallResult}>
-              Complete and archive trainee
+              Complete Check to Line
             </button>
           )}
           {error && <div className="error-text">{error}</div>}

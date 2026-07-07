@@ -36,14 +36,15 @@ router.get('/:traineeId', async (req, res) => {
 const upsertSchema = z.object({
   observationSectors: z.array(z.record(z.any())).optional(),
   demonstrationSectors: z.array(z.record(z.any())).optional(),
+  comments: z.string().nullable().optional(),
   releaseSignature: z.string().nullable().optional(),
   releaseDate: z.string().nullable().optional(),
   exempt: z.boolean().optional(),
-  fsmSignature: z.string().nullable().optional(),
+  hotcHofoSignature: z.string().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
 });
 
-const CONTENT_FIELDS = ['observationSectors', 'demonstrationSectors', 'releaseSignature', 'releaseDate', 'exempt', 'fsmSignature'];
+const CONTENT_FIELDS = ['observationSectors', 'demonstrationSectors', 'comments', 'releaseSignature', 'releaseDate', 'exempt', 'hotcHofoSignature'];
 
 router.put('/:traineeId', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
@@ -70,29 +71,31 @@ router.put('/:traineeId', async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO landing_assessment_forms
-       (trainee_id, observation_sectors, demonstration_sectors, release_signature, release_date, exempt, fsm_signature,
+       (trainee_id, observation_sectors, demonstration_sectors, comments, release_signature, release_date, exempt, hotc_hofo_signature,
         assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role)
-     VALUES ($1, COALESCE($2, '[]'::jsonb), COALESCE($3, '[]'::jsonb), $4, $5, COALESCE($6, false), $7, $8, $9, $10, $11)
+     VALUES ($1, COALESCE($2, '[]'::jsonb), COALESCE($3, '[]'::jsonb), $4, $5, $6, COALESCE($7, false), $8, $9, $10, $11, $12)
      ON CONFLICT (trainee_id) DO UPDATE SET
        observation_sectors = COALESCE($2, landing_assessment_forms.observation_sectors),
        demonstration_sectors = COALESCE($3, landing_assessment_forms.demonstration_sectors),
-       release_signature = COALESCE($4, landing_assessment_forms.release_signature),
-       release_date = COALESCE($5, landing_assessment_forms.release_date),
-       exempt = COALESCE($6, landing_assessment_forms.exempt),
-       fsm_signature = COALESCE($7, landing_assessment_forms.fsm_signature),
-       assigned_to = CASE WHEN $12 THEN $8::uuid ELSE landing_assessment_forms.assigned_to END,
-       assigned_to_name = CASE WHEN $12 THEN $9 ELSE landing_assessment_forms.assigned_to_name END,
-       assigned_to_arn = CASE WHEN $12 THEN $10 ELSE landing_assessment_forms.assigned_to_arn END,
-       assigned_to_role = CASE WHEN $12 THEN $11 ELSE landing_assessment_forms.assigned_to_role END
+       comments = COALESCE($4, landing_assessment_forms.comments),
+       release_signature = COALESCE($5, landing_assessment_forms.release_signature),
+       release_date = COALESCE($6, landing_assessment_forms.release_date),
+       exempt = COALESCE($7, landing_assessment_forms.exempt),
+       hotc_hofo_signature = COALESCE($8, landing_assessment_forms.hotc_hofo_signature),
+       assigned_to = CASE WHEN $13 THEN $9::uuid ELSE landing_assessment_forms.assigned_to END,
+       assigned_to_name = CASE WHEN $13 THEN $10 ELSE landing_assessment_forms.assigned_to_name END,
+       assigned_to_arn = CASE WHEN $13 THEN $11 ELSE landing_assessment_forms.assigned_to_arn END,
+       assigned_to_role = CASE WHEN $13 THEN $12 ELSE landing_assessment_forms.assigned_to_role END
      RETURNING *`,
     [
       trainee.id,
       d.observationSectors ? JSON.stringify(d.observationSectors) : null,
       d.demonstrationSectors ? JSON.stringify(d.demonstrationSectors) : null,
+      d.comments ?? null,
       d.releaseSignature ?? null,
       d.releaseDate ?? null,
       d.exempt ?? null,
-      d.fsmSignature ?? null,
+      d.hotcHofoSignature ?? null,
       d.assignedTo ?? null,
       assignee.assignedToName,
       assignee.assignedToArn,
@@ -118,9 +121,9 @@ router.post('/:traineeId/complete', async (req, res) => {
   const form = rowToCamel(rows[0]);
 
   const releasedOk = !!form.releaseSignature && !!form.releaseDate;
-  const exemptOk = form.exempt && !!form.fsmSignature;
+  const exemptOk = form.exempt && !!form.hotcHofoSignature;
   if (!releasedOk && !exemptOk) {
-    return res.status(400).json({ error: 'Either the release signature and date, or Exempt with an FSM/FOM signature, must be recorded before completing' });
+    return res.status(400).json({ error: 'Either the release signature and date, or Exempt with an HOTC/HOFO signature, must be recorded before completing' });
   }
 
   const { rows: updatedRows } = await pool.query(

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatUserRole, formatFleet } from '../lib/format';
 import { TabBar } from '../components/TabBar';
+import { DueBadge } from '../components/DueBadge';
+import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
+import { GROUND_INSTRUCTOR_CHECK_ROLES } from '../lib/roles';
 
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -157,6 +160,7 @@ function StaffAccountsPanel() {
   const [promoting, setPromoting] = useState(false);
   const [unlinkedCrew, setUnlinkedCrew] = useState([]);
   const [promoteCrewMemberId, setPromoteCrewMemberId] = useState('');
+  const [expandedGicId, setExpandedGicId] = useState(null);
 
   function load() {
     api.get('/api/users').then(setUsers).catch((e) => setError(e.message));
@@ -295,25 +299,42 @@ function StaffAccountsPanel() {
       {error && <div className="error-text">{error}</div>}
 
       {users.map((u) => (
-        <div key={u.id} className="card row" style={{ cursor: 'default' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500 }}>{u.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
-                ? 'Fleets: all'
-                : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
+        <div key={u.id} className="card">
+          <div className="row" style={{ cursor: 'default' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 500 }}>{u.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
+                  ? 'Fleets: all'
+                  : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {ADMIN_ROLES.includes(u.role)
+                  ? 'Check access: all'
+                  : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
+              </div>
+              {u.groundInstructorCheck && (
+                <div style={{ marginTop: 6 }}>
+                  <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {ADMIN_ROLES.includes(u.role)
-                ? 'Check access: all'
-                : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {GROUND_INSTRUCTOR_CHECK_ROLES.includes(u.role) && (
+                <button onClick={() => setExpandedGicId((id) => (id === u.id ? null : u.id))}>
+                  {expandedGicId === u.id ? 'Close' : 'Ground Instructor Check'}
+                </button>
+              )}
+              <button onClick={() => openEditForm(u)}>Edit</button>
+              <button className="danger" onClick={() => remove(u.id)}>Remove</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => openEditForm(u)}>Edit</button>
-            <button className="danger" onClick={() => remove(u.id)}>Remove</button>
-          </div>
+          {expandedGicId === u.id && (
+            <div style={{ marginTop: 10 }}>
+              <GroundInstructorCheckForm userId={u.id} userName={u.name} />
+            </div>
+          )}
         </div>
       ))}
     </div>

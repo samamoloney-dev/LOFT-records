@@ -5,7 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
-const { nextDueRolling, pcWindow, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
+const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -90,11 +90,11 @@ async function completedPilotLineCheckCount(crewMemberId) {
   return rows[0]?.n || 0;
 }
 
-function dueInfo(dueDate, completedDate, plannedDate, opts) {
+function dueInfo(dueDate, completedDate, plannedDate) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
   const planned = plannedDate ? new Date(plannedDate).toISOString() : null;
   if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed, plannedDate: planned };
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate, opts), completedDate: completed, plannedDate: planned };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate: planned };
 }
 
 // HOTC/HOFO/Flight Ops Admin can note a planned date for an upcoming check
@@ -196,17 +196,14 @@ async function withCurrency(member) {
     const ipc = latestOf(ipcChk, member.seedIpcDate);
     // An IPC's requirements cover a Proficiency Check too (it includes a
     // licence reissue on top of what a PC alone would test), so completing
-    // one resets the PC's 6-month clock as well - not just a dedicated
+    // one resets the PC's 365-day clock as well - not just a dedicated
     // PC-variant check. The reverse doesn't hold: a plain PC doesn't touch
     // the IPC's own due date above.
     const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
-    const pcWin = pcWindow(pc);
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
       ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc),
-      proficiencyCheck: pcWin
-        ? dueInfo(pcWin.targetDue, pc, planned.proficiencyCheck, { hardExpiry: pcWin.hardExpiry })
-        : dueInfo(null, pc, planned.proficiencyCheck),
+      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet.
       lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck),

@@ -6,7 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, isAdmin } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
-const { NTS_MARKERS, itemsForFleet } = require('../../db/phase4-items');
+const { NTS_MARKERS } = require('../../db/phase4-items');
 
 const router = express.Router();
 
@@ -47,13 +47,20 @@ router.get('/:traineeId', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
 
-  const { rows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  const { rows: formRows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  // Pilot Check to Line items are an admin-editable catalog (form_key
+  // CHECK_TO_LINE, one item set per fleet) - see Syllabus > Check Forms.
+  // Cabin attendant items stay the fixed 6-item list in CtlForm.jsx.
+  const { rows: itemRows } = trainee.type === 'CABIN_ATTENDANT'
+    ? { rows: [] }
+    : await pool.query(
+      `SELECT * FROM check_form_items WHERE form_key = 'CHECK_TO_LINE' AND fleet = $1 AND archived = false
+       ORDER BY sort_order ASC, created_at ASC`,
+      [trainee.fleet],
+    );
   res.json({
-    form: rows[0] ? rowToCamel(rows[0]) : null,
-    // The pilot Check to Line Assessment uses the exact same categorised
-    // item catalogue as the Phase 4 assessment for that fleet (confirmed
-    // identical across the SA_504/SA_512/SA_813 source documents).
-    items: itemsForFleet(trainee.fleet),
+    form: formRows[0] ? rowToCamel(formRows[0]) : null,
+    items: itemRows.map(rowToCamel),
     ntsMarkers: NTS_MARKERS,
   });
 });
@@ -142,26 +149,16 @@ router.post('/:traineeId/complete', async (req, res) => {
   const form = rowToCamel(rows[0]);
   if (!form.overallResult) return res.status(400).json({ error: 'overallResult must be set before completing' });
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows: updatedRows } = await client.query(
-      'UPDATE check_to_line_forms SET completed_at = now() WHERE id = $1 RETURNING *',
-      [form.id],
-    );
-    await client.query(
-      'UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1',
-      [trainee.id],
-    );
-    await client.query('COMMIT');
-    await logAction({ userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: form.id });
-    res.json(rowToCamel(updatedRows[0]));
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  // Completing Check to Line finishes the trainee's LOFT package - it does
+  // not archive the trainee record itself (that only happens once they're
+  // actually promoted onto the Crew roster, see trainees.js
+  // promote-to-crew, at which point the trainee record becomes redundant).
+  const { rows: updatedRows } = await pool.query(
+    'UPDATE check_to_line_forms SET completed_at = now() WHERE id = $1 RETURNING *',
+    [form.id],
+  );
+  await logAction({ userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: form.id });
+  res.json(rowToCamel(updatedRows[0]));
 });
 
 router.post('/:traineeId/archive', async (req, res) => {

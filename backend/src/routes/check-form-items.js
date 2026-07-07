@@ -10,7 +10,11 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-const FORM_KEYS = ['EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT_LINE_CHECK'];
+const FORM_KEYS = [
+  'EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
+  'CHECK_TO_LINE', 'GROUND_INSTRUCTOR_COMPETENCY',
+];
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
 // Anyone who can reach a check form needs to be able to read its item
 // list (Examiners/Training Captains/CA Checkers etc, not just HOTC/HOFO/
@@ -18,17 +22,19 @@ const FORM_KEYS = ['EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT
 // EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx for how these are
 // rendered as the actual check forms.
 router.get('/', async (req, res) => {
-  const { formKey } = req.query;
+  const { formKey, fleet } = req.query;
   if (formKey && !FORM_KEYS.includes(formKey)) return res.status(400).json({ error: 'Unknown form key' });
+  if (fleet && !FLEET_VALUES.includes(fleet)) return res.status(400).json({ error: 'Unknown fleet' });
   const includeArchived = req.query.includeArchived === 'true';
 
   const conditions = [];
   const params = [];
   if (formKey) { params.push(formKey); conditions.push(`form_key = $${params.length}`); }
+  if (fleet) { params.push(fleet); conditions.push(`fleet = $${params.length}`); }
   if (!includeArchived) conditions.push('archived = false');
 
   const { rows } = await pool.query(
-    `SELECT * FROM check_form_items ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT * FROM check_form_items ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY fleet ASC NULLS FIRST, sort_order ASC, created_at ASC`,
     params,
   );
   res.json(rows.map(rowToCamel));
@@ -36,9 +42,11 @@ router.get('/', async (req, res) => {
 
 const createSchema = z.object({
   formKey: z.enum(FORM_KEYS),
+  fleet: z.enum(FLEET_VALUES).nullable().optional(),
   section: z.string().nullable().optional(),
   kind: z.enum(['tick', 'score_code']).optional(),
   description: z.string().min(1),
+  notes: z.string().nullable().optional(),
   mos: z.string().nullable().optional(),
   ipcOnly: z.boolean().optional(),
 });
@@ -48,11 +56,14 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
-  const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM check_form_items WHERE form_key = $1', [d.formKey]);
+  const { rows: maxRows } = await pool.query(
+    'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM check_form_items WHERE form_key = $1 AND fleet IS NOT DISTINCT FROM $2',
+    [d.formKey, d.fleet || null],
+  );
   const { rows } = await pool.query(
-    `INSERT INTO check_form_items (form_key, section, kind, description, mos, ipc_only, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [d.formKey, d.section || null, d.kind || 'tick', d.description, d.mos || null, d.ipcOnly || false, maxRows[0].next],
+    `INSERT INTO check_form_items (form_key, fleet, section, kind, description, notes, mos, ipc_only, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null, d.ipcOnly || false, maxRows[0].next],
   );
   const item = rowToCamel(rows[0]);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'check_form_items', targetId: item.id });
@@ -60,14 +71,19 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
 });
 
 const updateSchema = z.object({
+  fleet: z.enum(FLEET_VALUES).nullable().optional(),
   section: z.string().nullable().optional(),
   kind: z.enum(['tick', 'score_code']).optional(),
   description: z.string().min(1).optional(),
+  notes: z.string().nullable().optional(),
   mos: z.string().nullable().optional(),
   ipcOnly: z.boolean().optional(),
   archived: z.boolean().optional(),
 });
-const COLUMN_MAP = { section: 'section', kind: 'kind', description: 'description', mos: 'mos', ipcOnly: 'ipc_only', archived: 'archived' };
+const COLUMN_MAP = {
+  fleet: 'fleet', section: 'section', kind: 'kind', description: 'description',
+  notes: 'notes', mos: 'mos', ipcOnly: 'ipc_only', archived: 'archived',
+};
 
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);

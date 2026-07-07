@@ -129,7 +129,6 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
       ${section('Details', [
         ['Aircraft type', d.actype],
         ['Assessor', d.assessor],
-        ['Assessor ARN', d.assessorArn],
         ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
       ])}
       ${section('Assessment items', itemRows)}
@@ -221,10 +220,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
             <label>Comments</label>
             <textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} />
           </div>
-          <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
-            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
-          </div>
+          <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
           <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
             We, the undersigned, do hereby mutually agree upon and accept the comment written in
             this document as being a correct and honest account of the performance of the

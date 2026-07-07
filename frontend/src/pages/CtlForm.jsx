@@ -99,6 +99,11 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     await save({ assessmentItems: next });
   }
 
+  async function setItemText(item, value) {
+    const key = itemKey(item);
+    await save({ assessmentItems: { ...form.assessmentItems, [key]: value } });
+  }
+
   function updateSector(key, value) {
     save({ sectorDetails: { ...form.sectorDetails, [key]: value } });
   }
@@ -172,7 +177,10 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
         ['Total LOFT', form.sectorDetails?.sectors34?.progressiveTotal],
       ]);
       for (const [category, items] of grouped.entries()) {
-        body += section(category, items.map((item) => [item.description, statusLabel(form.assessmentItems[itemKey(item)])]));
+        body += section(category, items.map((item) => {
+          const v = form.assessmentItems[itemKey(item)];
+          return [item.description, item.kind === 'text' ? (v || '') : statusLabel(v)];
+        }));
       }
       body += section('Non Technical Skill Assessment', data.ntsMarkers.map((m) => [m, form.ntsScores?.[m] || '—']));
       body += section('Comments', [['Comments', form.comments]]);
@@ -262,6 +270,19 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
                   {categoryItems.map((item) => {
                     const key = itemKey(item);
                     const status = form.assessmentItems[key];
+                    if (item.kind === 'text') {
+                      return (
+                        <div key={key} className="field" style={{ margin: '0 0 10px' }}>
+                          <label>{item.description}</label>
+                          <input
+                            defaultValue={status || ''}
+                            disabled={locked}
+                            onBlur={(e) => setItemText(item, e.target.value)}
+                          />
+                          {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
+                        </div>
+                      );
+                    }
                     return (
                       <div key={key} className="row" style={{ cursor: 'default' }}>
                         <div style={{ flex: 1 }}>

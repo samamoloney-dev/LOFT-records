@@ -50,6 +50,17 @@ function PlannedChecksSection() {
     } catch (err) { setError(err.message); }
   }
 
+  // Once both a planned date and an assigned examiner/instructor/check
+  // pilot are in place, this turns the plan into the real (incomplete)
+  // check record - the row then disappears since it's no longer just a plan.
+  async function createCheck(row) {
+    setError(null);
+    try {
+      await api.post(`/api/crew/${row.crewMemberId}/planned-checks/${row.checkKey}/create-check`);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
@@ -78,6 +89,9 @@ function PlannedChecksSection() {
               onAssign={(s) => updateAssignee(r, s)}
             />
           </div>
+          {r.plannedDate && r.assignedTo && (
+            <button className="primary" style={{ marginTop: 8 }} onClick={() => createCheck(r)}>Create check form</button>
+          )}
         </div>
       ))}
     </div>

@@ -110,10 +110,11 @@ function dueInfo(dueDate, completedDate, planned) {
 // prefill the assignee when the real check is later created.
 const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'];
 
-// Maps a planned-check key to what the real check record needs once it's
-// auto-created (see the planned-checks PUT handler below): the checks.check_type
-// value, and - for RECURRENT_SIMULATOR, which covers both PC and IPC under
-// one checkType - the details.variant ProficiencyChecks.jsx filters on.
+// Maps a planned-check key to what the real check record needs once the
+// "Create check form" button (see the create-check route below) turns it
+// into an actual check: the checks.check_type value, and - for
+// RECURRENT_SIMULATOR, which covers both PC and IPC under one checkType -
+// the details.variant ProficiencyChecks.jsx filters on.
 const CHECK_KEY_TO_CHECK_TYPE = {
   emergencyProcedures: () => ({ checkType: 'EMERGENCY_PROCEDURES' }),
   ipc: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'IPC_PC' }),
@@ -133,6 +134,19 @@ const FLEET_TO_AIRCRAFT_TYPE = {
   CA_DASH_8: 'Dash 8',
   CA_FOKKER_100: 'Fokker 100',
 };
+
+// Carries the assigned examiner/instructor/check pilot into the same
+// details fields each check form's own "assign" pickers already populate
+// (see EpChecks.jsx/PilotLineCheck.jsx/CaChecks.jsx reassign() and
+// ProficiencyChecks.jsx's onSelect carry-over) - RECURRENT_SIMULATOR (PC/IPC)
+// keys these as examinerName/examinerArn, everything else as assessor/assessorArn.
+function assessorDetailsFor(checkType, assignedToId, assignee) {
+  if (!assignedToId) return {};
+  if (checkType === 'RECURRENT_SIMULATOR') {
+    return { assessor: assignee.assignedToName, examinerName: assignee.assignedToName, examinerArn: assignee.assignedToArn };
+  }
+  return { assessorId: assignedToId, assessor: assignee.assignedToName, assessorArn: assignee.assignedToArn };
+}
 
 async function plannedDatesFor(crewMemberId) {
   const { rows } = await pool.query(
@@ -469,46 +483,60 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
         hasAssignedTo,
       ],
     );
-
-    // Setting a planned date used to only prefill the assignee once someone
-    // later clicked "Add check" by hand - now it creates the actual
-    // (incomplete) check record right away, so it shows up on the relevant
-    // Checks page immediately. Skipped if one's already in progress for
-    // this crew member/check type, so re-editing the planned date or
-    // assignee doesn't spawn duplicates.
-    const { checkType, variant } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);
-    const { rows: existingChecks } = await pool.query(
-      `SELECT id FROM checks WHERE crew_member_id = $1 AND check_type = $2 AND completed_at IS NULL
-       AND ($3::text IS NULL OR details->>'variant' = $3)`,
-      [member.id, checkType, variant || null],
-    );
-    if (existingChecks.length === 0) {
-      const singleFleet = member.fleets?.length === 1 ? member.fleets[0] : undefined;
-      // plannedDate can arrive as a full ISO timestamp (crew_planned_checks.planned_date
-      // comes back from Postgres as a Date object, which the Planning tab's
-      // "assign examiner" action then echoes straight back) - normalize to a
-      // plain YYYY-MM-DD before it lands in details.date, which check forms
-      // display as-is with no further formatting.
-      const dateOnly = new Date(plannedDate).toISOString().slice(0, 10);
-      await createCheckRecord({
-        crewMemberId: member.id,
-        checkType,
-        fleet: singleFleet,
-        appliesTo: member.type,
-        assignedTo: hasAssignedTo ? (parsed.data.assignedTo || null) : null,
-        details: {
-          name: member.name,
-          role: member.role,
-          arn: member.arn,
-          date: dateOnly,
-          actype: singleFleet ? FLEET_TO_AIRCRAFT_TYPE[singleFleet] : undefined,
-          ...(variant ? { variant } : {}),
-        },
-      });
-    }
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_planned_checks', targetId: member.id });
   res.json(await withCurrency(member));
+});
+
+// Turns a planned check into the real thing, once both a planned date and
+// an assigned examiner/instructor/check pilot are in place - the Planning
+// tab only shows this button once both are set (see Planning.jsx). Deletes
+// the planned-check row afterwards, so the Planning tab row disappears now
+// that it's a real, in-progress check instead of just a plan.
+router.post('/:id/planned-checks/:checkKey/create-check', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!PLANNED_CHECK_KEYS.includes(req.params.checkKey)) return res.status(400).json({ error: 'Invalid check' });
+
+  const { rows: plannedRows } = await pool.query(
+    'SELECT * FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2',
+    [member.id, req.params.checkKey],
+  );
+  if (plannedRows.length === 0) return res.status(404).json({ error: 'Nothing planned for this check' });
+  const planned = rowToCamel(plannedRows[0]);
+  if (!planned.plannedDate || !planned.assignedTo) {
+    return res.status(400).json({ error: 'A planned date and an assigned examiner are both required' });
+  }
+
+  const { checkType, variant } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);
+  const singleFleet = member.fleets?.length === 1 ? member.fleets[0] : undefined;
+  // planned_date comes back from Postgres as a Date object - normalize to a
+  // plain YYYY-MM-DD before it lands in details.date, which check forms
+  // display as-is with no further formatting.
+  const dateOnly = new Date(planned.plannedDate).toISOString().slice(0, 10);
+  const assessorDetails = assessorDetailsFor(checkType, planned.assignedTo, {
+    assignedToName: planned.assignedToName, assignedToArn: planned.assignedToArn,
+  });
+
+  const check = await createCheckRecord({
+    crewMemberId: member.id,
+    checkType,
+    fleet: singleFleet,
+    appliesTo: member.type,
+    assignedTo: planned.assignedTo,
+    details: {
+      name: member.name,
+      role: member.role,
+      arn: member.arn,
+      date: dateOnly,
+      actype: singleFleet ? FLEET_TO_AIRCRAFT_TYPE[singleFleet] : undefined,
+      ...(variant ? { variant } : {}),
+      ...assessorDetails,
+    },
+  });
+  await pool.query('DELETE FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2', [member.id, req.params.checkKey]);
+  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });
+  res.status(201).json(check);
 });
 
 router.post('/:id/archive', async (req, res) => {

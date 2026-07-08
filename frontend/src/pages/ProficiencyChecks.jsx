@@ -16,7 +16,7 @@ const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency C
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 const RANK_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // The Recurrent Training and Knowledge sections are their own fixed
 // blocks (see check-form-items.js seed data); everything else in the

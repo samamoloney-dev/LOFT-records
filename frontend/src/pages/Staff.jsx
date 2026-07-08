@@ -6,14 +6,17 @@ import { DueBadge } from '../components/DueBadge';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { GROUND_INSTRUCTOR_CHECK_ROLES } from '../lib/roles';
 
-const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE'];
+// TRAINEE isn't offered here - trainee self-login accounts aren't created
+// through this Staff form (see users.js, which still accepts the role for
+// existing accounts).
+const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
-// Examiners, Check Captains, HOTC, HOFO, CA Trainers and CA Checkers can
-// cover more than one fleet - only Training Captain is qualified on a single
-// fleet, same as real-world type ratings ("a Dash 8 trainer cannot train
-// Fokker 100 pilots").
-const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'CA_TRAINER', 'CA_CHECKER'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+// Examiners, Check Captains, HOTC, HOFO, Alternate, CA Trainers and CA
+// Checkers can cover more than one fleet - only Training Captain is
+// qualified on a single fleet, same as real-world type ratings ("a Dash 8
+// trainer cannot train Fokker 100 pilots").
+const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'ALTERNATE', 'CA_TRAINER', 'CA_CHECKER'];
 
 const CHECK_ACCESS_OPTIONS = [
   { value: 'PC', label: 'PC' },

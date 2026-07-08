@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // HOTC/HOFO/Flight Ops Admin only - lets them move a completed check/flight/
 // CTL record into the Archive section, or bring it back.

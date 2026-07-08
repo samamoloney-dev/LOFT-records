@@ -18,8 +18,12 @@ const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
+  // TRAINEE stays valid here even though Staff.jsx no longer offers it when
+  // creating a new account (see ROLES there) - existing trainee self-login
+  // accounts (see canAcknowledgeFlight) still need to be editable without
+  // this enum rejecting their current role.
   role: z.enum([
-    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]),
   fleets: fleetsSchema,
@@ -95,8 +99,9 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  // TRAINEE stays valid here too, same reason as createSchema above.
   role: z.enum([
-    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]).optional(),
   fleets: fleetsSchema,

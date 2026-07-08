@@ -12,12 +12,12 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
 const FLIGHT_CREATOR_ROLES = [
-  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
   'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
 ];
 

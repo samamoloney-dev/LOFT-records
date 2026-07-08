@@ -1,4 +1,4 @@
-export const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+export const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // HOTC/HOFO/Flight Ops Admin are always eligible for every check type and
 // every fleet. Everyone else needs the matching tick on their staff profile

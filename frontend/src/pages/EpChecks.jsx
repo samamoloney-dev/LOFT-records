@@ -173,7 +173,9 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(d.types || []).join(', ') || 'No type selected'}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {d.actype || 'No aircraft type'} · {d.date || 'No date'} · {(d.types || []).join(', ') || 'No type selected'}
+          </div>
         </div>
 
         <div className="card">

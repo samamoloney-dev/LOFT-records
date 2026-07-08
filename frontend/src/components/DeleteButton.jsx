@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // HOTC/HOFO/Flight Ops Admin only - permanently deletes a check record.
 // Archived checks can't be deleted (they'd need unarchiving first), so the

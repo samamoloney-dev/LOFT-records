@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
 
-const STATUS_ORDER = { not_completed: 0, overdue: 1, due_soon: 2, ok: 3 };
+const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3 };
 
 const STATUS_STYLES = {
   overdue: { background: '#fbe1e1', color: '#8f1d1d' },

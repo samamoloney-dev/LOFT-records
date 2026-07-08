@@ -208,6 +208,33 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
+  // A newly-completed check supersedes whatever the crew member's previous
+  // completed check of the same type was (same variant too, for
+  // RECURRENT_SIMULATOR's shared PC/IPC checkType) - archiving the old one
+  // automatically means a crew member's Dates tab always shows just the
+  // current check for each recurrent item, with history sitting under
+  // "Show archived" rather than piling up as several non-archived rows.
+  // Scoped to crew members only (not ad-hoc/unlinked checks), matching
+  // where this was asked for.
+  if (d.result && updated.crewMemberId) {
+    const params = [updated.checkType, updated.crewMemberId, updated.id];
+    let variantClause = '';
+    if (updated.checkType === 'RECURRENT_SIMULATOR') {
+      params.push(updated.details?.variant || null);
+      variantClause = `AND details->>'variant' = $${params.length}`;
+    }
+    const { rows: superseded } = await pool.query(
+      `UPDATE checks SET archived = true, archived_at = now()
+       WHERE check_type = $1 AND crew_member_id = $2 AND id != $3
+         AND archived = false AND result IS NOT NULL ${variantClause}
+       RETURNING id`,
+      params,
+    );
+    for (const row of superseded) {
+      await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'checks', targetId: row.id });
+    }
+  }
+
   res.json(updated);
 });
 

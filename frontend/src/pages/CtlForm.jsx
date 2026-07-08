@@ -76,7 +76,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   }
   useEffect(load, [traineeId]);
 
-  const canEdit = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'].includes(user.role);
+  const canEdit = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'].includes(user.role);
   const form = data?.form || { assessmentItems: {}, sectorDetails: {}, ntsScores: {}, comments: '', overallResult: null, overallScore: null };
 
   async function save(patch) {

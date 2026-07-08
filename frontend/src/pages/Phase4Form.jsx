@@ -10,7 +10,7 @@ const STATUSES = [
 ];
 
 const CAN_EDIT_ROLES = [
-  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'TRAINING_CAPTAIN',
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN',
 ];
 
 function itemKey(item) {

@@ -1,13 +1,16 @@
 // Role rules per docs/project-brief.md Section 4.
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
+// Alternate: a staff role with the same access as HOTC/HOFO everywhere in
+// the app, with one deliberate exception - it cannot sign the Clearance
+// Form (see crew.js isClearanceSigner), which stays HOTC/HOFO-only.
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 
 // Every role the operator counts as a "trainer": Training Captain, Check
-// Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, HOFO
-// and HOTC - deliberately excludes Flight Ops Admin.
-const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC'];
+// Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, HOFO,
+// HOTC and Alternate - deliberately excludes Flight Ops Admin.
+const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator.
@@ -25,15 +28,15 @@ const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // check cabin attendant Emergency Procedures. These are the staff who must
 // hold a current Ground Instructor Competency Check (SA_520), renewed
 // every 12 months.
-const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
+const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
 
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
 // is deliberately narrower than the usual admin trio - Flight Ops Admin is
 // excluded, per the operator's explicit request. The survey itself can be
 // filled in by whoever can already conduct a RECURRENT_SIMULATOR check
 // (mirrors checks.js canAccessCheckType).
-const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO'];
-const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'SIMULATOR_ONLY'];
+const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
+const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
 // Staff-profile check access ticks (Staff page). These decide which staff
 // show up as selectable assessors/assignees on each check form - they don't
@@ -44,7 +47,7 @@ const CHECK_ACCESS_TYPES = ['PC', 'IPC', 'LINE_CHECK', 'CHECK_TO_LINE', 'EMERGEN
 // flight. Combined with canAccessTraineeRecord below, CA Trainer/CA Checker
 // are still limited to Cabin Attendant trainees only.
 const FLIGHT_CREATOR_ROLES = [
-  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER',
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
   'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
 ];
 

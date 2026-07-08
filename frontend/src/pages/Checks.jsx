@@ -6,9 +6,9 @@ import { ProficiencyChecks } from './ProficiencyChecks';
 import { CheckToLinePicker } from './CheckToLinePicker';
 import { TabBar } from '../components/TabBar';
 
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER']; // IPC, PC, Emergency Procedures
+const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER']; // IPC, PC, Emergency Procedures
 const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER']; // Check to Line, Line Check
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 export function Checks() {
   const { user } = useAuth();

@@ -2,7 +2,7 @@
 // Captain, Check Captain, Examiner, Check Cabin Attendant, Trainer Cabin
 // Attendant, HOFO and HOTC. Used to gate trainer-only reference material
 // (e.g. sign-off guidance notes) that shouldn't be visible to trainees.
-export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC'];
+export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator. Mirrors
@@ -20,12 +20,12 @@ export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // Admin), but the survey itself can be filled in by anyone who can
 // conduct a RECURRENT_SIMULATOR check. Mirrors
 // backend/src/middleware/roles.js's CONTINUOUS_IMPROVEMENT_ROLES/SURVEY_FILL_ROLES.
-export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO'];
-export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER', 'SIMULATOR_ONLY'];
+export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
+export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
 // Every role eligible to check/train Emergency Procedures - these are the
 // staff who must hold a current Ground Instructor Competency Check
 // (SA_520, renewed every 12 months), and also who can conduct one on a
 // colleague. Mirrors backend/src/middleware/roles.js's
 // GROUND_INSTRUCTOR_CHECK_ROLES.
-export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'EXAMINER'];
+export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];

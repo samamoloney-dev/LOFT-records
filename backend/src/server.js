@@ -25,7 +25,9 @@ const signatureRoutes = require('./routes/signatures');
 const app = express();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }));
-app.use(express.json());
+// Default 100kb is too small for the IPC licence-photo capture (a
+// compressed base64 JPEG, see checks.js PATCH /:id/licence-photo).
+app.use(express.json({ limit: '8mb' }));
 app.use(cookieParser());
 
 app.get('/health', (req, res) => res.json({ ok: true }));

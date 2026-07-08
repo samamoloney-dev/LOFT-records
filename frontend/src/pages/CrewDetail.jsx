@@ -5,6 +5,7 @@ import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
+import { ClearanceTab } from './ClearanceTab';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
@@ -179,29 +180,41 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
 }
 
 // Medical, styled to match the other boxes in this row (DueBadge + a
-// compact date input) rather than the fuller Competencies-list card - the
-// one difference is there's no check form behind it to derive a due date
-// from, so (unlike EP/IPC/PC/Line Check) the due date itself is a direct
-// manual entry here, not just a "planned" future date.
+// compact "Plan a date" input) rather than the fuller Competencies-list
+// card - actually editing Completed/Due dates now happens on the dedicated
+// Medical tab (see MedicalTab below); this stays a read-only-plus-planning
+// summary, same as EP/IPC/PC/Line Check's boxes work (their due/completed
+// dates aren't editable here either - only planning an upcoming date is).
 function MedicalBox({ medical, onUpdate }) {
   const status = competencyStatus(medical.dueDate);
+  const [value, setValue] = useState(medical.plannedDate ? medical.plannedDate.slice(0, 10) : '');
+
+  async function savePlanned(next) {
+    setValue(next);
+    await onUpdate(medical.competencyTypeId, { plannedDate: next || null });
+  }
+
   return (
     <div>
-      <DueBadge label="Medical" info={{ dueDate: medical.dueDate, status, plannedDate: medical.plannedDate }} />
-      <div style={{ marginTop: 4 }}>
-        <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Medical due date</label>
-        <input
-          type="date" defaultValue={medical.dueDate || ''} style={{ fontSize: 11, padding: '4px 6px' }}
-          onBlur={(e) => onUpdate(medical.competencyTypeId, { dueDate: e.target.value || null })}
-        />
-      </div>
+      <DueBadge label="Medical" info={{ dueDate: medical.dueDate, status, completedDate: medical.completedDate, plannedDate: medical.plannedDate }} />
       <div style={{ marginTop: 4 }}>
         <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
-        <input
-          type="date" defaultValue={medical.plannedDate || ''} style={{ fontSize: 11, padding: '4px 6px' }}
-          onBlur={(e) => onUpdate(medical.competencyTypeId, { plannedDate: e.target.value || null })}
-        />
+        <input type="date" value={value} onChange={(e) => savePlanned(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
       </div>
+    </div>
+  );
+}
+
+// Full Completed/Due/Planned date editing for Medical, on its own tab
+// rather than mixed into the general Competencies list (see CrewDetail) -
+// reuses the same CompetencyRow the Competencies list uses for everything
+// else, just scoped to the one Medical entry.
+function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error }) {
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Medical</div>
+      {error && <div className="error-text">{error}</div>}
+      <CompetencyRow c={medical} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} />
     </div>
   );
 }
@@ -338,42 +351,11 @@ function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked }) {
 // Everything with a due date lives here: recurrent check currency (EP/IPC/
 // PC/Line Check) and ad-hoc competencies - kept out of the always-visible
 // profile header (see the highlight badge there instead) so the page isn't
-// cluttered with due-date cards nobody asked to see yet.
-function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
+// cluttered with due-date cards nobody asked to see yet. Competency
+// state/fetching lives in CrewDetail (shared with the Medical tab), not
+// here, so both agree on one source of truth.
+function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompetency, unlocked, setUnlocked, competencyError }) {
   const isPilot = member.type === 'PILOT';
-  const [competencies, setCompetencies] = useState([]);
-  const [competencyError, setCompetencyError] = useState(null);
-  // Once completed + planned dates are both set, the dates are locked to
-  // avoid accidental edits - this remembers which rows were explicitly
-  // unlocked via the "Edit dates" checkbox, reset on every reload.
-  const [unlocked, setUnlocked] = useState({});
-
-  function loadCompetencies() {
-    api.get(`/api/crew/${member.id}/competencies`).then((data) => { setCompetencies(data); onCompetenciesChanged?.(); }).catch((e) => setCompetencyError(e.message));
-  }
-  useEffect(loadCompetencies, [member.id]);
-
-  async function updateCompetency(competencyTypeId, patch) {
-    setCompetencyError(null);
-    try {
-      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
-      await api.put(`/api/crew/${member.id}/competencies/${competencyTypeId}`, {
-        completedDate: current.completedDate || null,
-        dueDate: current.dueDate || null,
-        plannedDate: current.plannedDate || null,
-        na: current.na || false,
-        courseSent: current.courseSent || false,
-        ...patch,
-      });
-      loadCompetencies();
-    } catch (err) { setCompetencyError(err.message); }
-  }
-
-  // Medical sits in the top block alongside EP/IPC/PC/Line Check (it's
-  // important enough to want at-a-glance, same as those) rather than down
-  // in the general Competencies list with everything else.
-  const medical = competencies.find((c) => c.name === 'Medical');
-  const otherCompetencies = competencies.filter((c) => c.name !== 'Medical');
 
   return (
     <div>
@@ -388,6 +370,15 @@ function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
             <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} />
           </div>
         )}
+        {isPilot && member.licencePhoto && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 2 }}>Licence IPC entry</div>
+            <img
+              src={member.licencePhoto} alt="Licence IPC entry"
+              style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 6, border: '0.5px solid var(--border-strong)' }}
+            />
+          </div>
+        )}
         {isPilot && (
           <div>
             <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
@@ -398,11 +389,11 @@ function ExpiryTab({ member, onSaved, onCompetenciesChanged }) {
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} />
         </div>
-        {medical && <MedicalBox medical={medical} onUpdate={updateCompetency} />}
+        {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}
 
-      <CompetencyList competencies={otherCompetencies} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} />
+      <CompetencyList competencies={otherCompetencies} onUpdate={onUpdateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} />
     </div>
   );
 }
@@ -412,11 +403,45 @@ export function CrewDetail() {
   const [member, setMember] = useState(null);
   const [error, setError] = useState(null);
   const [topTab, setTopTab] = useState('currency');
+  const [competencies, setCompetencies] = useState([]);
+  const [competencyError, setCompetencyError] = useState(null);
+  // Once completed + planned dates are both set, the dates are locked to
+  // avoid accidental edits - this remembers which rows were explicitly
+  // unlocked via the "Edit dates" checkbox, reset on every reload.
+  const [unlocked, setUnlocked] = useState({});
 
   function load() {
     api.get(`/api/crew/${id}`).then(setMember).catch((e) => setError(e.message));
   }
   useEffect(load, [id]);
+
+  function loadCompetencies() {
+    api.get(`/api/crew/${id}/competencies`).then((data) => { setCompetencies(data); load(); }).catch((e) => setCompetencyError(e.message));
+  }
+  useEffect(loadCompetencies, [id]);
+
+  async function updateCompetency(competencyTypeId, patch) {
+    setCompetencyError(null);
+    try {
+      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
+      await api.put(`/api/crew/${id}/competencies/${competencyTypeId}`, {
+        completedDate: current.completedDate || null,
+        dueDate: current.dueDate || null,
+        plannedDate: current.plannedDate || null,
+        na: current.na || false,
+        courseSent: current.courseSent || false,
+        ...patch,
+      });
+      loadCompetencies();
+    } catch (err) { setCompetencyError(err.message); }
+  }
+
+  // Medical sits in the top block alongside EP/IPC/PC/Line Check (it's
+  // important enough to want at-a-glance, same as those), plus its own tab
+  // for the full Completed/Due/Planned editing - rather than down in the
+  // general Competencies list with everything else.
+  const medical = competencies.find((c) => c.name === 'Medical');
+  const otherCompetencies = competencies.filter((c) => c.name !== 'Medical');
 
   const isPilot = member?.type === 'PILOT';
 
@@ -436,7 +461,12 @@ export function CrewDetail() {
 
   const name = member.name;
   const needsAttention = member.urgentItems.length > 0;
-  const topTabs = [{ key: 'currency', label: 'Dates' }, { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' }];
+  const topTabs = [
+    { key: 'clearance', label: 'Clearance Form' },
+    { key: 'currency', label: 'Dates' },
+    { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
+    ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
+  ];
 
   return (
     <div>
@@ -453,8 +483,17 @@ export function CrewDetail() {
 
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />
 
+      {topTab === 'clearance' && <ClearanceTab member={member} />}
       {topTab === 'currency' && <CurrencyFolder member={member} />}
-      {topTab === 'expiry' && <ExpiryTab member={member} onSaved={setMember} onCompetenciesChanged={load} />}
+      {topTab === 'expiry' && (
+        <ExpiryTab
+          member={member} onSaved={setMember} medical={medical} otherCompetencies={otherCompetencies}
+          onUpdateCompetency={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} competencyError={competencyError}
+        />
+      )}
+      {topTab === 'medical' && medical && (
+        <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} />
+      )}
     </div>
   );
 }

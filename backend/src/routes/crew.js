@@ -203,12 +203,16 @@ async function activeCompetencies(crewMemberId, crewType) {
 // Reused by the Crew roster row, Currency Overview, and the crew profile's
 // own Expiry tab highlight, so all three agree on the same definition.
 function isUrgent(status) {
-  return status === 'overdue' || status === 'due_soon';
+  return status === 'overdue' || status === 'due_soon' || status === 'not_completed';
 }
 
-async function urgentItemsFor(member, currency) {
+// Shared by urgentItemsFor (below, filtered to just what needs attention)
+// and allItemsFor (Currency Overview's "show me everyone" view) - both
+// agree on the same underlying item list, just with a different filter
+// applied afterwards.
+async function itemsFor(member, currency) {
   const fromCurrency = Object.entries(currency)
-    .filter(([, info]) => info && isUrgent(info.status))
+    .filter(([, info]) => !!info)
     .map(([key, info]) => ({
       label: CURRENCY_LABELS[key] || key,
       status: info.status,
@@ -226,10 +230,21 @@ async function urgentItemsFor(member, currency) {
       dueDate: c.due_date,
       completedDate: c.completed_date,
       plannedDate: c.planned_date,
-    }))
-    .filter((c) => isUrgent(c.status));
+    }));
 
   return [...fromCurrency, ...fromCompetencies];
+}
+
+async function urgentItemsFor(member, currency) {
+  const items = await itemsFor(member, currency);
+  return items.filter((i) => isUrgent(i.status));
+}
+
+// Every recurrent check and competency, whatever its status - Currency
+// Overview shows the whole roster's picture (not just problems) so
+// "everything's fine" is as visible as "this is overdue".
+async function allItemsFor(member, currency) {
+  return itemsFor(member, currency);
 }
 
 async function withCurrency(member) {
@@ -273,7 +288,12 @@ async function withCurrency(member) {
     };
   }
 
-  return { ...member, currency, urgentItems: await urgentItemsFor(member, currency) };
+  return {
+    ...member,
+    currency,
+    urgentItems: await urgentItemsFor(member, currency),
+    allItems: await allItemsFor(member, currency),
+  };
 }
 
 router.get('/', async (req, res) => {
@@ -287,7 +307,9 @@ router.get('/', async (req, res) => {
     params,
   );
   const members = await Promise.all(rows.map(serializeCrewMember).map(withCurrency));
-  res.json(members);
+  // Roster/overview views don't need the (potentially large) base64 licence
+  // photo - only the crew member's own detail page does (see GET /:id).
+  res.json(members.map(({ licencePhoto, ...rest }) => rest));
 });
 
 router.get('/:id', async (req, res) => {
@@ -610,6 +632,64 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));
+});
+
+// Clearance Form - the paper trail (SA 539 for cabin attendants, SA 586 for
+// pilots) that gets a fresh sign-off box added every time a crew member
+// clears a stage: aircraft type conversion/ground school, then check to
+// line, then (pilots only) Training Captain and Check Captain. A pilot who
+// converts onto another type or upgrades to Captain goes through the
+// conversion/line-training stages again, so this is an append-only list
+// (like checks) rather than a fixed one-per-person record. Only
+// HOTC/HOFO/Flight Ops Admin can even reach this router (see requireRole
+// above), so the signing-off "FSM/HOFO" is simply whichever of them is
+// logged in and adding the entry - no separate signature step.
+router.get('/:id/clearances', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+
+  const { rows } = await pool.query(
+    'SELECT * FROM crew_clearances WHERE crew_member_id = $1 ORDER BY created_at ASC',
+    [member.id],
+  );
+  res.json(rows.map(rowToCamel));
+});
+
+const PILOT_CLEARANCE_STAGES = ['AIRCRAFT_CONVERSION', 'LINE_TRAINING', 'TRAINING_CAPTAIN', 'CHECK_CAPTAIN'];
+const CA_CLEARANCE_STAGES = ['GROUND_SCHOOL', 'LINE_TRAINING', 'CA_TRAINER', 'CA_CHECKER'];
+
+const clearanceSchema = z.object({
+  stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
+  details: z.record(z.any()).optional(),
+});
+
+router.post('/:id/clearances', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+
+  const parsed = clearanceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const allowedStages = member.type === 'PILOT' ? PILOT_CLEARANCE_STAGES : CA_CLEARANCE_STAGES;
+  if (!allowedStages.includes(parsed.data.stage)) return res.status(400).json({ error: 'Invalid stage for this crew member type' });
+
+  const { rows } = await pool.query(
+    `INSERT INTO crew_clearances (crew_member_id, stage, details, signed_by_name, signed_by_user_id, signed_at)
+     VALUES ($1, $2, $3, $4, $5, now()) RETURNING *`,
+    [member.id, parsed.data.stage, JSON.stringify(parsed.data.details || {}), req.user.name, req.user.id],
+  );
+  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_clearances', targetId: rows[0].id });
+  res.status(201).json(rowToCamel(rows[0]));
+});
+
+router.delete('/:id/clearances/:clearanceId', async (req, res) => {
+  const { rows } = await pool.query(
+    'DELETE FROM crew_clearances WHERE id = $1 AND crew_member_id = $2 RETURNING id',
+    [req.params.clearanceId, req.params.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'crew_clearances', targetId: req.params.clearanceId });
+  res.status(204).send();
 });
 
 module.exports = router;

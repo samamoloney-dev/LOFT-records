@@ -10,6 +10,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole, formatFleet } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
+import { compressImage } from '../lib/imageCompress';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -271,6 +272,15 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     } catch (err) { setError(err.message); }
   }
 
+  async function uploadLicencePhoto(check, file) {
+    setError(null);
+    try {
+      const photo = await compressImage(file);
+      const updated = await api.patch(`/api/checks/${check.id}/licence-photo`, { photo });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
   async function setResult(check, result) {
     setError(null);
     try {
@@ -460,6 +470,24 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             {knowledgeItems.map((item) => (
               <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
             ))}
+          </div>
+        )}
+
+        {isIpc && (
+          <div className="card">
+            <div style={{ fontWeight: 500, marginBottom: 6 }}>Hard-copy licence IPC entry</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              A photo of the IPC entry recorded on the candidate's physical licence. Saving here also replaces the photo held on their crew profile.
+            </div>
+            {d.licencePhoto && (
+              <img src={d.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 260, borderRadius: 6, marginBottom: 8, display: 'block' }} />
+            )}
+            {!selected.completedAt && (
+              <input
+                type="file" accept="image/*" capture="environment"
+                onChange={(e) => e.target.files[0] && uploadLicencePhoto(selected, e.target.files[0])}
+              />
+            )}
           </div>
         )}
 

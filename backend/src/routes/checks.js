@@ -211,6 +211,37 @@ router.patch('/:id', async (req, res) => {
   res.json(updated);
 });
 
+const licencePhotoSchema = z.object({ photo: z.string().nullable() });
+
+// A photo of the IPC entry recorded on the candidate's physical licence -
+// stored on the check itself (so it's part of that check's historical
+// record) and also mirrored onto the crew member's profile as their
+// current licence photo, which gets overwritten the next time an IPC is
+// completed for them (see crew.js GET /:id for how it's read back).
+router.patch('/:id/licence-photo', async (req, res) => {
+  const { rows: existingRows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (!canAccessCheckType(req.user, existing.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  if (existing.checkType !== 'RECURRENT_SIMULATOR' || existing.details?.variant !== 'IPC_PC') {
+    return res.status(400).json({ error: 'Licence photos can only be attached to an IPC' });
+  }
+
+  const parsed = licencePhotoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const details = { ...existing.details, licencePhoto: parsed.data.photo };
+  const { rows } = await pool.query(
+    'UPDATE checks SET details = $1 WHERE id = $2 RETURNING *',
+    [JSON.stringify(details), req.params.id],
+  );
+  if (existing.crewMemberId) {
+    await pool.query('UPDATE crew_members SET licence_photo = $1 WHERE id = $2', [parsed.data.photo, existing.crewMemberId]);
+  }
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
+  res.json(rowToCamel(rows[0]));
+});
+
 router.post('/:id/archive', async (req, res) => {
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive checks' });
 

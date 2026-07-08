@@ -4,12 +4,14 @@ const STYLES = {
   ok: { background: '#dff5e1', color: '#14632f' },
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
   overdue: { background: '#fbe1e1', color: '#8f1d1d' },
+  not_completed: { background: '#e0e7ff', color: '#3730a3' },
 };
 
 const LABELS = {
   ok: 'Current',
   due_soon: 'Due soon',
   overdue: 'Overdue',
+  not_completed: 'Not yet completed',
 };
 
 // Small colour-coded pill for a single recurrency item's next-due date.

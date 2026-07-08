@@ -3,19 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
 
-const STATUS_ORDER = { overdue: 0, due_soon: 1 };
+const STATUS_ORDER = { not_completed: 0, overdue: 1, due_soon: 2, ok: 3 };
 
 const STATUS_STYLES = {
   overdue: { background: '#fbe1e1', color: '#8f1d1d' },
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
+  not_completed: { background: '#e0e7ff', color: '#3730a3' },
+  ok: { background: '#dff5e1', color: '#14632f' },
 };
 
-const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon' };
+const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon', not_completed: 'Not yet completed', ok: 'Current' };
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
+  { key: 'not_completed', label: 'Not Yet Completed' },
   { key: 'overdue', label: 'Overdue' },
   { key: 'due_soon', label: 'Due Soon' },
+  { key: 'ok', label: 'Current' },
 ];
 
 function StatusFilterBar({ value, onChange }) {
@@ -64,14 +68,14 @@ function StatusPill({ status }) {
   );
 }
 
-// Flattens a crew member's urgentItems (see backend/src/routes/crew.js
-// withCurrency/urgentItemsFor) into rows for this page - already filtered
-// server-side to just what's overdue or due soon, so there's nothing left
-// to compute here. A planned date doesn't drop an item off this list (it's
-// still due) - it's just shown alongside the status as a reminder it's in
-// hand.
-function urgentRows(member) {
-  return member.urgentItems.map((item) => ({
+// Flattens a crew member's allItems (see backend/src/routes/crew.js
+// withCurrency/allItemsFor) into rows for this page - every recurrent
+// check and competency, whatever its status, so the whole roster's
+// picture is visible here rather than just the problems. A planned date
+// doesn't change the status (it's still due) - it's just shown alongside
+// it as a reminder it's in hand.
+function allRows(member) {
+  return member.allItems.map((item) => ({
     memberId: member.id,
     name: member.name,
     fleet: member.fleets.map(formatFleet).join(', '),
@@ -95,7 +99,7 @@ export function CurrencyOverview() {
       api.get('/api/crew?type=CABIN_ATTENDANT'),
     ])
       .then(([pilots, cabinAttendants]) => {
-        const flattened = [...pilots, ...cabinAttendants].flatMap(urgentRows);
+        const flattened = [...pilots, ...cabinAttendants].flatMap(allRows);
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);
       })
@@ -109,11 +113,11 @@ export function CurrencyOverview() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        Recurrent checks and competencies overdue or due soon
+        Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
       </div>
       <StatusFilterBar value={statusFilter} onChange={setStatusFilter} />
 
-      {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing needs attention right now.</div>}
+      {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing here.</div>}
       {filteredRows.map((r, i) => (
         <div key={i} className="card row" onClick={() => navigate(`/crew/${r.memberId}`)}>
           <div style={{ flex: 1 }}>

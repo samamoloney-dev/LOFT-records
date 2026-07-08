@@ -48,7 +48,7 @@ const COMPETENCY_SOON_DAYS = 30;
 // (rather than a computed rule like statusFor above) since it needs to run
 // server-side for the crew list's urgentItems (see crew.js).
 function competencyStatus(dueDate) {
-  if (!dueDate) return null;
+  if (!dueDate) return 'not_completed'; // never completed - distinct from a lapsed renewal
   const due = new Date(dueDate);
   const today = new Date();
   if (today > due) return 'overdue';

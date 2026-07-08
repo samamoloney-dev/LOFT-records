@@ -14,15 +14,16 @@ function groupByCategory(items) {
 }
 
 // Which extra fields a category needs beyond the standard tick/name/date
-// sign-off, per SA_632: Course needs a completed date; the Dash 8 Ground
-// School modules need a completed date and pass mark %; Observation
-// Flights need a date and route. Rendered as aligned table columns
-// alongside the description, rather than a separate labelled box per item.
+// sign-off, per SA_632/SA_634: Course needs a completed date; the
+// per-fleet "... (Module CBT)" ground school modules (Dash 8, Metro, etc.)
+// need a completed date and pass mark %; Observation Flights need a date
+// and route. Rendered as aligned table columns alongside the description,
+// rather than a separate labelled box per item.
 function extraFieldsForCategory(category) {
   if (category === 'Course') {
     return [{ key: 'completedDate', label: 'Completed', type: 'date', width: 150 }];
   }
-  if (category === 'Dash 8 Ground School (Module CBT)' || category.includes('Instructor-led')) {
+  if (category.includes('Module CBT') || category.includes('Instructor-led')) {
     return [
       { key: 'completedDate', label: 'Completed', type: 'date', width: 150 },
       { key: 'passMark', label: 'Pass mark %', type: 'number', width: 100 },

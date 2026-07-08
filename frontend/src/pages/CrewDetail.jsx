@@ -6,6 +6,7 @@ import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { ClearanceTab } from './ClearanceTab';
+import { CaptainInTrainingForm } from './CaptainInTrainingForm';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
@@ -246,7 +247,10 @@ function LicencePhotoTab({ member }) {
 function CurrencyFolder({ member }) {
   const isPilot = member.type === 'PILOT';
   const subTabs = isPilot
-    ? [{ key: 'ep', label: 'Emergency Procedures' }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' }]
+    ? [
+      { key: 'ep', label: 'Emergency Procedures' }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' },
+      { key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' },
+    ]
     : [{ key: 'ep', label: 'Emergency Procedures' }, { key: 'linecheck', label: 'Line Check' }];
   const [subTab, setSubTab] = useState('ep');
   const [showArchived, setShowArchived] = useState(false);
@@ -271,6 +275,8 @@ function CurrencyFolder({ member }) {
       {subTab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
       {subTab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
       {subTab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
+      {subTab === 'citPrelim' && isPilot && <CaptainInTrainingForm variant="PRELIMINARY" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
+      {subTab === 'citFinal' && isPilot && <CaptainInTrainingForm variant="FINAL" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
     </div>
   );
 }

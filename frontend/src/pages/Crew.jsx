@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { DueBadge } from '../components/DueBadge';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
+import { compressImage } from '../lib/imageCompress';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -11,7 +12,7 @@ const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
-  userId: '', arn: '', newHire: false,
+  userId: '', arn: '', newHire: false, licencePhoto: null,
 });
 
 // Splits a staff account's full name into the first_name/last_name pair
@@ -104,6 +105,15 @@ function CrewRoster({ type }) {
     }
   }
 
+  async function pickLicencePhoto(file) {
+    if (!file) return;
+    setError(null);
+    try {
+      const photo = await compressImage(file);
+      setForm((f) => ({ ...f, licencePhoto: photo }));
+    } catch (err) { setError(err.message); }
+  }
+
   function linkStaff(s) {
     if (!s) { setForm((f) => ({ ...f, userId: '' })); return; }
     setForm((f) => ({ ...f, userId: s.id, ...splitName(s.name), arn: s.arn || f.arn }));
@@ -187,6 +197,13 @@ function CrewRoster({ type }) {
                 <label>Initial Check to Line date</label>
                 <input type="date" value={form.lineCheckAnchorDate} onChange={(e) => setForm({ ...form, lineCheckAnchorDate: e.target.value })} />
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will always be due 365 days on from this date, then every 365 days after.</div>
+              </div>
+              <div className="field">
+                <label>Licence photo (optional - if they're already qualified, add their most recent IPC licence entry photo)</label>
+                {form.licencePhoto && (
+                  <img src={form.licencePhoto} alt="Licence" style={{ maxWidth: 160, borderRadius: 6, marginBottom: 6, display: 'block' }} />
+                )}
+                <input type="file" accept="image/*" onChange={(e) => pickLicencePhoto(e.target.files[0])} />
               </div>
             </>
           ) : (

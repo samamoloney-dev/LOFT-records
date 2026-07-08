@@ -349,6 +349,10 @@ const quickAddSchema = z.object({
   // newHire handling in POST / below) - for someone joining who needs to
   // go through initial training/phases, not just be tracked for currency.
   newHire: z.boolean().optional(),
+  // Onboarding an already-qualified pilot (rather than growing one from a
+  // trainee) has no IPC on file yet to capture this from - lets it be set
+  // straight away instead of waiting for their first IPC through this app.
+  licencePhoto: z.string().nullable().optional(),
 }).superRefine((d, ctx) => {
   if (d.type === 'PILOT' && !d.arn?.trim()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for pilots' });
@@ -366,8 +370,8 @@ router.post('/', async (req, res) => {
   let rows;
   try {
     ({ rows } = await pool.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn, licence_photo)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         d.firstName,
         d.lastName,
@@ -381,6 +385,7 @@ router.post('/', async (req, res) => {
         d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
         d.userId || null,
         d.type === 'PILOT' ? d.arn : null,
+        d.type === 'PILOT' ? (d.licencePhoto || null) : null,
       ],
     ));
   } catch (err) {

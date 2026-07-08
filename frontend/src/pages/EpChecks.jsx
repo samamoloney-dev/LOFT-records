@@ -369,7 +369,9 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(c.details?.types || []).join(', ') || 'No type selected'} · {c.details?.date || 'No date'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'} · {(c.details?.types || []).join(', ') || 'No type selected'}
+            </div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
         </div>

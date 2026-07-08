@@ -552,6 +552,11 @@ router.post('/:id/planned-checks/:checkKey/create-check', async (req, res) => {
       arn: member.arn,
       date: dateOnly,
       actype: singleFleet ? FLEET_TO_AIRCRAFT_TYPE[singleFleet] : undefined,
+      // Carries the candidate's own name/ARN into the Applicant section
+      // (RECURRENT_SIMULATOR/PC/IPC) the same way ProficiencyChecks.jsx's
+      // own create form already does - otherwise a check created from the
+      // Planning tab left these blank.
+      ...(checkType === 'RECURRENT_SIMULATOR' ? { applicantName: member.name, applicantArn: member.arn } : {}),
       ...(variant ? { variant } : {}),
       ...assessorDetails,
     },
@@ -663,7 +668,16 @@ const clearanceSchema = z.object({
   details: z.record(z.any()).optional(),
 });
 
+// Signing off a clearance stage is restricted to HOTC/HOFO specifically -
+// tighter than the router-wide HOTC/HOFO/Flight Ops Admin gate above,
+// since this is the one thing on a crew profile that's meant to mirror an
+// actual FSM/HOFO signature on the paper form.
+function isClearanceSigner(user) {
+  return user.role === 'HOTC' || user.role === 'HOFO';
+}
+
 router.post('/:id/clearances', async (req, res) => {
+  if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
 
@@ -683,6 +697,7 @@ router.post('/:id/clearances', async (req, res) => {
 });
 
 router.delete('/:id/clearances/:clearanceId', async (req, res) => {
+  if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
   const { rows } = await pool.query(
     'DELETE FROM crew_clearances WHERE id = $1 AND crew_member_id = $2 RETURNING id',
     [req.params.clearanceId, req.params.id],

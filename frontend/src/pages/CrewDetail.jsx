@@ -219,6 +219,27 @@ function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error }) {
   );
 }
 
+// The photo of the IPC entry on the candidate's physical licence (see
+// ProficiencyChecks.jsx's Hard-copy licence IPC entry field) - viewed here
+// rather than cluttering the Expiration tab, and replaced automatically
+// each time a new IPC is completed for this pilot.
+function LicencePhotoTab({ member }) {
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+        Photo of the IPC entry on this pilot's physical licence - taken from their most recently completed IPC.
+      </div>
+      <div className="card">
+        {member.licencePhoto ? (
+          <img src={member.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 320, borderRadius: 6, display: 'block' }} />
+        ) : (
+          <div style={{ color: 'var(--text-secondary)' }}>No licence photo on file yet - add one from an IPC form.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Recurrent checks archived from here (once redone/superseded) still need to
 // be visible from this person's own profile, not just the general Archive
 // tab - this toggle flips the archived prop the check list already supports.
@@ -370,15 +391,6 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
             <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} />
           </div>
         )}
-        {isPilot && member.licencePhoto && (
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 2 }}>Licence IPC entry</div>
-            <img
-              src={member.licencePhoto} alt="Licence IPC entry"
-              style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 6, border: '0.5px solid var(--border-strong)' }}
-            />
-          </div>
-        )}
         {isPilot && (
           <div>
             <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
@@ -466,6 +478,7 @@ export function CrewDetail() {
     { key: 'currency', label: 'Dates' },
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
+    ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),
   ];
 
   return (
@@ -494,6 +507,7 @@ export function CrewDetail() {
       {topTab === 'medical' && medical && (
         <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} />
       )}
+      {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} />}
     </div>
   );
 }

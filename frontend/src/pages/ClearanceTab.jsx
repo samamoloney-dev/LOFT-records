@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
+import { useAuth } from '../context/AuthContext';
+
+// Signing off a clearance stage mirrors an actual FSM/HOFO signature on the
+// paper form, so it's restricted tighter than the rest of this admin-only
+// page - HOTC/HOFO only, not Flight Ops Admin.
+function canSignClearance(user) {
+  return user.role === 'HOTC' || user.role === 'HOFO';
+}
 
 // Mirrors the paper trail on Flight Standards Form SA 586 (pilots) / SA 539
 // (cabin attendants) - a growing list of sign-off boxes rather than a fixed
@@ -27,9 +35,8 @@ const CAPACITY_LABELS = {
   F100_CAPTAIN: 'F100 Captain', F100_FO: 'F100 F/O',
   DHC8_CAPTAIN: 'DHC8 Captain', DHC8_FO: 'DHC8 F/O',
   METRO_CAPTAIN: 'Metro Captain', METRO_FO: 'Metro F/O',
-  C441_CAPTAIN: 'C441 Captain',
 };
-const TYPE_LABELS = { F100: 'F100', DHC8: 'DHC8', METRO: 'Metro', C441: 'C441' };
+const TYPE_LABELS = { F100: 'F100', DHC8: 'DHC8', METRO: 'Metro' };
 const CA_FLEET_LABELS = { DASH_8: 'Dash 8', FOKKER_100: 'Fokker 100' };
 
 function CheckboxGroup({ options, labels, value, onChange }) {
@@ -198,7 +205,7 @@ function summarize(isPilot, entry) {
   }
 }
 
-function ClearanceEntry({ isPilot, entry, onDelete }) {
+function ClearanceEntry({ isPilot, entry, onDelete, canSign }) {
   const label = (isPilot ? PILOT_STAGE_LABELS : CA_STAGE_LABELS)[entry.stage] || entry.stage;
   const summary = summarize(isPilot, entry);
   return (
@@ -211,13 +218,17 @@ function ClearanceEntry({ isPilot, entry, onDelete }) {
             {entry.signedByName ? `Signed by ${entry.signedByName}` : 'Unsigned'}{entry.signedAt ? ` · ${formatDate(entry.signedAt)}` : ''}
           </div>
         </div>
-        <button className="danger" onClick={() => { if (window.confirm('Remove this clearance entry? This cannot be undone.')) onDelete(entry.id); }}>Delete</button>
+        {canSign && (
+          <button className="danger" onClick={() => { if (window.confirm('Remove this clearance entry? This cannot be undone.')) onDelete(entry.id); }}>Delete</button>
+        )}
       </div>
     </div>
   );
 }
 
 export function ClearanceTab({ member }) {
+  const { user } = useAuth();
+  const canSign = canSignClearance(user);
   const isPilot = member.type === 'PILOT';
   const stages = isPilot ? PILOT_STAGES : CA_STAGES;
   const stageLabels = isPilot ? PILOT_STAGE_LABELS : CA_STAGE_LABELS;
@@ -269,7 +280,8 @@ export function ClearanceTab({ member }) {
       </div>
       {error && <div className="error-text">{error}</div>}
 
-      {!adding && <button onClick={startAdding}>+ Add clearance stage</button>}
+      {!canSign && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Only HOTC and HOFO can sign a new clearance stage.</div>}
+      {canSign && !adding && <button onClick={startAdding}>+ Add clearance stage</button>}
 
       {adding && (
         <form className="card" onSubmit={save}>
@@ -291,7 +303,7 @@ export function ClearanceTab({ member }) {
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No clearance stages recorded yet.</div>
       )}
       {[...entries].reverse().map((entry) => (
-        <ClearanceEntry key={entry.id} isPilot={isPilot} entry={entry} onDelete={remove} />
+        <ClearanceEntry key={entry.id} isPilot={isPilot} entry={entry} onDelete={remove} canSign={canSign} />
       ))}
     </div>
   );

@@ -473,24 +473,6 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           </div>
         )}
 
-        {isIpc && (
-          <div className="card">
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>Hard-copy licence IPC entry</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              A photo of the IPC entry recorded on the candidate's physical licence. Saving here also replaces the photo held on their crew profile.
-            </div>
-            {d.licencePhoto && (
-              <img src={d.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 260, borderRadius: 6, marginBottom: 8, display: 'block' }} />
-            )}
-            {!selected.completedAt && (
-              <input
-                type="file" accept="image/*" capture="environment"
-                onChange={(e) => e.target.files[0] && uploadLicencePhoto(selected, e.target.files[0])}
-              />
-            )}
-          </div>
-        )}
-
         {flightSections.map((s) => (
           <div key={s.section} className="card">
             <div style={{ fontWeight: 500, marginBottom: 6 }}>{s.section} (Flight Component)</div>
@@ -566,6 +548,24 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           )}
           <div className="field"><label>Examiner's comments</label><textarea defaultValue={d.examinerComments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { examinerComments: e.target.value })} style={{ minHeight: 70 }} /></div>
         </div>
+
+        {isIpc && (
+          <div className="card">
+            <div style={{ fontWeight: 500, marginBottom: 6 }}>Hard-copy licence IPC entry</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              A photo of the IPC entry recorded on the candidate's physical licence. Saving here also replaces the photo held on their crew profile.
+            </div>
+            {d.licencePhoto && (
+              <img src={d.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 260, borderRadius: 6, marginBottom: 8, display: 'block' }} />
+            )}
+            {!selected.completedAt && (
+              <input
+                type="file" accept="image/*" capture="environment"
+                onChange={(e) => e.target.files[0] && uploadLicencePhoto(selected, e.target.files[0])}
+              />
+            )}
+          </div>
+        )}
 
         {!selected.completedAt && (
           <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>

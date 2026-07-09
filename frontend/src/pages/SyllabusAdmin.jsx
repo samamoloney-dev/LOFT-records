@@ -3,10 +3,22 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
+import { formatFleet } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ROLE_SCOPES = ['BOTH', 'CAPTAIN_ONLY', 'FO_ONLY'];
 const SECTIONS = ['SYLLABUS', 'DISCUSSION'];
+
+// Pilot and cabin attendant ground school are entirely separate training
+// programmes - a category name matching between them (e.g. both happening
+// to use "Course") is coincidence, not a real comparable subject, so
+// suggestions/grouping must never cross this line. Fleets within the same
+// group (Dash 8/Fokker 100/Metro for pilots) can genuinely share a
+// category, since that's the same kind of training on a different type.
+const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
+function fleetGroup(fleet) {
+  return CA_FLEETS.includes(fleet) ? 'CA' : 'PILOT';
+}
 
 const emptyForm = () => ({ fleet: 'DASH_8', roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
 
@@ -73,7 +85,24 @@ function GroundSchoolAdminSection() {
     (acc[item.fleet] ||= []).push(item);
     return acc;
   }, {});
-  const categories = [...new Set(items.map((item) => item.category))].sort();
+  // Category suggestions never cross the pilot/cabin attendant line - only
+  // fleets in the same group as whatever's currently selected contribute.
+  const currentGroup = form.fleets[0] ? fleetGroup(form.fleets[0]) : null;
+  const categories = [...new Set(
+    items.filter((item) => fleetGroup(item.fleet) === currentGroup).map((item) => item.category),
+  )].sort();
+
+  // Ticking a fleet from the other group (pilot vs CA) replaces the
+  // selection rather than adding to it - one item creation never spans
+  // both, since they're not comparable training programmes.
+  function toggleFleet(f, checked) {
+    if (checked && form.fleets.length > 0 && fleetGroup(f) !== fleetGroup(form.fleets[0])) {
+      setForm({ ...form, fleets: [f], category: '' });
+      return;
+    }
+    const fleets = checked ? [...form.fleets, f] : form.fleets.filter((x) => x !== f);
+    setForm({ ...form, fleets, category: fleets.length === 0 ? '' : form.category });
+  }
 
   return (
     <div style={{ marginTop: '2rem' }}>
@@ -88,7 +117,7 @@ function GroundSchoolAdminSection() {
             <label>Fleet{!editingId ? 's' : ''}</label>
             {editingId ? (
               <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
-                {FLEETS.map((f) => <option key={f} value={f}>{f}</option>)}
+                {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             ) : (
               <>
@@ -98,16 +127,15 @@ function GroundSchoolAdminSection() {
                       <input
                         type="checkbox" style={{ width: 'auto' }}
                         checked={form.fleets.includes(f)}
-                        onChange={(e) => setForm({
-                          ...form,
-                          fleets: e.target.checked ? [...form.fleets, f] : form.fleets.filter((x) => x !== f),
-                        })}
+                        onChange={(e) => toggleFleet(f, e.target.checked)}
                       />
-                      {f}
+                      {formatFleet(f)}
                     </label>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Creates this item for every fleet ticked.</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  Creates this item for every fleet ticked - pilot and cabin attendant fleets can't be mixed in one item.
+                </div>
               </>
             )}
           </div>
@@ -155,7 +183,7 @@ function GroundSchoolAdminSection() {
         return (
           <div key={fleet} className="card">
             <div className="row" style={{ cursor: 'pointer' }} onClick={() => setExpandedFleet(isExpanded ? null : fleet)}>
-              <div style={{ flex: 1, fontWeight: 500 }}>{fleet}</div>
+              <div style={{ flex: 1, fontWeight: 500 }}>{formatFleet(fleet)}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{fleetItems.length} items</div>
             </div>
             {isExpanded && Object.entries(byCategory).map(([category, categoryItems]) => (
@@ -277,7 +305,7 @@ function SyllabusItemsSection() {
             <div className="field">
               <label>Fleet</label>
               <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
-                {FLEETS.map((f) => <option key={f} value={f}>{f}</option>)}
+                {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             </div>
             <div className="field">
@@ -363,7 +391,7 @@ function SyllabusItemsSection() {
         return (
           <div key={fleet} className="card">
             <div className="row" style={{ cursor: 'pointer' }} onClick={() => setExpandedFleet(isExpanded ? null : fleet)}>
-              <div style={{ flex: 1, fontWeight: 500 }}>{fleet}</div>
+              <div style={{ flex: 1, fontWeight: 500 }}>{formatFleet(fleet)}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{fleetItems.length} items</div>
             </div>
             {isExpanded && Object.entries(bySection).map(([section, categories]) => (

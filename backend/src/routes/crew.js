@@ -92,13 +92,35 @@ async function completedPilotLineCheckCount(crewMemberId) {
   return rows[0]?.n || 0;
 }
 
-function dueInfo(dueDate, completedDate, planned) {
+// A "new hire" crew profile is linked to its trainee record (see POST /
+// newHire handling) so this can tell whether they've actually started -
+// a trainee who hasn't finished ground school yet shouldn't be flagged
+// overdue on EP/IPC/PC/Line Check just because they've never done one;
+// they haven't been trained for it yet. NA'd items (see the Ground
+// School First Aid toggle) don't count as outstanding.
+async function hasIncompleteGroundSchool(traineeId) {
+  if (!traineeId) return false;
+  const { rows } = await pool.query(
+    `SELECT gsi.id FROM trainees t
+     JOIN ground_school_items gsi ON gsi.fleet = t.fleet
+     LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
+     WHERE t.id = $1 AND gsi.required = true
+       AND gsp.completed_at IS NULL AND COALESCE((gsp.details->>'na')::boolean, false) = false
+     LIMIT 1`,
+    [traineeId],
+  );
+  return rows.length > 0;
+}
+
+function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
   const plannedDate = planned?.plannedDate ? new Date(planned.plannedDate).toISOString() : null;
   const plannedAssignedTo = planned?.assignedToName
     ? { id: planned.assignedTo, name: planned.assignedToName, arn: planned.assignedToArn, role: planned.assignedToRole }
     : null;
-  if (!dueDate) return { dueDate: null, status: 'overdue', completedDate: completed, plannedDate, plannedAssignedTo };
+  if (!dueDate) {
+    return { dueDate: null, status: groundSchoolIncomplete ? 'in_training' : 'overdue', completedDate: completed, plannedDate, plannedAssignedTo };
+  }
   return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate, plannedAssignedTo };
 }
 
@@ -252,12 +274,13 @@ async function withCurrency(member) {
   let currency;
 
   if (member.type === 'PILOT') {
-    const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk] = await Promise.all([
+    const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
       completedPilotLineCheckCount(member.id),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
+      hasIncompleteGroundSchool(member.traineeId),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const ipc = latestOf(ipcChk, member.seedIpcDate);
@@ -268,12 +291,12 @@ async function withCurrency(member) {
     // the IPC's own due date above.
     const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
-      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc),
-      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete),
+      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete),
+      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck),
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete),
     };
   } else {
     const [epChk, lineCheckChk] = await Promise.all([
@@ -397,14 +420,20 @@ router.post('/', async (req, res) => {
   if (d.newHire) {
     // Fire-and-forget-ish but awaited: a new hire needs a trainee LOFT
     // record too (ground school/phases/flights), separate from this crew
-    // profile (which just tracks their ongoing recurrent currency). Best
-    // effort - if this fails, the crew member is still created; the admin
-    // can add the trainee record by hand from the Trainees tab instead.
+    // profile (which just tracks their ongoing recurrent currency). Linked
+    // back via crew_members.trainee_id so withCurrency can tell this crew
+    // member hasn't finished ground school yet, and hold off flagging them
+    // overdue on EP/IPC/PC/Line Check before they've even started (see
+    // hasIncompleteGroundSchool). Best effort - if this fails, the crew
+    // member is still created; the admin can add the trainee record by
+    // hand from the Trainees tab instead.
     try {
-      await pool.query(
-        `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase) VALUES ($1, $2, $3, $4, $5, 1)`,
+      const { rows: traineeRows } = await pool.query(
+        `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase) VALUES ($1, $2, $3, $4, $5, 1) RETURNING id`,
         [d.firstName, d.lastName, d.type, d.role, d.fleets[0]],
       );
+      await pool.query('UPDATE crew_members SET trainee_id = $1 WHERE id = $2', [traineeRows[0].id, member.id]);
+      member.traineeId = traineeRows[0].id;
     } catch (err) {
       // Swallow - the crew profile creation above already succeeded and
       // is the primary outcome of this request.

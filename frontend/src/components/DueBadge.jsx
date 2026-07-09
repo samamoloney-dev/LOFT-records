@@ -5,6 +5,7 @@ const STYLES = {
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
   overdue: { background: '#fbe1e1', color: '#8f1d1d' },
   not_completed: { background: '#e0e7ff', color: '#3730a3' },
+  in_training: { background: '#e5e7eb', color: '#4b5563' },
 };
 
 const LABELS = {
@@ -12,6 +13,7 @@ const LABELS = {
   due_soon: 'Due soon',
   overdue: 'Overdue',
   not_completed: 'Not yet completed',
+  in_training: 'In training',
 };
 
 // Small colour-coded pill for a single recurrency item's next-due date.
@@ -22,7 +24,9 @@ const LABELS = {
 // distinct from the computed due date.
 export function DueBadge({ label, info }) {
   if (!info) return null;
-  const text = info.dueDate ? `${LABELS[info.status]} · due ${formatDate(info.dueDate)}` : 'Not yet current';
+  const text = info.dueDate
+    ? `${LABELS[info.status]} · due ${formatDate(info.dueDate)}`
+    : info.status === 'in_training' ? 'Ground school not yet complete' : 'Not yet current';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>

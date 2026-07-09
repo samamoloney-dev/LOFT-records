@@ -15,6 +15,15 @@ import { competencyStatus } from '../lib/dueStatus';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
+// Mirrors CurrencyOverview.jsx's STATUS_ORDER - overdue/not-yet-completed
+// first, then due soon, then current, with Not Applicable always last
+// since it isn't limiting anything.
+const COMPETENCY_STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3 };
+function competencySortRank(c) {
+  if (c.na) return 4;
+  return COMPETENCY_STATUS_ORDER[competencyStatus(c.dueDate)] ?? 4;
+}
+
 // Not every crew member is required to hold every competency - see
 // CompetencyList's Not Applicable toggle below.
 const NA_ELIGIBLE_COMPETENCIES = ['First Aid', 'CPR Training'];
@@ -287,7 +296,7 @@ function CurrencyFolder({ member }) {
 function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   const status = competencyStatus(c.dueDate);
   // Not every crew member is required to hold every competency - e.g.
-  // First Aid is Metro/Conquest-only (mirrors the Ground School N/A
+  // First Aid is Metro-only (mirrors the Ground School N/A
   // toggle for the same item), and some crew are exempt from CPR
   // Training. Scoped to exactly these two names rather than a
   // blanket feature.
@@ -459,7 +468,15 @@ export function CrewDetail() {
   // for the full Completed/Due/Planned editing - rather than down in the
   // general Competencies list with everything else.
   const medical = competencies.find((c) => c.name === 'Medical');
-  const otherCompetencies = competencies.filter((c) => c.name !== 'Medical');
+  // The general Competencies list is sorted by urgency (most limiting
+  // first) rather than the admin-defined Syllabus order - a competency
+  // that's just been renewed and isn't due for another two years shouldn't
+  // sit at the top just because of where it happens to fall in that list.
+  // Not-applicable items always sort last, since they don't limit anything.
+  const otherCompetencies = competencies
+    .filter((c) => c.name !== 'Medical')
+    .slice()
+    .sort((a, b) => competencySortRank(a) - competencySortRank(b) || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
 
   const isPilot = member?.type === 'PILOT';
 

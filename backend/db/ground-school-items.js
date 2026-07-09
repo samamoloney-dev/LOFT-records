@@ -21,7 +21,7 @@ const DASH_8 = [
   item('Course', 'CAO 20.11 Practical'),
   item('Course', 'CAO 20.11 Wet Drill'),
   item('Course', 'Maintenance Authority / Part 42 Exam'),
-  item('Course', 'First Aid', 'Metro & Conquest pilots only. Provider: Medic One'),
+  item('Course', 'First Aid', 'Metro pilots only. Provider: Medic One'),
   item('Course', 'Human Factors & Non-Technical Skills', 'Provider: HFTS'),
   item('Course', 'Dangerous Goods Awareness', 'Provider: Airsafe'),
 

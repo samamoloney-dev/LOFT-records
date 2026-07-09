@@ -15,7 +15,7 @@ INSERT INTO ground_school_items (fleet, category, description, notes, required) 
   ('METRO_23', 'Course', 'CAO 20.11 Practical', NULL, true),
   ('METRO_23', 'Course', 'CAO 20.11 Wet Drill', NULL, true),
   ('METRO_23', 'Course', 'Maintenance Authority / Part 42 Exam', NULL, true),
-  ('METRO_23', 'Course', 'First Aid', 'Metro & Conquest pilots only - Medic One', true),
+  ('METRO_23', 'Course', 'First Aid', 'Metro pilots only - Medic One', true),
   ('METRO_23', 'Course', 'Human Factors & Non-Technical Skills', 'HFTS', true),
   ('METRO_23', 'Course', 'Dangerous Goods Awareness', 'Airsafe', true),
 

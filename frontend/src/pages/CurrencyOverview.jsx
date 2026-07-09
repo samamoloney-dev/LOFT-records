@@ -3,16 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
 
-const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3 };
+const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3, in_training: 4 };
 
 const STATUS_STYLES = {
   overdue: { background: '#fbe1e1', color: '#8f1d1d' },
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
   not_completed: { background: '#e0e7ff', color: '#3730a3' },
   ok: { background: '#dff5e1', color: '#14632f' },
+  in_training: { background: '#e5e7eb', color: '#4b5563' },
 };
 
-const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon', not_completed: 'Not yet completed', ok: 'Current' };
+const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon', not_completed: 'Not yet completed', ok: 'Current', in_training: 'In training' };
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -20,6 +21,7 @@ const STATUS_FILTERS = [
   { key: 'overdue', label: 'Overdue' },
   { key: 'due_soon', label: 'Due Soon' },
   { key: 'ok', label: 'Current' },
+  { key: 'in_training', label: 'In Training' },
 ];
 
 function StatusFilterBar({ value, onChange }) {

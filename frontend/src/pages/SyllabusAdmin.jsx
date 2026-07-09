@@ -63,6 +63,7 @@ function GroundSchoolAdminSection() {
     (acc[item.fleet] ||= []).push(item);
     return acc;
   }, {});
+  const categories = [...new Set(items.map((item) => item.category))].sort();
 
   return (
     <div style={{ marginTop: '2rem' }}>
@@ -80,8 +81,11 @@ function GroundSchoolAdminSection() {
             </select>
           </div>
           <div className="field">
-            <label>Category (e.g. "Admin", "Course", "Dash 8 Ground School (Module CBT)")</label>
-            <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} required />
+            <label>Category</label>
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} required>
+              <option value="">— Select category —</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div className="field">
             <label>Description</label>

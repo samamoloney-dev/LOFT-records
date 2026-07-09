@@ -16,11 +16,16 @@ const SECTIONS = ['SYLLABUS', 'DISCUSSION'];
 // group (Dash 8/Fokker 100/Metro for pilots) can genuinely share a
 // category, since that's the same kind of training on a different type.
 const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
+const PILOT_FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23'];
 function fleetGroup(fleet) {
   return CA_FLEETS.includes(fleet) ? 'CA' : 'PILOT';
 }
 
-const emptyForm = () => ({ fleet: 'DASH_8', roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
+// fleets is always an array in form state (see emptyGroundSchoolForm's
+// comment below for why) - "All pilot fleets"/"All cabin crew fleets"
+// just set it to PILOT_FLEETS/CA_FLEETS in one click instead of ticking
+// each box.
+const emptyForm = () => ({ fleets: ['DASH_8'], roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
 
 // fleets is always an array in form state - when creating, every fleet
 // ticked gets its own item (one POST per fleet, see handleSubmit); when
@@ -245,7 +250,7 @@ function SyllabusItemsSection() {
   function openEditForm(item) {
     setEditingId(item.id);
     setForm({
-      fleet: item.fleet,
+      fleets: [item.fleet],
       roleScope: item.roleScope,
       phase: item.phase,
       category: item.category,
@@ -258,21 +263,38 @@ function SyllabusItemsSection() {
     setShowForm(true);
   }
 
-  // Categories already used for this fleet/section - "the current list of
-  // categories from the relevant syllabus" the operator wants to pick from,
-  // with a way to add a new one when needed.
+  // Categories already used for any of the ticked fleets, for this section
+  // - "the current list of categories from the relevant syllabus" the
+  // operator wants to pick from, with a way to add a new one when needed.
   const categoryOptions = [...new Set(
-    items.filter((i) => i.fleet === form.fleet && i.section === form.section).map((i) => i.category),
+    items.filter((i) => form.fleets.includes(i.fleet) && i.section === form.section).map((i) => i.category),
   )].sort();
+
+  // Ticking a fleet from the other group (pilot vs CA) replaces the
+  // selection - one item creation never spans both.
+  function toggleFleet(f, checked) {
+    if (checked && form.fleets.length > 0 && fleetGroup(f) !== fleetGroup(form.fleets[0])) {
+      setForm({ ...form, fleets: [f] });
+      return;
+    }
+    setForm({ ...form, fleets: checked ? [...form.fleets, f] : form.fleets.filter((x) => x !== f) });
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    const { fleets, ...rest } = form;
+    if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
+      const payload = { ...rest, phase: Number(form.phase) };
       if (editingId) {
-        await api.patch(`/api/syllabus/items/${editingId}`, { ...form, phase: Number(form.phase) });
+        await api.patch(`/api/syllabus/items/${editingId}`, { ...payload, fleet: fleets[0] });
       } else {
-        await api.post('/api/syllabus/items', { ...form, phase: Number(form.phase) });
+        // One item per fleet ticked, so the same syllabus item can be
+        // added for every pilot (or cabin crew) fleet in one go.
+        for (const fleet of fleets) {
+          await api.post('/api/syllabus/items', { ...payload, fleet });
+        }
       }
       setShowForm(false);
       setEditingId(null);
@@ -301,19 +323,41 @@ function SyllabusItemsSection() {
 
       {showForm && (
         <form className="card" onSubmit={handleSubmit}>
-          <div className="grid2">
-            <div className="field">
-              <label>Fleet</label>
-              <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
+          <div className="field">
+            <label>Fleet{!editingId ? 's' : ''}</label>
+            {editingId ? (
+              <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
                 {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
-            </div>
-            <div className="field">
-              <label>Section</label>
-              <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
-                {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion'}</option>)}
-              </select>
-            </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <button type="button" onClick={() => setForm({ ...form, fleets: PILOT_FLEETS })}>All pilot fleets</button>
+                  <button type="button" onClick={() => setForm({ ...form, fleets: CA_FLEETS })}>All cabin crew fleets</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {FLEETS.map((f) => (
+                    <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox" style={{ width: 'auto' }}
+                        checked={form.fleets.includes(f)}
+                        onChange={(e) => toggleFleet(f, e.target.checked)}
+                      />
+                      {formatFleet(f)}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  Creates this item for every fleet ticked - pilot and cabin attendant fleets can't be mixed in one item.
+                </div>
+              </>
+            )}
+          </div>
+          <div className="field">
+            <label>Section</label>
+            <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
+              {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion'}</option>)}
+            </select>
           </div>
           <div className="grid2">
             <div className="field">

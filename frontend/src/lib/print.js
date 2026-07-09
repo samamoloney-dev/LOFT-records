@@ -33,10 +33,14 @@ const PRINT_STYLES = `
   /* Each section renders as its own bordered box with a solid title bar,
      mirroring the paper forms' own boxed sections rather than a plain
      table with a shaded left rule. */
-  .form-section { border: 1px solid #b9bfc7; border-radius: 3px; margin-bottom: 12px; break-inside: avoid; -webkit-column-break-inside: avoid; overflow: hidden; }
+  /* No overflow:hidden here - it was clipping section content that ran
+     longer than a page/column (a long Flight Component list), cutting off
+     the tail end of sentences. The header bar rounds its own top corners
+     instead of relying on the container clipping it. */
+  .form-section { border: 1px solid #b9bfc7; border-radius: 3px; margin-bottom: 12px; break-inside: avoid; -webkit-column-break-inside: avoid; }
   .form-section h2 {
     font-size: 11.5px; margin: 0; padding: 6px 10px;
-    background: #2c333d; color: #fff;
+    background: #2c333d; color: #fff; border-radius: 2px 2px 0 0;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
   }
   table { width: 100%; border-collapse: collapse; }

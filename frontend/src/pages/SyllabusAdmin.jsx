@@ -10,7 +10,11 @@ const SECTIONS = ['SYLLABUS', 'DISCUSSION'];
 
 const emptyForm = () => ({ fleet: 'DASH_8', roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
 
-const emptyGroundSchoolForm = () => ({ fleet: 'DASH_8', category: '', description: '', notes: '', required: true });
+// fleets is always an array in form state - when creating, every fleet
+// ticked gets its own item (one POST per fleet, see handleSubmit); when
+// editing an existing item, it's just a single-element array since one
+// row can only ever belong to one fleet.
+const emptyGroundSchoolForm = () => ({ fleets: ['DASH_8'], category: '', description: '', notes: '', required: true });
 
 function GroundSchoolAdminSection() {
   const [items, setItems] = useState([]);
@@ -33,18 +37,24 @@ function GroundSchoolAdminSection() {
 
   function openEditForm(item) {
     setEditingId(item.id);
-    setForm({ fleet: item.fleet, category: item.category, description: item.description, notes: item.notes || '', required: item.required });
+    setForm({ fleets: [item.fleet], category: item.category, description: item.description, notes: item.notes || '', required: item.required });
     setShowForm(true);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    const { fleets, ...rest } = form;
+    if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
       if (editingId) {
-        await api.patch(`/api/ground-school/items/${editingId}`, form);
+        await api.patch(`/api/ground-school/items/${editingId}`, { ...rest, fleet: fleets[0] });
       } else {
-        await api.post('/api/ground-school/items', form);
+        // One item per fleet ticked, so the same course/exam can be added
+        // for several fleets at once instead of repeating this form.
+        for (const fleet of fleets) {
+          await api.post('/api/ground-school/items', { ...rest, fleet });
+        }
       }
       setShowForm(false);
       setEditingId(null);
@@ -75,10 +85,31 @@ function GroundSchoolAdminSection() {
       {showForm && (
         <form className="card" onSubmit={handleSubmit}>
           <div className="field">
-            <label>Fleet</label>
-            <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
-              {FLEETS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+            <label>Fleet{!editingId ? 's' : ''}</label>
+            {editingId ? (
+              <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
+                {FLEETS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {FLEETS.map((f) => (
+                    <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox" style={{ width: 'auto' }}
+                        checked={form.fleets.includes(f)}
+                        onChange={(e) => setForm({
+                          ...form,
+                          fleets: e.target.checked ? [...form.fleets, f] : form.fleets.filter((x) => x !== f),
+                        })}
+                      />
+                      {f}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Creates this item for every fleet ticked.</div>
+              </>
+            )}
           </div>
           <div className="field">
             <label>Category</label>

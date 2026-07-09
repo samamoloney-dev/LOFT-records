@@ -66,6 +66,58 @@ const PRINT_STYLES = `
 
   .print-footer { margin-top: 20px; padding-top: 6px; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 9.5px; color: #777; }
 
+  /* Below: a closer, plain black-ruled replica of the paper checklist
+     forms (e.g. SA 489/492 Part 121 Proficiency Check/IPC) - title +
+     boxed ARN, a 2x2 field grid, and an Item No/Activities/MOS/Result
+     ruled table with subsection header rows, rather than the softer
+     boxed-card look used elsewhere in this file. */
+  .form-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin: 6px 0 14px; }
+  .form-title-row h1 { margin: 0; padding: 0; border: none; text-align: left; font-size: 17px; }
+
+  .arn-boxes { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .arn-boxes b { font-size: 11px; }
+  .arn-boxes .boxes { display: flex; }
+  .arn-boxes .boxes span {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 22px; border: 1px solid #000; border-left: none;
+    font-weight: 700; font-size: 11px;
+  }
+  .arn-boxes .boxes span:first-child { border-left: 1px solid #000; }
+
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #000; margin-bottom: 10px; }
+  .field-grid > div { padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+  .field-grid > div:nth-child(2n) { border-right: none; }
+  .field-grid > div:nth-last-child(-n+2) { border-bottom: none; }
+  .field-grid label { font-weight: 700; margin-right: 5px; }
+
+  .check-table { border: 1px solid #000; margin-bottom: 10px; }
+  .check-table.two-col { column-count: 2; column-gap: 14px; column-rule: 1px solid #000; }
+  .check-row { display: grid; border-bottom: 1px solid #000; break-inside: avoid; -webkit-column-break-inside: avoid; }
+  .check-row > div { padding: 3px 6px; border-right: 1px solid #000; overflow-wrap: break-word; }
+  .check-row > div:last-child { border-right: none; text-align: center; }
+  .check-head { font-weight: 700; background: #ddd; font-size: 10px; text-transform: uppercase; }
+  .check-subhead {
+    font-weight: 700; background: #eaeaea; padding: 3px 6px; text-align: center;
+    border-bottom: 1px solid #000; break-inside: avoid; -webkit-column-break-inside: avoid;
+  }
+
+  .seat-check { border: 1px solid #000; margin-bottom: 10px; }
+  .seat-check-title { text-align: center; font-weight: 700; padding: 5px; border-bottom: 1px solid #000; text-transform: uppercase; font-size: 11px; }
+  .seat-check-title small { display: block; font-weight: 400; text-transform: none; font-size: 9.5px; margin-top: 2px; }
+  .seat-check-row { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .seat-check-row > div { padding: 5px 8px; border-right: 1px solid #000; display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; }
+  .seat-check-row > div:last-child { border-right: none; }
+  .seat-check-row .mark { font-weight: 700; }
+
+  .labeled-row-group { border: 1px solid #000; margin-bottom: 10px; }
+  .labeled-row { display: grid; border-bottom: 1px solid #000; }
+  .labeled-row:last-child { border-bottom: none; }
+  .labeled-row .row-label { padding: 5px 8px; font-weight: 700; border-right: 1px solid #000; display: flex; align-items: center; font-size: 11px; background: #f4f4f4; }
+  .labeled-row > div:not(.row-label) { padding: 8px 6px 4px; border-right: 1px solid #000; text-align: center; }
+  .labeled-row > div:last-child { border-right: none; }
+  .labeled-row .cell-value { min-height: 14px; font-weight: 600; margin-bottom: 3px; }
+  .labeled-row small { display: block; font-size: 8.5px; color: #555; text-transform: uppercase; letter-spacing: 0.02em; }
+
   /* Denser rendering for long item-checklist forms (e.g. IPC/PC) so they
      fit their intended page count instead of running several pages long. */
   .compact h1 { font-size: 15px; margin-bottom: 10px; padding-bottom: 6px; }
@@ -75,6 +127,8 @@ const PRINT_STYLES = `
   .compact td, .compact th { padding: 3px 8px; line-height: 1.3; }
   .columns-2 { column-count: 2; column-gap: 16px; }
   .compact-section { break-inside: avoid; -webkit-column-break-inside: avoid; }
+  .compact .check-row > div, .compact .check-head { padding: 2px 5px; font-size: 9.5px; line-height: 1.25; }
+  .compact .check-subhead { padding: 2px 5px; font-size: 9.5px; }
 `;
 
 export function openPrintWindow(title, bodyHtml) {
@@ -104,4 +158,72 @@ export function signatureBlock(items) {
 export function resultBadge(result) {
   if (!result) return '—';
   return `<span class="badge ${result === 'PASS' ? 'pass' : 'fail'}">${result}</span>`;
+}
+
+// Title on the left, a boxed ARN readout on the right - mirrors the top
+// of the paper checklist forms (SA 489/492 etc). value is split one
+// character per box; boxCount defaults to 7 (Skippers ARNs are 6-7 digits).
+export function arnBoxes(label, value, boxCount = 7) {
+  const chars = (value || '').split('').slice(0, boxCount);
+  while (chars.length < boxCount) chars.push('');
+  return `<div class="arn-boxes"><b>${label}</b><div class="boxes">${chars.map((c) => `<span>${c}</span>`).join('')}</div></div>`;
+}
+
+export function formTitleRow(title, arnValue) {
+  return `<div class="form-title-row"><h1>${title}</h1>${arnValue !== undefined ? arnBoxes("Applicant's ARN", arnValue) : ''}</div>`;
+}
+
+// A plain 2x2 (or Nx2) bordered field grid - "Candidate Name / Date",
+// "Assessor(s) / Aircraft Type" - matching the paper form's top field
+// rows, rather than the single grey .meta line used elsewhere.
+export function fieldGrid(pairs) {
+  const cells = pairs.map(([label, value]) => `<div><label>${label}</label>${value || ''}</div>`).join('');
+  return `<div class="field-grid">${cells}</div>`;
+}
+
+// A ruled Item No/Activities and Manoeuvres/MOS/Result checklist table,
+// with subsection header rows spanning the full width - replicates the
+// paper form's own table structure instead of a boxed card per section.
+// `rows` is a list of either { header: 'Subsection title' } or
+// { no, description, mos, result } item rows. Pass twoColumn:true to flow
+// the whole table across two newspaper-style columns (for long lists like
+// the IPC's ~50 items) - individual rows never split across the break.
+export function checklistTable(rows, { withItemNo = true, twoColumn = false } = {}) {
+  const cols = withItemNo ? '26px 1fr 62px 48px' : '1fr 90px 48px';
+  const headCells = withItemNo ? ['No', 'Activities and Manoeuvres', 'MOS', 'Result'] : ['Activities and Manoeuvres', 'MOS', 'Result'];
+  const head = `<div class="check-row check-head" style="grid-template-columns:${cols}">${headCells.map((c) => `<div>${c}</div>`).join('')}</div>`;
+  const body = rows.map((r) => {
+    if (r.header) return `<div class="check-subhead">${r.header}</div>`;
+    const cells = withItemNo ? [r.no, r.description, r.mos, r.result] : [r.description, r.mos, r.result];
+    return `<div class="check-row" style="grid-template-columns:${cols}">${cells.map((c) => `<div>${c ?? ''}</div>`).join('')}</div>`;
+  }).join('');
+  return `<div class="check-table${twoColumn ? ' two-col' : ''}">${head}${body}</div>`;
+}
+
+// "Seat check conducted in" box - LHS/RHS/Other Seat with a tick for
+// whichever was actually used, matching the paper form's own boxed
+// three-column layout.
+export function seatCheckBox(seatCheck) {
+  const seats = ['LHS', 'RHS', 'Other Seat'];
+  const cells = seats.map((s) => `<div>${s}<span class="mark">${seatCheck.includes(s) ? '✓' : ''}</span></div>`).join('');
+  return `
+    <div class="seat-check">
+      <div class="seat-check-title">Seat check conducted in<br/><small>Training captains in LHS and Other, F.O. in RHS, Captains in LHS</small></div>
+      <div class="seat-check-row">${cells}</div>
+    </div>`;
+}
+
+// One row of a bordered admin-details block ("Applicant", "FSTD",
+// "Examiner" etc. on the paper form's page 2) - a row label on the left,
+// then one cell per value with its caption underneath.
+export function labeledRow(rowLabel, cells) {
+  const cols = `100px repeat(${cells.length}, 1fr)`;
+  const cellHtml = cells
+    .map((c) => `<div><div class="cell-value">${c.value || '&nbsp;'}</div><small>${c.label}</small></div>`)
+    .join('');
+  return `<div class="labeled-row" style="grid-template-columns:${cols}"><div class="row-label">${rowLabel}</div>${cellHtml}</div>`;
+}
+
+export function labeledRowGroup(rows) {
+  return `<div class="labeled-row-group">${rows.map((r) => labeledRow(r.label, r.cells)).join('')}</div>`;
 }

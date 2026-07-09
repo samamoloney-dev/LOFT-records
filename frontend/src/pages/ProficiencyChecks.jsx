@@ -7,7 +7,10 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import {
+  openPrintWindow, section, signatureBlock, resultBadge,
+  formTitleRow, fieldGrid, checklistTable, seatCheckBox, labeledRowGroup,
+} from '../lib/print';
 import { formatUserRole, formatFleet } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
 import { compressImage } from '../lib/imageCompress';
@@ -337,8 +340,18 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     return v === 'S' ? '✓' : v === 'X' ? '✗' : v === 'N' ? 'N/A' : '';
   }
 
-  // IPC and PC print as two pages: page 1 is the training/knowledge/flight
-  // assessment, page 2 is applicant/FSTD/examiner admin details and result.
+  function itemLetter(i) {
+    return String.fromCharCode(97 + i);
+  }
+
+  // Replicates the paper form (SA 489 Proficiency Check / SA 492 IPC and
+  // Proficiency Check) as closely as the data allows: boxed ARN, a 2x2
+  // candidate/assessor field grid, a ruled Item No/Activities/MOS/Result
+  // checklist table (Knowledge requirements + every Flight Component
+  // section, in one two-column table with subsection header rows) on
+  // page 1, then the Seat Check box; page 2 is Test Number/Result,
+  // Applicant, FSTD, Examiner and Examiner's Comments as one continuous
+  // ruled admin block, then the overall assessment and signatures.
   function printCheck(check) {
     const d = check.details || {};
     const isIpc = d.variant === 'IPC_PC';
@@ -348,61 +361,66 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       ...s,
       allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
     }));
+    const title = VARIANT_LABELS[d.variant] || 'Proficiency Check';
 
-    const recurrentRows = recurrentItems.map((item) => [item.description, resultMark(results[item.id])]);
-    const knowledgeRows = isIpc ? knowledgeItems.map((item) => [item.description, resultMark(results[item.id])]) : [];
-    // Wrapped in compact-section so the 2-column layout below never splits
-    // a table across the column break, and columns-2 so the long checklist
-    // (up to ~56 rows for IPC) uses the page's full width instead of just
-    // running down a single narrow column for several pages.
-    const recurrentHtml = `<div class="compact-section">${section('Recurrent Training (121.50 (1B))', recurrentRows)}</div>`;
-    const knowledgeHtml = isIpc ? `<div class="compact-section">${section('Knowledge requirements (Ground Component)', knowledgeRows)}</div>` : '';
-    const flightHtml = flightSections
-      .map((s) => `<div class="compact-section">${section(`${s.section} (Flight Component)`, s.allItems.map((item) => [item.description, resultMark(results[item.id])]))}</div>`)
-      .join('');
+    const recurrentRows = recurrentItems.map((item) => ({ description: item.description, mos: item.mos, result: resultMark(results[item.id]) }));
 
-    // Only page 1 (the long checklists) needs the compact/2-column
-    // treatment to fit its page count - page 2 is four short sections and
-    // renders fine at normal spacing. Applying compact spacing there too
-    // previously crowded rows badly enough that values visually shifted
-    // onto the wrong labels.
+    const checklistRows = [];
+    if (isIpc) {
+      checklistRows.push({ header: KNOWLEDGE_SECTION });
+      knowledgeItems.forEach((item, i) => {
+        checklistRows.push({ no: itemLetter(i), description: item.description, mos: item.mos, result: resultMark(results[item.id]) });
+      });
+    }
+    flightSections.forEach((s) => {
+      checklistRows.push({ header: `${s.section} (Flight Component)` });
+      s.allItems.forEach((item, i) => {
+        checklistRows.push({ no: itemLetter(i), description: item.description, mos: item.mos, result: resultMark(results[item.id]) });
+      });
+    });
+
     const html = `
       <div class="compact">
-        <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'}</h1>
-        <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''} · Assessor: ${d.assessor || '—'}</div>
-        ${section('Assignment', [
-          ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+        ${formTitleRow(title, d.applicantArn || d.arn)}
+        ${fieldGrid([
+          ["Candidate's Name", d.name], ['Date', d.date],
+          ['Assessor(s)', d.assessor], ['Aircraft Type', d.actype],
         ])}
-        <div class="columns-2">
-          ${recurrentHtml}
-          ${knowledgeHtml}
-          ${flightHtml}
-        </div>
-        ${section('Seat check conducted in', [['Seats', seatCheck.join(', ') || '—']])}
+        ${checklistTable(recurrentRows, { withItemNo: false })}
+        ${checklistTable(checklistRows, { withItemNo: true, twoColumn: true })}
+        ${seatCheckBox(seatCheck)}
       </div>
 
       <div class="page-break"></div>
-      <h1>${VARIANT_LABELS[d.variant] || 'Proficiency Check'} (continued)</h1>
-      ${section('Applicant', [
-        ['Test number', d.testNumber],
-        ['Applicant ARN', d.applicantArn],
-        ['Applicant name', d.applicantName],
+      ${formTitleRow(`${title} (continued)`, d.applicantArn || d.arn)}
+      ${labeledRowGroup([
+        {
+          label: 'Test Number',
+          cells: [
+            { label: 'Test number', value: d.testNumber },
+            { label: 'Result', value: resultBadge(check.result) },
+          ],
+        },
+        { label: 'Applicant', cells: [{ label: 'ARN', value: d.applicantArn }, { label: 'Name', value: d.applicantName }, { label: 'Signature', value: d.applicantSig }] },
       ])}
-      ${section('FSTD', [
-        ['FSTD number', d.fstdNumber],
-        ['FSTD type', d.fstdType],
-        ['Ground time', d.groundTime],
-        ['Simulator time', d.simulatorTime],
+      ${labeledRowGroup([
+        {
+          label: 'FSTD',
+          cells: [
+            { label: 'Date', value: d.date },
+            { label: 'FSTD number', value: d.fstdNumber },
+            { label: 'FSTD type', value: d.fstdType },
+            { label: 'Ground time', value: d.groundTime },
+            { label: 'Simulator time', value: d.simulatorTime },
+          ],
+        },
+        { label: 'Examiner', cells: [{ label: 'ARN', value: d.examinerArn }, { label: 'Name', value: d.examinerName }, { label: 'Signature', value: d.examinerSig }] },
       ])}
-      ${section('Examiner', [
-        ['Examiner ARN', d.examinerArn],
-        ['Examiner name', d.examinerName],
-        ["Examiner's comments", d.examinerComments],
-      ])}
-      ${section('Result', [['Overall assessment', resultBadge(check.result)]])}
+      ${section("Examiner's Comments", [['Comments', d.examinerComments || '—']])}
+      <div style="margin: 14px 0; font-weight: 700; font-size: 13px;">OVERALL ASSESSMENT: ${resultBadge(check.result)}</div>
       ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
     `;
-    openPrintWindow(`${VARIANT_LABELS[d.variant] || 'Proficiency Check'} - ${d.name || ''}`, html);
+    openPrintWindow(`${title} - ${d.name || ''}`, html);
   }
 
   if (selected) {

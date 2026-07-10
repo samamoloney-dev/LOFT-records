@@ -85,6 +85,59 @@ function ComingUpPanel({ data, navigate }) {
   );
 }
 
+const BAR_COLOR = (percent) => (percent >= 80 ? '#2f9e44' : percent >= 50 ? '#e8a33d' : '#d9433a');
+
+function FleetSnapshotPanel({ data, navigate }) {
+  return (
+    <div>
+      <h3 style={{ margin: '0 0 0.5rem' }}>Fleet Currency Snapshot</h3>
+      {data.map((f) => (
+        <div key={f.fleet} className="card" style={{ cursor: 'pointer' }} onClick={() => navigate(`/currency?fleet=${f.fleet}`)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+            <span style={{ fontWeight: 500 }}>{formatFleet(f.fleet)}</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {f.total ? `${f.current}/${f.total} current (${f.percent}%)` : 'No crew tracked'}
+            </span>
+          </div>
+          {f.total > 0 && (
+            <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${f.percent}%`, background: BAR_COLOR(f.percent) }} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TraineeProgressPanel({ data, navigate }) {
+  return (
+    <div>
+      <h3 style={{ margin: '0 0 0.5rem' }}>Trainee Progress</h3>
+      {data.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No active trainees.</div>
+      )}
+      {data.map((t) => (
+        <div key={t.id} className="card row" onClick={() => navigate(t.linkTo)}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>{t.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {formatFleet(t.fleet)} · {t.type === 'PILOT'
+                ? `Phase ${t.phase} · ${t.groundSchoolTotal ? `${t.groundSchoolComplete}/${t.groundSchoolTotal} ground school` : 'No ground school items'}`
+                : `${t.flightCount} flight${t.flightCount === 1 ? '' : 's'} · ${t.loftTotal ? `${t.loftComplete}/${t.loftTotal} LOFT sign-offs` : 'No sign-off items'}`}
+            </div>
+          </div>
+          {t.stalled && (
+            <span className="badge warn" style={{ fontSize: 11 }}>
+              No activity {t.lastActivity ? `since ${formatDate(t.lastActivity)}` : 'yet'}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -123,9 +176,19 @@ export function Dashboard() {
         <SummaryCard label="Crew Current" value={`${summary.crewCurrentPercent}%`} color="green" onClick={() => navigate('/currency?filter=ok')} />
       </div>
 
-      <NeedsAttentionPanel data={data.needsAttention} total={data.needsAttentionTotal} navigate={navigate} />
-      <div style={{ marginTop: '1.5rem' }}>
-        <ComingUpPanel data={data.comingUp} navigate={navigate} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+        <div style={{ flex: '1 1 420px', minWidth: 320 }}>
+          <NeedsAttentionPanel data={data.needsAttention} total={data.needsAttentionTotal} navigate={navigate} />
+          <div style={{ marginTop: '1.5rem' }}>
+            <ComingUpPanel data={data.comingUp} navigate={navigate} />
+          </div>
+        </div>
+        <div style={{ flex: '1 1 420px', minWidth: 320 }}>
+          <TraineeProgressPanel data={data.traineeProgress} navigate={navigate} />
+          <div style={{ marginTop: '1.5rem' }}>
+            <FleetSnapshotPanel data={data.fleetSnapshot} navigate={navigate} />
+          </div>
+        </div>
       </div>
     </div>
   );

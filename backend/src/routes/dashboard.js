@@ -16,6 +16,31 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole(...ADMIN_ROLES));
 
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+
+// A crew member's currency/competency items aren't fleet-specific
+// themselves (they belong to the person, e.g. Dangerous Goods), so a
+// member holding more than one fleet counts toward each of them - matches
+// how Currency Overview's own new fleet filter (frontend/src/pages/
+// CurrencyOverview.jsx) already attributes a member's rows to every fleet
+// they hold.
+function fleetSnapshotFrom(members) {
+  const stats = Object.fromEntries(FLEET_VALUES.map((f) => [f, { current: 0, total: 0 }]));
+  for (const m of members) {
+    for (const fleet of m.fleets) {
+      if (!stats[fleet]) continue;
+      stats[fleet].total += m.allItems.length;
+      stats[fleet].current += m.allItems.filter((i) => i.status === 'ok').length;
+    }
+  }
+  return FLEET_VALUES.map((fleet) => ({
+    fleet,
+    current: stats[fleet].current,
+    total: stats[fleet].total,
+    percent: stats[fleet].total ? Math.round((stats[fleet].current / stats[fleet].total) * 100) : null,
+  }));
+}
+
 function daysOverdue(dueDate) {
   if (!dueDate) return 0;
   const due = new Date(dueDate);
@@ -41,6 +66,10 @@ router.get('/summary', async (req, res) => {
     { rows: groundSchoolRows },
     { rows: plannedChecksRows },
     { rows: plannedCompetenciesRows },
+    { rows: traineeRows },
+    { rows: groundSchoolProgressRows },
+    { rows: caProgressRows },
+    { rows: lastActivityRows },
   ] = await Promise.all([
     // "Active" = not yet past Check to Line, i.e. still going through
     // initial training rather than tracked as line-qualified crew.
@@ -92,6 +121,50 @@ router.get('/summary', async (req, res) => {
          AND (ct.applies_to IS NULL OR ct.applies_to = cm.type)
          AND cc.planned_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
        ORDER BY cc.planned_date ASC`,
+    ),
+    pool.query(
+      `SELECT id, first_name, last_name, type, role, fleet, phase FROM trainees
+       WHERE archived = false ORDER BY last_name ASC`,
+    ),
+    // Ground school completion fraction (pilots) - an N/A item counts the
+    // same as completed, mirroring hasIncompleteGroundSchool's own "not
+    // outstanding" definition above.
+    pool.query(
+      `SELECT t.id AS trainee_id,
+              COUNT(*) FILTER (WHERE gsp.completed_at IS NOT NULL OR COALESCE((gsp.details->>'na')::boolean, false))::int AS complete,
+              COUNT(*)::int AS total
+       FROM trainees t
+       JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.required = true
+       LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
+       WHERE t.archived = false AND t.type = 'PILOT'
+       GROUP BY t.id`,
+    ),
+    // Flight count + required-tasks sign-off fraction (cabin crew) - each
+    // flight carries its own copy of the required tasks (see migration
+    // 0007's flight_syllabus_progress comment), so this is a running total
+    // across every flight they've ever logged, not just the latest one.
+    pool.query(
+      `SELECT t.id AS trainee_id,
+              COUNT(DISTINCT f.id)::int AS flight_count,
+              COUNT(fsp.syllabus_item_id) FILTER (WHERE fsp.completed_at IS NOT NULL)::int AS loft_complete,
+              COUNT(fsp.syllabus_item_id)::int AS loft_total
+       FROM trainees t
+       LEFT JOIN flights f ON f.trainee_id = t.id
+       LEFT JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id
+       WHERE t.archived = false AND t.type = 'CABIN_ATTENDANT'
+       GROUP BY t.id`,
+    ),
+    pool.query(
+      `SELECT t.id AS trainee_id, GREATEST(
+         t.created_at,
+         (SELECT MAX(created_at) FROM flights WHERE trainee_id = t.id),
+         (SELECT MAX(completed_at) FROM ground_school_progress WHERE trainee_id = t.id),
+         (SELECT MAX(completed_at) FROM syllabus_progress WHERE trainee_id = t.id),
+         (SELECT MAX(fsp.completed_at) FROM flight_syllabus_progress fsp JOIN flights f ON f.id = fsp.flight_id WHERE f.trainee_id = t.id),
+         (SELECT completed_at FROM check_to_line_forms WHERE trainee_id = t.id),
+         (SELECT MAX(completed_at) FROM phase_completions WHERE trainee_id = t.id)
+       ) AS last_activity
+       FROM trainees t WHERE t.archived = false`,
     ),
   ]);
 
@@ -148,6 +221,33 @@ router.get('/summary', async (req, res) => {
     })),
   ].sort((a, b) => new Date(a.date) - new Date(b.date));
 
+  const gsByTrainee = Object.fromEntries(groundSchoolProgressRows.map((r) => [r.trainee_id, r]));
+  const caByTrainee = Object.fromEntries(caProgressRows.map((r) => [r.trainee_id, r]));
+  const lastActivityByTrainee = Object.fromEntries(lastActivityRows.map((r) => [r.trainee_id, r.last_activity]));
+
+  const STALE_DAYS = 14;
+  const traineeProgress = traineeRows.map((t) => {
+    const lastActivity = lastActivityByTrainee[t.id] || null;
+    const daysSinceActivity = lastActivity
+      ? Math.round((Date.now() - new Date(lastActivity).getTime()) / (24 * 60 * 60 * 1000))
+      : null;
+    const base = {
+      id: t.id,
+      name: `${t.first_name} ${t.last_name}`,
+      fleet: t.fleet,
+      type: t.type,
+      lastActivity: lastActivity ? new Date(lastActivity).toISOString() : null,
+      stalled: daysSinceActivity === null || daysSinceActivity >= STALE_DAYS,
+      linkTo: `/trainees/${t.id}`,
+    };
+    if (t.type === 'PILOT') {
+      const gs = gsByTrainee[t.id] || { complete: 0, total: 0 };
+      return { ...base, phase: t.phase, groundSchoolComplete: gs.complete, groundSchoolTotal: gs.total };
+    }
+    const ca = caByTrainee[t.id] || { flight_count: 0, loft_complete: 0, loft_total: 0 };
+    return { ...base, flightCount: ca.flight_count, loftComplete: ca.loft_complete, loftTotal: ca.loft_total };
+  });
+
   res.json({
     summary: {
       overdue: overdueItems.length,
@@ -160,6 +260,8 @@ router.get('/summary', async (req, res) => {
     needsAttention: needsAttention.slice(0, 8),
     needsAttentionTotal: needsAttention.length,
     comingUp: comingUp.slice(0, 8),
+    fleetSnapshot: fleetSnapshotFrom(members),
+    traineeProgress,
   });
 });
 

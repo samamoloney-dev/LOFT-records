@@ -24,10 +24,13 @@ const STATUS_FILTERS = [
   { key: 'in_training', label: 'In Training' },
 ];
 
-function StatusFilterBar({ value, onChange }) {
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const FLEET_FILTERS = [{ key: 'all', label: 'All fleets' }, ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) }))];
+
+function FilterBar({ options, value, onChange }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem' }}>
-      {STATUS_FILTERS.map((f) => (
+      {options.map((f) => (
         <div
           key={f.key}
           onClick={() => onChange(f.key)}
@@ -80,6 +83,7 @@ function allRows(member) {
   return member.allItems.map((item) => ({
     memberId: member.id,
     name: member.name,
+    fleets: member.fleets,
     fleet: member.fleets.map(formatFleet).join(', '),
     item: item.label,
     dueDate: item.dueDate,
@@ -93,11 +97,16 @@ export function CurrencyOverview() {
   const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
-  // Lets the Home Dashboard's summary cards (?filter=overdue etc.) land
-  // here pre-filtered - falls back to "all" for any unrecognised value.
+  // Lets the Home Dashboard's summary cards (?filter=overdue etc.) and its
+  // Fleet Currency Snapshot (?fleet=DASH_8 etc.) land here pre-filtered -
+  // falls back to "all" for any unrecognised value.
   const requestedFilter = searchParams.get('filter');
   const [statusFilter, setStatusFilter] = useState(
     STATUS_FILTERS.some((f) => f.key === requestedFilter) ? requestedFilter : 'all',
+  );
+  const requestedFleet = searchParams.get('fleet');
+  const [fleetFilter, setFleetFilter] = useState(
+    FLEET_FILTERS.some((f) => f.key === requestedFleet) ? requestedFleet : 'all',
   );
   const navigate = useNavigate();
 
@@ -116,14 +125,17 @@ export function CurrencyOverview() {
 
   if (error) return <div className="error-text">{error}</div>;
 
-  const filteredRows = statusFilter === 'all' ? rows : rows.filter((r) => r.status === statusFilter);
+  const filteredRows = rows
+    .filter((r) => statusFilter === 'all' || r.status === statusFilter)
+    .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter));
 
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
         Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
       </div>
-      <StatusFilterBar value={statusFilter} onChange={setStatusFilter} />
+      <FilterBar options={FLEET_FILTERS} value={fleetFilter} onChange={setFleetFilter} />
+      <FilterBar options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
 
       {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing here.</div>}
       {filteredRows.map((r, i) => (

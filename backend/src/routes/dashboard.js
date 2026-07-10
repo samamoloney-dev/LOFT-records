@@ -83,15 +83,23 @@ router.get('/summary', async (req, res) => {
     pool.query('SELECT COUNT(*)::int AS n FROM checks WHERE result IS NULL AND archived = false'),
     // Non-archived flights with at least one syllabus item not yet signed
     // off - a stalled sign-off backlog, not the flight-in-progress case.
+    // flight_syllabus_progress rows only exist once an item is actually
+    // signed (see syllabus.js's /flight/:flightId/complete, an INSERT ... ON
+    // CONFLICT with no pre-seeded rows) - so "outstanding" has to start from
+    // the full syllabus_items catalog for that fleet/role (same join
+    // syllabus.js's own GET /flight/:flightId uses), not just existing
+    // progress rows, or an untouched item would silently count as done.
     pool.query(
       `SELECT f.trainee_id, f.id AS flight_id, f.date, t.first_name, t.last_name,
-              COUNT(fsp.syllabus_item_id)::int AS outstanding
+              COUNT(si.id) FILTER (WHERE fsp.completed_at IS NULL)::int AS outstanding
        FROM flights f
        JOIN trainees t ON t.id = f.trainee_id
-       JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id AND fsp.completed_at IS NULL
+       JOIN syllabus_items si ON si.fleet = t.fleet AND si.section = 'SYLLABUS'
+         AND (si.role_scope = 'BOTH' OR si.role_scope = (CASE t.role WHEN 'CAPTAIN' THEN 'CAPTAIN_ONLY' WHEN 'FIRST_OFFICER' THEN 'FO_ONLY' ELSE 'BOTH' END)::role_scope)
+       LEFT JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id AND fsp.syllabus_item_id = si.id
        WHERE f.archived = false AND t.archived = false
        GROUP BY f.trainee_id, f.id, f.date, t.first_name, t.last_name
-       HAVING COUNT(fsp.syllabus_item_id) > 0
+       HAVING COUNT(si.id) FILTER (WHERE fsp.completed_at IS NULL) > 0
        ORDER BY outstanding DESC`,
     ),
     // Required ground school items not yet completed (and not N/A) per
@@ -143,16 +151,21 @@ router.get('/summary', async (req, res) => {
     ),
     // Flight count + required-tasks sign-off fraction (cabin crew) - each
     // flight carries its own copy of the required tasks (see migration
-    // 0007's flight_syllabus_progress comment), so this is a running total
-    // across every flight they've ever logged, not just the latest one.
+    // 0007's flight_syllabus_progress comment and syllabus.js's GET
+    // /flight/:flightId, which is the source of truth this mirrors), so
+    // the total is the applicable item count times how many flights
+    // they've logged, not just however many progress rows happen to
+    // exist yet (most items have none until actually signed).
     pool.query(
       `SELECT t.id AS trainee_id,
               COUNT(DISTINCT f.id)::int AS flight_count,
-              COUNT(fsp.syllabus_item_id) FILTER (WHERE fsp.completed_at IS NOT NULL)::int AS loft_complete,
-              COUNT(fsp.syllabus_item_id)::int AS loft_total
+              COUNT(DISTINCT si.id)::int AS items_per_flight,
+              COUNT(fsp.id) FILTER (WHERE fsp.completed_at IS NOT NULL)::int AS loft_complete
        FROM trainees t
-       LEFT JOIN flights f ON f.trainee_id = t.id
-       LEFT JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id
+       LEFT JOIN flights f ON f.trainee_id = t.id AND f.archived = false
+       LEFT JOIN syllabus_items si ON si.fleet = t.fleet AND si.section = 'SYLLABUS'
+         AND (si.role_scope = 'BOTH' OR si.role_scope = (CASE t.role WHEN 'CAPTAIN' THEN 'CAPTAIN_ONLY' WHEN 'FIRST_OFFICER' THEN 'FO_ONLY' ELSE 'BOTH' END)::role_scope)
+       LEFT JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id AND fsp.syllabus_item_id = si.id
        WHERE t.archived = false AND t.type = 'CABIN_ATTENDANT'
        GROUP BY t.id`,
     ),
@@ -247,8 +260,13 @@ router.get('/summary', async (req, res) => {
       const gs = gsByTrainee[t.id] || { complete: 0, total: 0 };
       return { ...base, phase: t.phase, groundSchoolComplete: gs.complete, groundSchoolTotal: gs.total };
     }
-    const ca = caByTrainee[t.id] || { flight_count: 0, loft_complete: 0, loft_total: 0 };
-    return { ...base, flightCount: ca.flight_count, loftComplete: ca.loft_complete, loftTotal: ca.loft_total };
+    const ca = caByTrainee[t.id] || { flight_count: 0, items_per_flight: 0, loft_complete: 0 };
+    return {
+      ...base,
+      flightCount: ca.flight_count,
+      loftComplete: ca.loft_complete,
+      loftTotal: ca.flight_count * ca.items_per_flight,
+    };
   });
 
   res.json({

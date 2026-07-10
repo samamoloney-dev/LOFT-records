@@ -326,12 +326,21 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
   const datesSet = !!(c.completedDate && c.plannedDate);
   const datesLocked = datesSet && !unlocked[c.competencyTypeId];
-  return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 500 }}>{c.name}</div>
-        {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
-      </div>
+  // A competency that's current collapses into a closed dropdown by
+  // default, so a long list of dates that don't need attention doesn't
+  // clutter the tab - anything not yet current, overdue, due soon (or, on
+  // the checks that support it, in training) always stays fully open.
+  const collapsible = !c.na && status === 'ok';
+
+  const header = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ fontWeight: 500 }}>{c.name}</div>
+      {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
+    </div>
+  );
+
+  const body = (
+    <>
       {canBeNa && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
           <input
@@ -381,6 +390,22 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
           </label>
         </>
       )}
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="card">
+        <summary style={{ cursor: 'pointer' }}>{header}</summary>
+        <div style={{ marginTop: 8 }}>{body}</div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="card">
+      {header}
+      {body}
     </div>
   );
 }

@@ -220,7 +220,8 @@ function StaffAccountsPanel() {
     } catch (err) { setError(err.message); }
   }
 
-  async function remove(id) {
+  async function remove(id, name) {
+    if (!window.confirm(`Permanently delete ${name}'s staff account? They will lose access immediately and this cannot be undone.`)) return;
     setError(null);
     try { await api.delete(`/api/users/${id}`); load(); }
     catch (err) { setError(err.message); }
@@ -342,7 +343,7 @@ function StaffAccountsPanel() {
                 </button>
               )}
               <button onClick={() => openEditForm(u)}>Edit</button>
-              <button className="danger" onClick={() => remove(u.id)}>Remove</button>
+              <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
             </div>
           </div>
           {expandedGicId === u.id && (

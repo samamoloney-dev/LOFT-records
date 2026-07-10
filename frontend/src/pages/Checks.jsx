@@ -4,11 +4,14 @@ import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { CheckToLinePicker } from './CheckToLinePicker';
+import { CaptainInTrainingPicker } from './CaptainInTrainingPicker';
+import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
+import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
+import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
+import { CHECK_ROLES, GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER']; // IPC, PC, Emergency Procedures
 const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER']; // Check to Line, Line Check
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 export function Checks() {
   const { user } = useAuth();
@@ -26,7 +29,10 @@ export function Checks() {
   const canAccessEpForCa = CHECK_ROLES.includes(user.role) || hasEpAccess;
   const canAccessCaOnly = CA_CHECK_ROLES.includes(user.role);
   const canAccessCabinAttendants = canAccessEpForCa || canAccessCaOnly;
-  const canAccessOthers = ADMIN_ROLES.includes(user.role);
+  // Mirrors backend canAccessChecks (CHECK_ROLES) - the same staff who can
+  // create/edit a Ground Instructor Check or Personnel (Air) Competency
+  // Check, so Examiners aren't locked out of a tab they're allowed to use.
+  const canAccessOthers = CHECK_ROLES.includes(user.role);
 
   const topTabs = [
     canAccessPilots && { key: 'pilots', label: 'Pilots' },
@@ -40,6 +46,7 @@ export function Checks() {
     canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
     canAccessPilotChecks && { key: 'pc', label: 'PC' },
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
+    canAccessPilotChecks && { key: 'cit', label: 'Captain in Training' },
   ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
@@ -49,6 +56,12 @@ export function Checks() {
     canAccessCaOnly && { key: 'linecheck', label: 'Line Check' },
   ].filter(Boolean);
   const [caTab, setCaTab] = useState(caTabs[0]?.key);
+
+  const othersTabs = [
+    { key: 'gic', label: 'Ground Instructor Check' },
+    { key: 'pac', label: 'Personnel (Air) Competency Check' },
+  ];
+  const [othersTab, setOthersTab] = useState(othersTabs[0]?.key);
 
   return (
     <div>
@@ -60,6 +73,7 @@ export function Checks() {
           {pilotTab === 'ipc' && canAccessPilotChecks && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
           {pilotTab === 'pc' && canAccessPilotChecks && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
           {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
+          {pilotTab === 'cit' && canAccessPilotChecks && <CaptainInTrainingPicker />}
         </div>
       )}
 
@@ -73,8 +87,22 @@ export function Checks() {
       )}
 
       {topTab === 'others' && canAccessOthers && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-          Nothing here yet.
+        <div>
+          <TabBar tabs={othersTabs} active={othersTab} onSelect={setOthersTab} />
+          {othersTab === 'gic' && (
+            <StaffCheckPicker
+              roles={GROUND_INSTRUCTOR_CHECK_ROLES}
+              description="Select a staff member to view or complete their Ground Instructor Competency Check."
+              renderForm={(s) => <GroundInstructorCheckForm userId={s.id} userName={s.name} />}
+            />
+          )}
+          {othersTab === 'pac' && (
+            <StaffCheckPicker
+              roles={PERSONNEL_AIR_COMPETENCY_ROLES}
+              description="Select a staff member to view or complete their Flight Standards Personnel (Air) Competency Check."
+              renderForm={(s) => <PersonnelCompetencyCheckForm userId={s.id} userName={s.name} />}
+            />
+          )}
         </div>
       )}
     </div>

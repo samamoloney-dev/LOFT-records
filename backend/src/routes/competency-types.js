@@ -8,6 +8,8 @@ const { logAction } = require('../lib/audit');
 
 const router = express.Router();
 
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+
 // Admin-managed catalog of competency types (Dangerous Goods, First Aid,
 // etc.) - see 0037_competency_types.sql. Every active type applies to
 // every crew member automatically (see crew.js GET /:id/competencies),
@@ -29,6 +31,11 @@ const createSchema = z.object({
   // Most competencies apply to every crew member (null) - scoping to one
   // type is the exception (e.g. Medical, pilot-only).
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
+  // Scoping to specific fleets is rarer still (e.g. an Emergency Slide
+  // course that's Fokker 100 only) - null applies to every fleet, same as
+  // appliesTo being null applies to every trainee type. Both can combine
+  // (e.g. Fokker 100 AND pilot-only).
+  fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -38,8 +45,8 @@ router.post('/', async (req, res) => {
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM competency_types');
   try {
     const { rows } = await pool.query(
-      'INSERT INTO competency_types (name, sort_order, applies_to) VALUES ($1, $2, $3) RETURNING *',
-      [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null],
+      'INSERT INTO competency_types (name, sort_order, applies_to, fleets) VALUES ($1, $2, $3, $4::fleet[]) RETURNING *',
+      [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null, parsed.data.fleets?.length ? parsed.data.fleets : null],
     );
     await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id });
     res.status(201).json(rowToCamel(rows[0]));
@@ -53,8 +60,10 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   archived: z.boolean().optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
+  fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
 });
-const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to' };
+const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets' };
+const CAST_MAP = { fleets: '::fleet[]' };
 
 router.patch('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
@@ -63,8 +72,8 @@ router.patch('/:id', async (req, res) => {
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-  const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}`);
-  const values = entries.map(([, value]) => value);
+  const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}${CAST_MAP[key] || ''}`);
+  const values = entries.map(([key, value]) => (key === 'fleets' && Array.isArray(value) && value.length === 0 ? null : value));
   values.push(req.params.id);
 
   const { rows } = await pool.query(

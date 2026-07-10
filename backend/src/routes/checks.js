@@ -134,6 +134,17 @@ router.post('/', async (req, res) => {
   if (parsed.data.assignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }
+  // Captain in Training is only ever offered for a pilot an admin has
+  // explicitly allocated to a Captain upgrade (see crew.js
+  // captainInTraining) - not something anyone can start ad hoc for any pilot.
+  if (parsed.data.checkType === 'CAPTAIN_IN_TRAINING') {
+    const { rows } = parsed.data.crewMemberId
+      ? await pool.query('SELECT captain_in_training FROM crew_members WHERE id = $1', [parsed.data.crewMemberId])
+      : { rows: [] };
+    if (!rows[0]?.captain_in_training) {
+      return res.status(403).json({ error: 'This pilot has not been allocated to Captain in Training' });
+    }
+  }
 
   const check = await createCheckRecord(parsed.data);
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });

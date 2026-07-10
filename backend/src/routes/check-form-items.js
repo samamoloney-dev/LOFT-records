@@ -16,9 +16,10 @@ const FORM_KEYS = [
   'PERSONNEL_AIR_COMPETENCY',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
-// answer (e.g. which aircraft system was discussed). tick_approach: a tick
-// plus which instrument approach type was flown (Pilot Line Check only).
-const ITEM_KINDS = ['tick', 'score_code', 'text', 'tick_approach'];
+// answer (e.g. which aircraft system was discussed). score: a plain 1-5
+// numeric score with no code (Pilot Line Check's Non-Technical Skill
+// Assessment markers).
+const ITEM_KINDS = ['tick', 'score_code', 'text', 'score'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
 // Anyone who can reach a check form needs to be able to read its item
@@ -35,7 +36,11 @@ router.get('/', async (req, res) => {
   const conditions = [];
   const params = [];
   if (formKey) { params.push(formKey); conditions.push(`form_key = $${params.length}`); }
-  if (fleet) { params.push(fleet); conditions.push(`fleet = $${params.length}`); }
+  // OR fleet IS NULL so a form that mixes universal items with a handful
+  // of fleet-specific ones (Pilot Line Check) gets both when filtered to
+  // one fleet - Check to Line (the only other caller that passes fleet)
+  // has no universal rows, so this is a no-op there.
+  if (fleet) { params.push(fleet); conditions.push(`(fleet IS NULL OR fleet = $${params.length})`); }
   if (!includeArchived) conditions.push('archived = false');
 
   const { rows } = await pool.query(

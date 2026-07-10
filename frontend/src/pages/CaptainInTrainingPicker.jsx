@@ -19,7 +19,12 @@ export function CaptainInTrainingPicker() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.get('/api/crew?type=PILOT').then(setPilots).catch((e) => setError(e.message));
+    // Only pilots an admin has allocated to a Captain upgrade (see
+    // CrewInfoEditor's "Allocated to Captain in Training" checkbox) - not
+    // every pilot in the roster.
+    api.get('/api/crew?type=PILOT')
+      .then((all) => setPilots(all.filter((p) => p.captainInTraining)))
+      .catch((e) => setError(e.message));
   }, []);
 
   const selected = pilots.find((p) => p.id === selectedId);

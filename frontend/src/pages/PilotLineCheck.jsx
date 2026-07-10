@@ -6,10 +6,9 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
-import { APPROACH_TYPES } from './FlightRow';
 
 // Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
@@ -19,8 +18,14 @@ import { APPROACH_TYPES } from './FlightRow';
 // scoped to one Crew roster member (see CrewDetail.jsx) - there's no
 // free-text/ad-hoc use of this check type.
 const REFRESHER_ITEM_NAME = 'Refresher training and check';
+const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+// SA_490 only lists LHS/RHS (unlike ProficiencyChecks' three-seat check).
+const SEAT_OPTIONS = ['LHS', 'RHS'];
 
-const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', comments: '', assessorSig: '', candidateSig: '', results: {} });
+const emptyDetails = () => ({
+  date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', comments: '',
+  assessorSig: '', candidateSig: '', results: {}, seatCheck: [],
+});
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
 function groupBySection(items) {
@@ -59,7 +64,6 @@ function RefresherTrainingRow({ refresherCompetency }) {
 }
 
 function isItemAnswered(item, value) {
-  if (item.kind === 'tick_approach') return value?.satisfactory !== undefined;
   return value !== undefined;
 }
 
@@ -73,21 +77,15 @@ function ItemRow({ item, value, disabled, onChange }) {
     );
   }
 
-  if (item.kind === 'tick_approach') {
-    const v = value || {};
+  if (item.kind === 'score') {
     return (
-      <div className="card" style={{ marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 13, flex: 1 }}>{item.description}</div>
-          <select disabled={disabled} value={v.approachType || ''} onChange={(e) => onChange({ ...v, approachType: e.target.value })} style={{ width: 130 }}>
-            <option value="">Approach type —</option>
-            {APPROACH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button type="button" className={`tick-btn ${v.satisfactory === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange({ ...v, satisfactory: true })}>✓</button>
-            <button type="button" className={`tick-btn ${v.satisfactory === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange({ ...v, satisfactory: false })}>✗</button>
-          </div>
-        </div>
+      <div className="row" style={{ cursor: 'default' }}>
+        <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+        <input
+          type="number" min="1" max="5" style={{ width: 60 }}
+          disabled={disabled} defaultValue={value ?? ''}
+          onBlur={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        />
       </div>
     );
   }
@@ -114,8 +112,13 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   const [refresherCompetency, setRefresherCompetency] = useState(null);
 
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=PILOT_LINE_CHECK').then(setItems).catch(() => {});
-  }, []);
+    // fleet can be undefined for a pilot ticked on more than one fleet
+    // (see CrewDetail.jsx) - falls back to the unfiltered list, which just
+    // means they'd also see the Dash 8/Metro 23-only "Narrow runway
+    // supplement" item even if only one of their fleets needs it.
+    const fleetParam = fleet ? `&fleet=${fleet}` : '';
+    api.get(`/api/check-form-items?formKey=PILOT_LINE_CHECK${fleetParam}`).then(setItems).catch(() => {});
+  }, [fleet]);
   useEffect(() => {
     api.get(`/api/crew/${crewMemberId}/competencies`)
       .then((rows) => setRefresherCompetency(rows.find((r) => r.name === 'Refresher Training') || null))
@@ -169,10 +172,23 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     patchDetails(check, { results: { ...(check.details?.results || {}), [itemId]: value } });
   }
 
+  function toggleSeat(check, currentSeats, seat) {
+    const next = currentSeats.includes(seat) ? currentSeats.filter((s) => s !== seat) : [...currentSeats, seat];
+    patchDetails(check, { seatCheck: next });
+  }
+
   async function setResult(check, result) {
     setError(null);
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: new Date().toISOString() });
+      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
+  async function setScore(check, score) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/checks/${check.id}`, { score });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
   }
@@ -213,25 +229,28 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   function printCheck(check) {
     const d = check.details || {};
     const results = d.results || {};
+    const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
     const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
     let body = `
       <h1>Line Check</h1>
-      <div class="meta">${crewMemberName} · ${d.date || ''}</div>
+      <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
       ${section('General', [[REFRESHER_ITEM_NAME, isCurrent ? '✓ Current' : 'Not current']])}
     `;
     for (const [sectionName, sectionItems] of sections) {
       body += section(sectionName, sectionItems.map((item) => {
         const v = results[item.id];
         if (item.kind === 'text') return [item.description, v || ''];
-        if (item.kind === 'tick_approach') return [item.description, `${v?.satisfactory === true ? '✓' : v?.satisfactory === false ? '✗' : ''}${v?.approachType ? ` (${v.approachType})` : ''}`];
+        if (item.kind === 'score') return [item.description, v !== undefined ? String(v) : ''];
         return [item.description, v === true ? '✓' : v === false ? '✗' : ''];
       }));
     }
+    body += seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null);
     body += section('Details', [
       ['Assessor', d.assessor],
       ['Assessor ARN', d.assessorArn],
       ['Comments', d.comments],
       ['Overall assessment', resultBadge(check.result)],
+      ['Overall score', check.score],
     ]);
     body += signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]]);
     openPrintWindow(`Line Check - ${crewMemberName}`, body);
@@ -240,6 +259,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   if (selected) {
     const d = selected.details || {};
     const results = d.results || {};
+    const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
     const locked = !!selected.completedAt;
     const allItemsAnswered = tickableItems.length > 0 && tickableItems.every((item) => isItemAnswered(item, results[item.id]));
     return (
@@ -259,7 +279,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{crewMemberName} — Line Check</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.date ? formatDate(d.date) : 'No date'}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
         <div className="card">
@@ -273,6 +293,13 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
           <div className="grid2">
             <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={locked} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
             <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
+          </div>
+          <div className="field">
+            <label>Aircraft type</label>
+            <select value={d.actype || ''} disabled={locked} onChange={(e) => patchDetails(selected, { actype: e.target.value })}>
+              <option value="">—</option>
+              {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
         </div>
 
@@ -294,6 +321,21 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
             ))}
           </div>
         ))}
+
+        <div className="card">
+          <div style={{ fontWeight: 500, marginBottom: 6 }}>Check Conducted In</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {SEAT_OPTIONS.map((seat) => (
+              <button
+                key={seat}
+                type="button"
+                disabled={locked}
+                className={seatCheck.includes(seat) ? 'primary' : ''}
+                onClick={() => toggleSeat(selected, seatCheck, seat)}
+              >{seat}</button>
+            ))}
+          </div>
+        </div>
 
         <div className="card">
           <div className="field"><label>Comments</label><textarea defaultValue={d.comments} disabled={locked} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 60 }} /></div>
@@ -326,13 +368,19 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
           </div>
         )}
         <div className="card">
-          <div className="field">
-            <label>Overall assessment</label>
-            <select disabled={locked || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
-              <option value="">—</option>
-              <option value="PASS">PASS</option>
-              <option value="FAIL">FAIL</option>
-            </select>
+          <div className="grid2">
+            <div className="field">
+              <label>Overall assessment</label>
+              <select disabled={locked || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+                <option value="">—</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Overall score (1–5)</label>
+              <input type="number" min="1" max="5" disabled={locked} defaultValue={selected.score || ''} onBlur={(e) => setScore(selected, Number(e.target.value) || null)} />
+            </div>
           </div>
         </div>
         {error && <div className="error-text">{error}</div>}
@@ -349,7 +397,16 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
 
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
-          <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} required /></div>
+          <div className="grid2">
+            <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} required /></div>
+            <div className="field">
+              <label>Aircraft type</label>
+              <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>
+                <option value="">—</option>
+                {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType="LINE_CHECK"
@@ -367,7 +424,9 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.date ? formatDate(c.details.date) : 'No date'}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.assessor ? `Assessor: ${c.details.assessor}` : 'No assessor'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {c.details?.actype || 'No aircraft type'} · {c.details?.assessor ? `Assessor: ${c.details.assessor}` : 'No assessor'}
+            </div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
         </div>

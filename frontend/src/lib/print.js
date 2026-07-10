@@ -200,15 +200,15 @@ export function checklistTable(rows, { withItemNo = true, twoColumn = false } = 
   return `<div class="check-table${twoColumn ? ' two-col' : ''}">${head}${body}</div>`;
 }
 
-// "Seat check conducted in" box - LHS/RHS/Other Seat with a tick for
-// whichever was actually used, matching the paper form's own boxed
-// three-column layout.
-export function seatCheckBox(seatCheck) {
-  const seats = ['LHS', 'RHS', 'Other Seat'];
+// "Seat check conducted in" box - a tick for whichever seat(s) were
+// actually used, matching the paper form's own boxed column layout.
+// Defaults match ProficiencyChecks (LHS/RHS/Other Seat); Pilot Line Check
+// passes its own two-seat list and title (see PilotLineCheck.jsx).
+export function seatCheckBox(seatCheck, seats = ['LHS', 'RHS', 'Other Seat'], title = 'Seat check conducted in', caption = 'Training captains in LHS and Other, F.O. in RHS, Captains in LHS') {
   const cells = seats.map((s) => `<div>${s}<span class="mark">${seatCheck.includes(s) ? '✓' : ''}</span></div>`).join('');
   return `
     <div class="seat-check">
-      <div class="seat-check-title">Seat check conducted in<br/><small>Training captains in LHS and Other, F.O. in RHS, Captains in LHS</small></div>
+      <div class="seat-check-title">${title}${caption ? `<br/><small>${caption}</small>` : ''}</div>
       <div class="seat-check-row">${cells}</div>
     </div>`;
 }

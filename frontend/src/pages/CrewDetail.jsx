@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { ADMIN_ROLES } from '../lib/checkAccess';
 import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
@@ -75,23 +77,26 @@ function initCrewInfoForm(member) {
   return {
     firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets,
     lineCheckAnchorDate: member.lineCheckAnchorDate ? member.lineCheckAnchorDate.slice(0, 10) : '',
+    captainInTraining: !!member.captainInTraining,
   };
 }
 
 function CrewInfoEditor({ member, onSaved }) {
+  const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(() => initCrewInfoForm(member));
   const [error, setError] = useState(null);
 
   const roles = member.type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
   const isPilot = member.type === 'PILOT';
+  const isAdmin = ADMIN_ROLES.includes(user.role);
 
   async function save(e) {
     e.preventDefault();
     setError(null);
     try {
       const base = member.isLinked ? { role: form.role, fleets: form.fleets } : form;
-      const patch = isPilot ? { ...base, lineCheckAnchorDate: form.lineCheckAnchorDate || null } : base;
+      const patch = isPilot ? { ...base, lineCheckAnchorDate: form.lineCheckAnchorDate || null, captainInTraining: form.captainInTraining } : base;
       onSaved(await api.patch(`/api/crew/${member.id}`, patch));
       setEditing(false);
     } catch (err) { setError(err.message); }
@@ -132,6 +137,17 @@ function CrewInfoEditor({ member, onSaved }) {
           <input type="date" value={form.lineCheckAnchorDate} onChange={(e) => setForm({ ...form, lineCheckAnchorDate: e.target.value })} />
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will always be due 365 days on from this date, then every 365 days after.</div>
         </div>
+      )}
+      {isPilot && isAdmin && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={form.captainInTraining}
+            onChange={(e) => setForm({ ...form, captainInTraining: e.target.checked })}
+            style={{ width: 'auto' }}
+          />
+          Allocated to Captain in Training (unlocks the CIT Preliminary/Final assessments below)
+        </label>
       )}
       {error && <div className="error-text">{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -281,7 +297,9 @@ function CurrencyFolder({ member }) {
   const subTabs = isPilot
     ? [
       { key: 'ep', label: 'Emergency Procedures' }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' },
-      { key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' },
+      // Only shown once an admin has allocated this pilot to a Captain
+      // upgrade (see CrewInfoEditor) - not offered to every pilot.
+      ...(member.captainInTraining ? [{ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' }] : []),
     ]
     : [{ key: 'ep', label: 'Emergency Procedures' }, { key: 'linecheck', label: 'Line Check' }];
   const [subTab, setSubTab] = useState('ep');
@@ -317,6 +335,8 @@ function CurrencyFolder({ member }) {
 // Competencies list below the top block (Medical is special-cased into its
 // own compact MedicalBox above instead - see ExpiryTab).
 function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
+  const { user } = useAuth();
+  const canUnlock = user.role === 'HOTC' || user.role === 'HOFO';
   const status = competencyStatus(c.dueDate);
   // Not every crew member is required to hold every competency - e.g.
   // First Aid is Metro-only (mirrors the Ground School N/A
@@ -324,8 +344,11 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   // Training. Scoped to exactly these two names rather than a
   // blanket feature.
   const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
-  const datesSet = !!(c.completedDate && c.plannedDate);
-  const datesLocked = datesSet && !unlocked[c.competencyTypeId];
+  // Once any date has been saved, every date field locks - a typo can no
+  // longer just be typed over. Only HOTC/HOFO get the "Edit dates" toggle
+  // to unlock and correct it; everyone else is stuck read-only from here.
+  const datesSet = !!(c.completedDate || c.dueDate || c.plannedDate);
+  const datesLocked = datesSet && !(canUnlock && unlocked[c.competencyTypeId]);
   // A competency that's current collapses into a closed dropdown by
   // default, so a long list of dates that don't need attention doesn't
   // clutter the tab - anything not yet current, overdue, due soon (or, on
@@ -354,7 +377,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
       )}
       {!c.na && (
         <>
-          {datesSet && (
+          {datesSet && canUnlock && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
               <input
                 type="checkbox"

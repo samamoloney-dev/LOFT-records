@@ -752,7 +752,7 @@ function CheckFormItemsSection() {
               <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 <option value="tick">Tick (satisfactory/not)</option>
                 <option value="text">Free text</option>
-                <option value="tick_approach">Tick + instrument approach type</option>
+                <option value="score">Score (1-5, no code)</option>
               </select>
             </div>
           )}
@@ -782,7 +782,7 @@ function CheckFormItemsSection() {
                   {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}
                   {item.kind === 'score_code' ? ' · Score + code' : ''}
                   {item.kind === 'text' ? ' · Free text' : ''}
-                  {item.kind === 'tick_approach' ? ' · Tick + approach type' : ''}
+                  {item.kind === 'score' ? ' · Score (1-5)' : ''}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>

@@ -206,13 +206,14 @@ const CURRENCY_LABELS = {
 // (see 0037_competency_types.sql) - this is a LEFT JOIN so a type with no
 // dates entered yet for this person still comes back (with nulls), rather
 // than requiring a crew_competencies row to already exist.
-async function activeCompetencies(crewMemberId, crewType) {
+async function activeCompetencies(crewMemberId, crewType, crewFleets) {
   const { rows } = await pool.query(
     `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
-     WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)`,
-    [crewMemberId, crewType],
+     WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
+       AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])`,
+    [crewMemberId, crewType, crewFleets],
   );
   return rows;
 }
@@ -243,7 +244,7 @@ async function itemsFor(member, currency) {
       plannedDate: info.plannedDate,
     }));
 
-  const competencies = await activeCompetencies(member.id, member.type);
+  const competencies = await activeCompetencies(member.id, member.type, member.fleets);
   const fromCompetencies = competencies
     .filter((c) => !c.na)
     .map((c) => ({
@@ -458,6 +459,10 @@ const updateSchema = z.object({
   // shipped - going forward, licence photos are captured via the IPC form
   // instead (see checks.js PATCH /:id/licence-photo).
   licencePhoto: z.string().nullable().optional(),
+  // Captain in Training assessments (SA 567/568) are only ever offered for
+  // a pilot an admin has explicitly allocated to a Captain upgrade - see
+  // CrewDetail.jsx/CaptainInTrainingPicker.jsx.
+  captainInTraining: z.boolean().optional(),
 });
 
 const COLUMN_MAP = {
@@ -468,6 +473,7 @@ const COLUMN_MAP = {
   lineCheckAnchorDate: 'line_check_anchor_date',
   arn: 'arn',
   userId: 'user_id',
+  captainInTraining: 'captain_in_training',
   licencePhoto: 'licence_photo',
 };
 const CAST_MAP = { fleets: '::fleet[]' };
@@ -638,8 +644,9 @@ router.get('/:id/competencies', async (req, res) => {
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
+       AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
      ORDER BY ct.sort_order ASC, ct.created_at ASC`,
-    [member.id, member.type],
+    [member.id, member.type, member.fleets],
   );
   res.json(rows.map(rowToCamel));
 });
@@ -665,6 +672,23 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { completedDate, dueDate, plannedDate, na, courseSent } = parsed.data;
+
+  // Once any date has been saved for this competency, only HOTC/HOFO can
+  // change it - everyone else is locked out from here on (mirrors the
+  // frontend's disabled date inputs, but enforced server-side too since a
+  // disabled input alone doesn't stop a direct API call).
+  const { rows: existingRows } = await pool.query(
+    'SELECT completed_date, due_date, planned_date FROM crew_competencies WHERE crew_member_id = $1 AND competency_type_id = $2',
+    [member.id, req.params.competencyTypeId],
+  );
+  const existing = existingRows[0];
+  const hasSavedDates = existing && (existing.completed_date || existing.due_date || existing.planned_date);
+  const changingDates = Object.prototype.hasOwnProperty.call(req.body, 'completedDate')
+    || Object.prototype.hasOwnProperty.call(req.body, 'dueDate')
+    || Object.prototype.hasOwnProperty.call(req.body, 'plannedDate');
+  if (hasSavedDates && changingDates && !['HOTC', 'HOFO'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only HOTC or HOFO can change a competency date once it has been saved' });
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na, course_sent)

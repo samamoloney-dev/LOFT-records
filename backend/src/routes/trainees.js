@@ -182,7 +182,7 @@ router.post('/:id/archive', async (req, res) => {
     userId: req.user.id, action: 'ARCHIVE', targetTable: 'trainees', targetId: req.params.id,
     description: `Archived trainee ${rows[0].first_name} ${rows[0].last_name}`,
   });
-  res.json(rowToCamel(rows[0]));
+  res.json(await withHours(rowToCamel(rows[0])));
 });
 
 router.post('/:id/unarchive', async (req, res) => {
@@ -193,7 +193,7 @@ router.post('/:id/unarchive', async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'trainees', targetId: req.params.id });
-  res.json(rowToCamel(rows[0]));
+  res.json(await withHours(rowToCamel(rows[0])));
 });
 
 module.exports = router;

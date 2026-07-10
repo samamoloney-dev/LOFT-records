@@ -631,7 +631,10 @@ router.post('/:id/archive', async (req, res) => {
     userId: req.user.id, action: 'ARCHIVE', targetTable: 'crew_members', targetId: req.params.id,
     description: `Archived crew member ${rows[0].first_name} ${rows[0].last_name}`,
   });
-  res.json(await findCrewMember(req.params.id));
+  // CrewDetail.jsx reads member.urgentItems/.allItems unconditionally - has
+  // to go through withCurrency like GET /:id does, or the page blanks with
+  // an uncaught render error the moment this response lands.
+  res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
 router.post('/:id/unarchive', async (req, res) => {
@@ -641,7 +644,7 @@ router.post('/:id/unarchive', async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'crew_members', targetId: req.params.id });
-  res.json(await findCrewMember(req.params.id));
+  res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
 // Every active competency type (managed on the Syllabus tab - see

@@ -115,4 +115,15 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
+// Unlike competency types, an item's answers live in the check's own
+// details JSONB keyed by item id, not a foreign key - deleting an item
+// just leaves that key unreadable on any already-completed check, it
+// doesn't touch or cascade-delete historical records.
+router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM check_form_items WHERE id = $1', [req.params.id]);
+  if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'check_form_items', targetId: req.params.id });
+  res.status(204).end();
+});
+
 module.exports = router;

@@ -80,9 +80,10 @@ function GroundSchoolAdminSection() {
     } catch (err) { setError(err.message); }
   }
 
-  async function remove(id) {
+  async function remove(item) {
+    if (!window.confirm(`Permanently delete "${item.description}"? Any trainee's progress against it will be deleted too. This cannot be undone.`)) return;
     setError(null);
-    try { await api.delete(`/api/ground-school/items/${id}`); load(); }
+    try { await api.delete(`/api/ground-school/items/${item.id}`); load(); }
     catch (err) { setError(err.message); }
   }
 
@@ -204,7 +205,7 @@ function GroundSchoolAdminSection() {
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => openEditForm(item)}>Edit</button>
-                      <button className="danger" onClick={() => remove(item.id)}>Remove</button>
+                      <button className="danger" onClick={() => remove(item)}>Remove</button>
                     </div>
                   </div>
                 ))}
@@ -303,9 +304,10 @@ function SyllabusItemsSection() {
     } catch (err) { setError(err.message); }
   }
 
-  async function remove(id) {
+  async function remove(item) {
+    if (!window.confirm(`Permanently delete "${item.description}"? Any trainee's progress against it will be deleted too. This cannot be undone.`)) return;
     setError(null);
-    try { await api.delete(`/api/syllabus/items/${id}`); load(); }
+    try { await api.delete(`/api/syllabus/items/${item.id}`); load(); }
     catch (err) { setError(err.message); }
   }
 
@@ -456,7 +458,7 @@ function SyllabusItemsSection() {
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => openEditForm(item)}>Edit</button>
-                          <button className="danger" onClick={() => remove(item.id)}>Remove</button>
+                          <button className="danger" onClick={() => remove(item)}>Remove</button>
                         </div>
                       </div>
                     ))}
@@ -668,6 +670,13 @@ function CheckFormItemsSection() {
     catch (err) { setError(err.message); }
   }
 
+  async function remove(item) {
+    if (!window.confirm(`Permanently delete "${item.description}"? This cannot be undone.`)) return;
+    setError(null);
+    try { await api.delete(`/api/check-form-items/${item.id}`); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   const bySection = items.reduce((acc, item) => {
     (acc[item.section || '—'] ||= []).push(item);
     return acc;
@@ -788,6 +797,7 @@ function CheckFormItemsSection() {
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => openEditForm(item)}>Edit</button>
                 <button onClick={() => toggleArchive(item)}>{item.archived ? 'Unarchive' : 'Archive'}</button>
+                <button className="danger" onClick={() => remove(item)}>Delete</button>
               </div>
             </div>
           ))}
@@ -804,13 +814,37 @@ function CheckFormItemsSection() {
 // shared, extensible catalog.
 const APPLIES_TO_LABELS = { PILOT: 'Pilots only', CABIN_ATTENDANT: 'Cabin attendants only' };
 
+function CompetencyFleetPicker({ value, onChange }) {
+  function toggle(f) {
+    onChange(value.includes(f) ? value.filter((x) => x !== f) : [...value, f]);
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {FLEETS.map((f) => (
+        <div
+          key={f}
+          onClick={() => toggle(f)}
+          style={{
+            padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+            cursor: 'pointer', fontSize: 13,
+            background: value.includes(f) ? 'var(--bg-accent)' : 'var(--surface-2)',
+            color: value.includes(f) ? 'var(--text-accent)' : 'inherit',
+          }}
+        >{formatFleet(f)}</div>
+      ))}
+    </div>
+  );
+}
+
 function CompetencyTypesSection() {
   const [types, setTypes] = useState([]);
   const [name, setName] = useState('');
   const [appliesTo, setAppliesTo] = useState('');
+  const [fleets, setFleets] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [editingAppliesTo, setEditingAppliesTo] = useState('');
+  const [editingFleets, setEditingFleets] = useState([]);
   const [error, setError] = useState(null);
 
   function load() {
@@ -823,9 +857,10 @@ function CompetencyTypesSection() {
     if (!name.trim()) return;
     setError(null);
     try {
-      await api.post('/api/competency-types', { name: name.trim(), appliesTo: appliesTo || null });
+      await api.post('/api/competency-types', { name: name.trim(), appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null });
       setName('');
       setAppliesTo('');
+      setFleets([]);
       load();
     } catch (err) { setError(err.message); }
   }
@@ -834,7 +869,7 @@ function CompetencyTypesSection() {
     if (!editingName.trim()) return;
     setError(null);
     try {
-      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim(), appliesTo: editingAppliesTo || null });
+      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim(), appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null });
       setEditingId(null);
       load();
     } catch (err) { setError(err.message); }
@@ -846,10 +881,17 @@ function CompetencyTypesSection() {
     catch (err) { setError(err.message); }
   }
 
+  async function remove(t) {
+    if (!window.confirm(`Permanently delete "${t.name}"? Any crew member's dates already entered against it will be deleted too. This cannot be undone.`)) return;
+    setError(null);
+    try { await api.delete(`/api/competency-types/${t.id}`); load(); }
+    catch (err) { setError(err.message); }
+  }
+
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Every active competency here is required for every crew member (unless scoped to pilots or cabin attendants only) - archiving one removes it from crew profiles going forward without losing past dates.
+        Every active competency here is required for every crew member (unless scoped to pilots/cabin attendants and/or specific fleets) - archiving one removes it from crew profiles going forward without losing past dates.
       </div>
       <form className="card" onSubmit={addType}>
         <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
@@ -861,15 +903,19 @@ function CompetencyTypesSection() {
             <option value="CABIN_ATTENDANT">Cabin attendants only</option>
           </select>
         </div>
+        <div className="field">
+          <label>Fleets (leave none ticked for every fleet - e.g. tick only Fokker 100/Cabin Fokker 100 for a Fokker-specific course)</label>
+          <CompetencyFleetPicker value={fleets} onChange={setFleets} />
+        </div>
         <button type="submit" className="primary">Add</button>
       </form>
       {error && <div className="error-text">{error}</div>}
 
       {types.map((t) => (
-        <div key={t.id} className="card row" style={{ cursor: 'default' }}>
+        <div key={t.id} className="card" style={{ cursor: 'default' }}>
           {editingId === t.id ? (
             <>
-              <div style={{ flex: 1, display: 'flex', gap: 8, marginRight: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <input style={{ flex: 1 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
                 <select value={editingAppliesTo} onChange={(e) => setEditingAppliesTo(e.target.value)} style={{ width: 180 }}>
                   <option value="">All crew</option>
@@ -877,23 +923,26 @@ function CompetencyTypesSection() {
                   <option value="CABIN_ATTENDANT">Cabin attendants only</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <CompetencyFleetPicker value={editingFleets} onChange={setEditingFleets} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 <button onClick={() => saveName(t.id)}>Save</button>
                 <button onClick={() => setEditingId(null)}>Cancel</button>
               </div>
             </>
           ) : (
-            <>
+            <div className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>
                 {t.name}
                 {t.appliesTo ? ` (${APPLIES_TO_LABELS[t.appliesTo]})` : ''}
+                {(t.fleets || []).length ? ` (${t.fleets.map(formatFleet).join(', ')} only)` : ''}
                 {t.archived ? ' (archived)' : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); }}>Edit</button>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); setEditingFleets(t.fleets || []); }}>Edit</button>
                 <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
+                <button className="danger" onClick={() => remove(t)}>Delete</button>
               </div>
-            </>
+            </div>
           )}
         </div>
       ))}

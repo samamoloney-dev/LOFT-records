@@ -85,4 +85,15 @@ router.patch('/:id', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
+// A hard delete cascades to every crew member's crew_competencies row for
+// this type (see 0038_crew_competencies_type_link.sql) - unlike archiving,
+// their dates are gone too, not just hidden. The frontend warns about this
+// before calling it; archive is the safe default for a type still in use.
+router.delete('/:id', async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM competency_types WHERE id = $1', [req.params.id]);
+  if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'competency_types', targetId: req.params.id });
+  res.status(204).end();
+});
+
 module.exports = router;

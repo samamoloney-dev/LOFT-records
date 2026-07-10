@@ -167,4 +167,33 @@ router.post('/:id/promote-to-crew', async (req, res) => {
   res.status(201).json(crewMember);
 });
 
+// A trainee who withdraws or otherwise stops training needs a way out of
+// the active list that isn't tied to Check to Line completion (the only
+// other path to archived - see promote-to-crew above) - mirrors crew_members'
+// own archive/unarchive pair.
+router.post('/:id/archive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can archive trainees' });
+  const { rows } = await pool.query(
+    'UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1 RETURNING *',
+    [req.params.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'ARCHIVE', targetTable: 'trainees', targetId: req.params.id,
+    description: `Archived trainee ${rows[0].first_name} ${rows[0].last_name}`,
+  });
+  res.json(rowToCamel(rows[0]));
+});
+
+router.post('/:id/unarchive', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can unarchive trainees' });
+  const { rows } = await pool.query(
+    'UPDATE trainees SET archived = false, archived_at = null WHERE id = $1 RETURNING *',
+    [req.params.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'trainees', targetId: req.params.id });
+  res.json(rowToCamel(rows[0]));
+});
+
 module.exports = router;

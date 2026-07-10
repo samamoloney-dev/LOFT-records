@@ -336,7 +336,11 @@ function CurrencyFolder({ member }) {
 // own compact MedicalBox above instead - see ExpiryTab).
 function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   const { user } = useAuth();
-  const canUnlock = user.role === 'HOTC' || user.role === 'HOFO';
+  // Refresher Training is the one exception - Flight Ops Admin administers
+  // that course's completions too (see PilotLineCheck.jsx's Refresher
+  // Training row), so they also get the unlock for this competency only.
+  // Mirrors the same exception enforced server-side in crew.js.
+  const canUnlock = user.role === 'HOTC' || user.role === 'HOFO' || (user.role === 'FLIGHT_OPS_ADMIN' && c.name === 'Refresher Training');
   const status = competencyStatus(c.dueDate);
   // Not every crew member is required to hold every competency - e.g.
   // First Aid is Metro-only (mirrors the Ground School N/A
@@ -345,8 +349,9 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   // blanket feature.
   const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
   // Once any date has been saved, every date field locks - a typo can no
-  // longer just be typed over. Only HOTC/HOFO get the "Edit dates" toggle
-  // to unlock and correct it; everyone else is stuck read-only from here.
+  // longer just be typed over. Only HOTC/HOFO (or Flight Ops Admin, for
+  // Refresher Training) get the "Edit dates" toggle to unlock and correct
+  // it; everyone else is stuck read-only from here.
   const datesSet = !!(c.completedDate || c.dueDate || c.plannedDate);
   const datesLocked = datesSet && !(canUnlock && unlocked[c.competencyTypeId]);
   // A competency that's current collapses into a closed dropdown by

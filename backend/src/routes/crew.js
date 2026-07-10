@@ -676,9 +676,15 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   // Once any date has been saved for this competency, only HOTC/HOFO can
   // change it - everyone else is locked out from here on (mirrors the
   // frontend's disabled date inputs, but enforced server-side too since a
-  // disabled input alone doesn't stop a direct API call).
+  // disabled input alone doesn't stop a direct API call). Refresher
+  // Training is the one exception - Flight Ops Admin also administers
+  // that course's completions (see PilotLineCheck.jsx's Refresher Training
+  // row), so they get the same unlock for this competency only.
   const { rows: existingRows } = await pool.query(
-    'SELECT completed_date, due_date, planned_date FROM crew_competencies WHERE crew_member_id = $1 AND competency_type_id = $2',
+    `SELECT cc.completed_date, cc.due_date, cc.planned_date, ct.name
+     FROM competency_types ct
+     LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
+     WHERE ct.id = $2`,
     [member.id, req.params.competencyTypeId],
   );
   const existing = existingRows[0];
@@ -686,8 +692,9 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   const changingDates = Object.prototype.hasOwnProperty.call(req.body, 'completedDate')
     || Object.prototype.hasOwnProperty.call(req.body, 'dueDate')
     || Object.prototype.hasOwnProperty.call(req.body, 'plannedDate');
-  if (hasSavedDates && changingDates && !['HOTC', 'HOFO'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Only HOTC or HOFO can change a competency date once it has been saved' });
+  const allowedRoles = existing?.name === 'Refresher Training' ? ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'] : ['HOTC', 'HOFO'];
+  if (hasSavedDates && changingDates && !allowedRoles.includes(req.user.role)) {
+    return res.status(403).json({ error: `Only ${allowedRoles.map((r) => (r === 'FLIGHT_OPS_ADMIN' ? 'Flight Ops Admin' : r)).join(', ')} can change a competency date once it has been saved` });
   }
 
   const { rows } = await pool.query(

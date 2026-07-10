@@ -55,6 +55,27 @@ async function revalidateRhsCompetency(assignedToUserId, completedAt) {
   }
 }
 
+const CHECK_TYPE_LABELS = {
+  RECURRENT_SIMULATOR: 'Recurrent Simulator Check',
+  EMERGENCY_PROCEDURES: 'Emergency Procedures',
+  CABIN_ATTENDANT_LINE_CHECK: 'Cabin Attendant Line Check',
+  PILOT_LINE_CHECK: 'Pilot Line Check',
+  CAPTAIN_IN_TRAINING: 'Captain in Training Assessment',
+};
+
+// checks.crew_member_name is snapshotted at creation (see createCheckRecord
+// below), but there's no equivalent trainee-name column - falls back to a
+// quick lookup for the (rarer) trainee-scoped checks, e.g. Captain in
+// Training assessments created against a trainee rather than crew.
+async function checkSubjectName(check) {
+  if (check.crewMemberName) return check.crewMemberName;
+  if (check.traineeId) {
+    const { rows } = await pool.query('SELECT first_name, last_name FROM trainees WHERE id = $1', [check.traineeId]);
+    if (rows[0]) return `${rows[0].first_name} ${rows[0].last_name}`;
+  }
+  return 'an unlinked candidate';
+}
+
 router.get('/', async (req, res) => {
   const { traineeId, crewMemberId, checkType, archived } = req.query;
   if (checkType && !canAccessCheckType(req.user, checkType)) {
@@ -147,7 +168,10 @@ router.post('/', async (req, res) => {
   }
 
   const check = await createCheckRecord(parsed.data);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: check.id,
+    description: `Created ${CHECK_TYPE_LABELS[check.checkType] || check.checkType} for ${await checkSubjectName(check)}`,
+  });
   res.status(201).json(check);
 });
 
@@ -210,7 +234,16 @@ router.patch('/:id', async (req, res) => {
     ],
   );
   const updated = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
+  // Only the specific PATCH call that actually sets a result reads as a
+  // "completed" event worth surfacing - the same check gets several other
+  // incremental UPDATE calls while a form is being filled in, which would
+  // otherwise flood the feed with duplicate-looking entries.
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id,
+    description: d.result
+      ? `Completed ${CHECK_TYPE_LABELS[updated.checkType] || updated.checkType} for ${await checkSubjectName(updated)} — ${d.result}`
+      : undefined,
+  });
 
   if (updated.checkType === 'RECURRENT_SIMULATOR' && d.result && updated.assignedTo) {
     const seatCheck = Array.isArray(updated.details?.seatCheck) ? updated.details.seatCheck : [];

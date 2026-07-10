@@ -157,7 +157,10 @@ router.post('/:traineeId/complete', async (req, res) => {
     'UPDATE check_to_line_forms SET completed_at = now() WHERE id = $1 RETURNING *',
     [form.id],
   );
-  await logAction({ userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: form.id });
+  await logAction({
+    userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: trainee.id,
+    description: `Completed Check to Line for ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.json(rowToCamel(updatedRows[0]));
 });
 

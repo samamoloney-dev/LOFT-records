@@ -76,7 +76,10 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
     [d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null, d.ipcOnly || false, maxRows[0].next],
   );
   const item = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'check_form_items', targetId: item.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'check_form_items', targetId: item.id,
+    description: `Added check form item "${item.description}"`,
+  });
   res.status(201).json(item);
 });
 
@@ -111,7 +114,10 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
     values,
   );
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'check_form_items', targetId: rows[0].id });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'check_form_items', targetId: rows[0].id,
+    description: `Updated check form item "${rows[0].description}"`,
+  });
   res.json(rowToCamel(rows[0]));
 });
 
@@ -120,9 +126,12 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
 // just leaves that key unreadable on any already-completed check, it
 // doesn't touch or cascade-delete historical records.
 router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  const { rowCount } = await pool.query('DELETE FROM check_form_items WHERE id = $1', [req.params.id]);
-  if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'check_form_items', targetId: req.params.id });
+  const { rows } = await pool.query('DELETE FROM check_form_items WHERE id = $1 RETURNING description', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'check_form_items', targetId: req.params.id,
+    description: `Deleted check form item "${rows[0].description}"`,
+  });
   res.status(204).end();
 });
 

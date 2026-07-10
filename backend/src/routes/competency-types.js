@@ -56,7 +56,10 @@ router.post('/', async (req, res) => {
       'INSERT INTO competency_types (name, sort_order, applies_to, fleets) VALUES ($1, $2, $3, $4::fleet[]) RETURNING *',
       [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null, parsed.data.fleets?.length ? parsed.data.fleets : null],
     );
-    await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id });
+    await logAction({
+      userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id,
+      description: `Added competency type "${rows[0].name}"`,
+    });
     res.status(201).json(serialize(rows[0]));
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A competency with that name already exists' });
@@ -89,7 +92,10 @@ router.patch('/:id', async (req, res) => {
     values,
   );
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'competency_types', targetId: rows[0].id });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'competency_types', targetId: rows[0].id,
+    description: `Updated competency type "${rows[0].name}"`,
+  });
   res.json(serialize(rows[0]));
 });
 
@@ -98,9 +104,12 @@ router.patch('/:id', async (req, res) => {
 // their dates are gone too, not just hidden. The frontend warns about this
 // before calling it; archive is the safe default for a type still in use.
 router.delete('/:id', async (req, res) => {
-  const { rowCount } = await pool.query('DELETE FROM competency_types WHERE id = $1', [req.params.id]);
-  if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'competency_types', targetId: req.params.id });
+  const { rows } = await pool.query('DELETE FROM competency_types WHERE id = $1 RETURNING name', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'competency_types', targetId: req.params.id,
+    description: `Deleted competency type "${rows[0].name}"`,
+  });
   res.status(204).end();
 });
 

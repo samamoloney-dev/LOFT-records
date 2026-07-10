@@ -4,6 +4,7 @@ const { parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
 const { listCrewWithCurrency } = require('./crew');
+const { getRecentActivity } = require('../lib/activity');
 
 const router = express.Router();
 
@@ -70,6 +71,7 @@ router.get('/summary', async (req, res) => {
     { rows: groundSchoolProgressRows },
     { rows: caProgressRows },
     { rows: lastActivityRows },
+    recentActivity,
   ] = await Promise.all([
     // "Active" = not yet past Check to Line, i.e. still going through
     // initial training rather than tracked as line-qualified crew.
@@ -166,6 +168,7 @@ router.get('/summary', async (req, res) => {
        ) AS last_activity
        FROM trainees t WHERE t.archived = false`,
     ),
+    getRecentActivity(15),
   ]);
 
   const CHECK_LABELS = {
@@ -262,6 +265,7 @@ router.get('/summary', async (req, res) => {
     comingUp: comingUp.slice(0, 8),
     fleetSnapshot: fleetSnapshotFrom(members),
     traineeProgress,
+    recentActivity,
   });
 });
 

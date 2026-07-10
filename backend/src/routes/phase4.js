@@ -108,7 +108,10 @@ router.post('/:traineeId/complete', async (req, res) => {
     'UPDATE phase4_assessments SET completed_at = now() WHERE id = $1 RETURNING *',
     [assessment.id],
   );
-  await logAction({ userId: req.user.id, action: 'COMPLETE', targetTable: 'phase4_assessments', targetId: assessment.id });
+  await logAction({
+    userId: req.user.id, action: 'COMPLETE', targetTable: 'phase4_assessments', targetId: trainee.id,
+    description: `Completed Phase 4 Assessment for ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.json(rowToCamel(updatedRows[0]));
 });
 

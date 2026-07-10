@@ -77,7 +77,10 @@ router.post('/', async (req, res) => {
     [firstName, lastName, type, role, fleet, phase || 1],
   );
   const trainee = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'trainees', targetId: trainee.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'trainees', targetId: trainee.id,
+    description: `Added trainee ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.status(201).json(await withHours(trainee));
 });
 
@@ -157,7 +160,10 @@ router.post('/:id/promote-to-crew', async (req, res) => {
   } finally {
     client.release();
   }
-  await logAction({ userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id });
+  await logAction({
+    userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id,
+    description: `Promoted ${crewMember.firstName} ${crewMember.lastName} to the Crew roster`,
+  });
   res.status(201).json(crewMember);
 });
 

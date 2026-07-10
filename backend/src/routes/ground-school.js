@@ -38,7 +38,10 @@ router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
     [fleet, category, description, notes ?? null, required ?? true],
   );
   const item = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'ground_school_items', targetId: item.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'ground_school_items', targetId: item.id,
+    description: `Added ground school item "${item.description}"`,
+  });
   res.status(201).json(item);
 });
 
@@ -60,13 +63,20 @@ router.patch('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
   const item = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_items', targetId: item.id });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_items', targetId: item.id,
+    description: `Updated ground school item "${item.description}"`,
+  });
   res.json(item);
 });
 
 router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  await pool.query('DELETE FROM ground_school_items WHERE id = $1', [req.params.id]);
-  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'ground_school_items', targetId: req.params.id });
+  const { rows } = await pool.query('DELETE FROM ground_school_items WHERE id = $1 RETURNING description', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'ground_school_items', targetId: req.params.id,
+    description: `Deleted ground school item "${rows[0].description}"`,
+  });
   res.status(204).end();
 });
 
@@ -186,11 +196,11 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { rows: itemRows } = await pool.query(
-    'SELECT category FROM ground_school_items WHERE id = $1',
+    'SELECT category, description FROM ground_school_items WHERE id = $1',
     [parsed.data.groundSchoolItemId],
   );
   if (itemRows.length === 0) return res.status(404).json({ error: 'Ground school item not found' });
-  const { category } = itemRows[0];
+  const { category, description: itemDescription } = itemRows[0];
 
   if (category === 'Pre-Simulator Assessment' && !PRE_SIM_ASSESSOR_ROLES.includes(req.user.role)) {
     return res.status(403).json({ error: 'Only a Training Captain, Check Captain or Examiner can sign off Pre-Simulator Assessment items' });
@@ -220,7 +230,10 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   );
 
   const progress = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_progress', targetId: progress.groundSchoolItemId });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_progress', targetId: trainee.id,
+    description: `Signed off "${itemDescription}" for ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.json(progress);
 });
 

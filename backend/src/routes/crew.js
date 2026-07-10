@@ -448,7 +448,10 @@ router.post('/', async (req, res) => {
     }
   }
 
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id,
+    description: `Added crew member ${member.name}`,
+  });
   res.status(201).json(await withCurrency(member));
 });
 
@@ -624,7 +627,10 @@ router.post('/:id/archive', async (req, res) => {
     [req.params.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'crew_members', targetId: req.params.id });
+  await logAction({
+    userId: req.user.id, action: 'ARCHIVE', targetTable: 'crew_members', targetId: req.params.id,
+    description: `Archived crew member ${rows[0].first_name} ${rows[0].last_name}`,
+  });
   res.json(await findCrewMember(req.params.id));
 });
 

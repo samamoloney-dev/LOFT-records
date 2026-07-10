@@ -46,7 +46,10 @@ router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
     [fleet, roleScope, phase, category, section ?? 'SYLLABUS', description, notes ?? null, required ?? true],
   );
   const item = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'syllabus_items', targetId: item.id });
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'syllabus_items', targetId: item.id,
+    description: `Added syllabus item "${item.description}"`,
+  });
   res.status(201).json(item);
 });
 
@@ -72,13 +75,20 @@ router.patch('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
   const item = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_items', targetId: item.id });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_items', targetId: item.id,
+    description: `Updated syllabus item "${item.description}"`,
+  });
   res.json(item);
 });
 
 router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  await pool.query('DELETE FROM syllabus_items WHERE id = $1', [req.params.id]);
-  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: req.params.id });
+  const { rows } = await pool.query('DELETE FROM syllabus_items WHERE id = $1 RETURNING description', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: req.params.id,
+    description: `Deleted syllabus item "${rows[0].description}"`,
+  });
   res.status(204).end();
 });
 
@@ -183,6 +193,9 @@ router.post('/flight/:flightId/complete', async (req, res) => {
   const parsed = flightCompleteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const { rows: itemRows } = await pool.query('SELECT description FROM syllabus_items WHERE id = $1', [parsed.data.syllabusItemId]);
+  if (itemRows.length === 0) return res.status(404).json({ error: 'Syllabus item not found' });
+
   const { rows } = await pool.query(
     `INSERT INTO flight_syllabus_progress (flight_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
      VALUES ($1, $2, now(), $3, $4)
@@ -193,7 +206,10 @@ router.post('/flight/:flightId/complete', async (req, res) => {
   );
 
   const progress = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'flight_syllabus_progress', targetId: progress.syllabusItemId });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'flight_syllabus_progress', targetId: trainee.id,
+    description: `Signed off "${itemRows[0].description}" for ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.json(progress);
 });
 
@@ -246,6 +262,9 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   const parsed = completeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const { rows: itemRows } = await pool.query('SELECT description FROM syllabus_items WHERE id = $1', [parsed.data.syllabusItemId]);
+  if (itemRows.length === 0) return res.status(404).json({ error: 'Syllabus item not found' });
+
   const { rows } = await pool.query(
     `INSERT INTO syllabus_progress (trainee_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
      VALUES ($1, $2, now(), $3, $4)
@@ -256,7 +275,10 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   );
 
   const progress = rowToCamel(rows[0]);
-  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_progress', targetId: progress.syllabusItemId });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_progress', targetId: trainee.id,
+    description: `Signed off "${itemRows[0].description}" for ${trainee.firstName} ${trainee.lastName}`,
+  });
   res.json(progress);
 });
 
@@ -352,7 +374,10 @@ router.post('/trainee/:traineeId/phase-completions/:phase/complete', requireRole
       await client.query('UPDATE trainees SET phase = $1 WHERE id = $2', [phase + 1, trainee.id]);
     }
     await client.query('COMMIT');
-    await logAction({ userId: req.user.id, action: 'COMPLETE', targetTable: 'phase_completions', targetId: completion.id });
+    await logAction({
+      userId: req.user.id, action: 'COMPLETE', targetTable: 'phase_completions', targetId: trainee.id,
+      description: `Completed Phase ${phase} for ${trainee.firstName} ${trainee.lastName}`,
+    });
     res.json(rowToCamel(updatedRows[0]));
   } catch (err) {
     await client.query('ROLLBACK');

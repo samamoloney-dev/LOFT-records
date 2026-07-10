@@ -1,0 +1,11 @@
+-- audit_log has always been write-only (see backend/src/lib/audit.js) -
+-- rows carry only an action/table/id triple, which isn't enough on its
+-- own to render a human-readable feed (e.g. ground_school_progress and
+-- syllabus_progress/flight_syllabus_progress are keyed by composite
+-- primary keys, so target_id alone loses which trainee/flight a sign-off
+-- was for). Rather than reconstruct that after the fact, callers that are
+-- worth surfacing on the Home Dashboard's Recent Activity feed now pass a
+-- ready-made description at the moment they already have the full
+-- context in hand. Left NULL for every other (much higher-frequency)
+-- logAction call - the feed only shows rows where this is set.
+ALTER TABLE audit_log ADD COLUMN description TEXT;

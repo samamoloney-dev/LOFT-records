@@ -30,6 +30,24 @@ const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // every 12 months.
 const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
 
+// Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
+// member who trains or checks pilots/cabin crew in the air must hold a
+// current one, renewed every 24 months. Unlike GROUND_INSTRUCTOR_CHECK_ROLES,
+// Examiners are deliberately excluded - per the operator's explicit request,
+// Examiners do not require this check (they still conduct/assess it, since
+// that's gated by canAccessChecks/CHECK_ROLES below, not this list).
+const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER'];
+
+// Which SA_518 form sub-section (2a/2b/3a/3b) applies to a given eligible
+// role - fixed per check at creation time (see personnel-checks.js) so a
+// later role change doesn't rewrite history.
+const PERSONNEL_AIR_COMPETENCY_SECTION = {
+  TRAINING_CAPTAIN: 'TRAINING_PILOT',
+  CC: 'CHECK_PILOT',
+  CA_TRAINER: 'TRAINING_CABIN_CREW',
+  CA_CHECKER: 'CHECK_CABIN_CREW',
+};
+
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
 // is deliberately narrower than the usual admin trio - Flight Ops Admin is
 // excluded, per the operator's explicit request. The survey itself can be
@@ -106,6 +124,8 @@ module.exports = {
   PRE_SIM_ASSESSOR_ROLES,
   LANDING_ASSESSMENT_EDIT_ROLES,
   GROUND_INSTRUCTOR_CHECK_ROLES,
+  PERSONNEL_AIR_COMPETENCY_ROLES,
+  PERSONNEL_AIR_COMPETENCY_SECTION,
   CONTINUOUS_IMPROVEMENT_ROLES,
   SURVEY_FILL_ROLES,
   CHECK_ACCESS_TYPES,

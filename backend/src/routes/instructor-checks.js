@@ -90,7 +90,7 @@ router.post('/', async (req, res) => {
 const updateSchema = z.object({
   courseTitle: z.string().nullable().optional(),
   dateOfObservation: z.string().nullable().optional(),
-  assessorName: z.string().nullable().optional(),
+  assessorId: z.string().uuid().nullable().optional(),
   items: z.record(z.any()).optional(),
   assessorSignature: z.string().nullable().optional(),
   assessorPrintedName: z.string().nullable().optional(),
@@ -119,32 +119,52 @@ router.patch('/:id', async (req, res) => {
     ? await resolveAssignee(d.assignedTo)
     : { assignedToName: null, assignedToArn: null, assignedToRole: null };
 
+  // Assessor is open to anyone who can edit this check (unlike assignedTo
+  // above, which stays admin-only pre-assignment) - whoever is filling the
+  // form picks who actually conducted it, mirroring AssessorPicker
+  // elsewhere in the app.
+  const hasAssessorId = Object.prototype.hasOwnProperty.call(req.body, 'assessorId');
+  const assessor = hasAssessorId
+    ? await resolveAssignee(d.assessorId)
+    : { assignedToName: null };
+
+  // assessorSignature/instructorSignature use explicit-presence flags
+  // rather than COALESCE - PinSignature's "Clear" button sends a real null
+  // to un-sign, which COALESCE would silently ignore.
+  const hasAssessorSignature = Object.prototype.hasOwnProperty.call(req.body, 'assessorSignature');
+  const hasInstructorSignature = Object.prototype.hasOwnProperty.call(req.body, 'instructorSignature');
+
   const { rows } = await pool.query(
     `UPDATE instructor_competency_checks SET
        course_title = COALESCE($1, course_title),
        date_of_observation = COALESCE($2, date_of_observation),
-       assessor_name = COALESCE($3, assessor_name),
-       items = COALESCE($4, items),
-       assessor_signature = COALESCE($5, assessor_signature),
-       assessor_printed_name = COALESCE($6, assessor_printed_name),
-       assessor_signed_date = COALESCE($7, assessor_signed_date),
-       instructor_signature = COALESCE($8, instructor_signature),
-       instructor_printed_name = COALESCE($9, instructor_printed_name),
-       instructor_signed_date = COALESCE($10, instructor_signed_date),
-       assigned_to = CASE WHEN $11 THEN $12::uuid ELSE assigned_to END,
-       assigned_to_name = CASE WHEN $11 THEN $13 ELSE assigned_to_name END,
-       assigned_to_arn = CASE WHEN $11 THEN $14 ELSE assigned_to_arn END,
-       assigned_to_role = CASE WHEN $11 THEN $15 ELSE assigned_to_role END,
-       completed_at = COALESCE($16, completed_at)
-     WHERE id = $17 RETURNING *`,
+       assessor_id = CASE WHEN $3 THEN $4::uuid ELSE assessor_id END,
+       assessor_name = CASE WHEN $3 THEN $5 ELSE assessor_name END,
+       items = COALESCE($6, items),
+       assessor_signature = CASE WHEN $7 THEN $8 ELSE assessor_signature END,
+       assessor_printed_name = COALESCE($9, assessor_printed_name),
+       assessor_signed_date = COALESCE($10, assessor_signed_date),
+       instructor_signature = CASE WHEN $11 THEN $12 ELSE instructor_signature END,
+       instructor_printed_name = COALESCE($13, instructor_printed_name),
+       instructor_signed_date = COALESCE($14, instructor_signed_date),
+       assigned_to = CASE WHEN $15 THEN $16::uuid ELSE assigned_to END,
+       assigned_to_name = CASE WHEN $15 THEN $17 ELSE assigned_to_name END,
+       assigned_to_arn = CASE WHEN $15 THEN $18 ELSE assigned_to_arn END,
+       assigned_to_role = CASE WHEN $15 THEN $19 ELSE assigned_to_role END,
+       completed_at = COALESCE($20, completed_at)
+     WHERE id = $21 RETURNING *`,
     [
       d.courseTitle ?? null,
       d.dateOfObservation ?? null,
-      d.assessorName ?? null,
+      hasAssessorId,
+      d.assessorId ?? null,
+      assessor.assignedToName,
       d.items ? JSON.stringify(d.items) : null,
+      hasAssessorSignature,
       d.assessorSignature ?? null,
       d.assessorPrintedName ?? null,
       d.assessorSignedDate ?? null,
+      hasInstructorSignature,
       d.instructorSignature ?? null,
       d.instructorPrintedName ?? null,
       d.instructorSignedDate ?? null,

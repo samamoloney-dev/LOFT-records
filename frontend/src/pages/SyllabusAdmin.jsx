@@ -586,6 +586,7 @@ const CHECK_FORM_TABS = [
   { key: 'PILOT_LINE_CHECK', label: 'Line Check (Pilot)' },
   { key: 'CHECK_TO_LINE', label: 'Check to Line (Pilot)' },
   { key: 'GROUND_INSTRUCTOR_COMPETENCY', label: 'Ground Instructor Check' },
+  { key: 'PERSONNEL_AIR_COMPETENCY', label: 'Personnel (Air) Competency Check' },
 ];
 
 // Check to Line items vary per pilot fleet (the cabin attendant Check to
@@ -600,10 +601,10 @@ const emptyCheckFormItemForm = (formKey, fleet) => ({ formKey, fleet: fleet || '
 
 // One item list, editable here, drives the real Emergency Procedures,
 // Proficiency Check/IPC, Cabin Attendant Line Check, pilot Line Check,
-// pilot Check to Line, and Ground Instructor Competency Check forms (see
-// EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx/PilotLineCheck.jsx/
-// CtlForm.jsx/GroundInstructorCheckForm.jsx) instead of being fixed in
-// source code.
+// pilot Check to Line, Ground Instructor Competency Check and Personnel
+// (Air) Competency Check forms (see EpChecks.jsx/ProficiencyChecks.jsx/
+// CaChecks.jsx/PilotLineCheck.jsx/CtlForm.jsx/GroundInstructorCheckForm.jsx/
+// PersonnelCompetencyCheckForm.jsx) instead of being fixed in source code.
 function CheckFormItemsSection() {
   const [formKey, setFormKey] = useState('EMERGENCY_PROCEDURES');
   const [ctlFleet, setCtlFleet] = useState('DASH_8');
@@ -733,7 +734,7 @@ function CheckFormItemsSection() {
           {isCtl && (
             <div className="field"><label>Notes (optional)</label><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           )}
-          {!isCtl && formKey !== 'GROUND_INSTRUCTOR_COMPETENCY' && (
+          {!isCtl && formKey !== 'GROUND_INSTRUCTOR_COMPETENCY' && formKey !== 'PERSONNEL_AIR_COMPETENCY' && (
             <div className="field"><label>MOS reference (optional)</label><input value={form.mos} onChange={(e) => setForm({ ...form, mos: e.target.value })} /></div>
           )}
           {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (

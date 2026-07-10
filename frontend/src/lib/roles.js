@@ -29,3 +29,18 @@ export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE
 // colleague. Mirrors backend/src/middleware/roles.js's
 // GROUND_INSTRUCTOR_CHECK_ROLES.
 export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
+
+// Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
+// who can conduct/assess a check generally, as opposed to who a given check
+// applies to. Used as the Assessor pool on the Ground Instructor Competency
+// Check (SA_520) and Flight Standards Personnel (Air) Competency Check
+// (SA_518) forms.
+export const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
+
+// Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
+// member who trains or checks pilots/cabin crew in the air, renewed every
+// 24 months. Examiners are deliberately excluded (unlike
+// GROUND_INSTRUCTOR_CHECK_ROLES) - they still conduct/assess this check
+// (see CHECK_ROLES above), they just don't need it done on themselves.
+// Mirrors backend/src/middleware/roles.js's PERSONNEL_AIR_COMPETENCY_ROLES.
+export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER'];

@@ -12,10 +12,13 @@ function addDays(date, days) {
 
 // EP (pilot and cabin attendant), IPC, cabin attendant Line Check, and the
 // pilot Proficiency Check: due 365 days after the most recent completed
-// check of that type.
-function nextDueRolling(lastCompletedAt) {
+// check of that type. days defaults to 365 but is overridable for longer
+// cycles, e.g. the Flight Standards Personnel (Air) Competency Check
+// (SA_518), which renews every 24 months (730 days) - see users.js
+// withPersonnelAirCompetency.
+function nextDueRolling(lastCompletedAt, days = 365) {
   if (!lastCompletedAt) return null;
-  return addDays(new Date(lastCompletedAt), 365);
+  return addDays(new Date(lastCompletedAt), days);
 }
 
 // Pilot Line Check: due 365 days after the anchor date (their initial Check

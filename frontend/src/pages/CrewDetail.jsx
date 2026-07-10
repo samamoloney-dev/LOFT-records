@@ -12,6 +12,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
+import { compressImage } from '../lib/imageCompress';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -233,7 +234,26 @@ function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error }) {
 // ProficiencyChecks.jsx's Hard-copy licence IPC entry field) - viewed here
 // rather than cluttering the Expiration tab, and replaced automatically
 // each time a new IPC is completed for this pilot.
-function LicencePhotoTab({ member }) {
+// The "Add photo" button here is a one-off manual backfill for staff who
+// were already employed when licence photo capture shipped - going
+// forward, ordinary updates come from the IPC form's own capture flow
+// (see ProficiencyChecks.jsx PATCH /api/checks/:id/licence-photo), which
+// overwrites this same field.
+function LicencePhotoTab({ member, onSaved }) {
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pickPhoto(file) {
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const photo = await compressImage(file);
+      const updated = await api.patch(`/api/crew/${member.id}`, { licencePhoto: photo });
+      onSaved(updated);
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
@@ -241,10 +261,13 @@ function LicencePhotoTab({ member }) {
       </div>
       <div className="card">
         {member.licencePhoto ? (
-          <img src={member.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 320, borderRadius: 6, display: 'block' }} />
+          <img src={member.licencePhoto} alt="Licence IPC entry" style={{ maxWidth: 320, borderRadius: 6, display: 'block', marginBottom: 10 }} />
         ) : (
-          <div style={{ color: 'var(--text-secondary)' }}>No licence photo on file yet - add one from an IPC form.</div>
+          <div style={{ color: 'var(--text-secondary)', marginBottom: 10 }}>No licence photo on file yet - add one from an IPC form.</div>
         )}
+        <div style={{ fontSize: 12, marginBottom: 4 }}>{busy ? 'Uploading…' : member.licencePhoto ? 'Replace photo' : 'Add photo'}</div>
+        <input type="file" accept="image/*" disabled={busy} onChange={(e) => pickPhoto(e.target.files[0])} />
+        {error && <div className="error-text">{error}</div>}
       </div>
     </div>
   );
@@ -530,7 +553,7 @@ export function CrewDetail() {
       {topTab === 'medical' && medical && (
         <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} />
       )}
-      {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} />}
+      {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
     </div>
   );
 }

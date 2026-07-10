@@ -13,6 +13,7 @@ router.use(requireAuth);
 const FORM_KEYS = [
   'EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
   'CHECK_TO_LINE', 'GROUND_INSTRUCTOR_COMPETENCY', 'PILOT_LINE_CHECK',
+  'PERSONNEL_AIR_COMPETENCY',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
 // answer (e.g. which aircraft system was discussed). tick_approach: a tick

@@ -4,7 +4,8 @@ import { formatUserRole, formatFleet } from '../lib/format';
 import { TabBar } from '../components/TabBar';
 import { DueBadge } from '../components/DueBadge';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
-import { GROUND_INSTRUCTOR_CHECK_ROLES } from '../lib/roles';
+import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
+import { GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
 // TRAINEE isn't offered here - trainee self-login accounts aren't created
 // through this Staff form (see users.js, which still accepts the role for
@@ -164,6 +165,7 @@ function StaffAccountsPanel() {
   const [unlinkedCrew, setUnlinkedCrew] = useState([]);
   const [promoteCrewMemberId, setPromoteCrewMemberId] = useState('');
   const [expandedGicId, setExpandedGicId] = useState(null);
+  const [expandedPacId, setExpandedPacId] = useState(null);
 
   function load() {
     api.get('/api/users').then(setUsers).catch((e) => setError(e.message));
@@ -322,11 +324,21 @@ function StaffAccountsPanel() {
                   <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
                 </div>
               )}
+              {u.personnelAirCompetency && (
+                <div style={{ marginTop: 6 }}>
+                  <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {GROUND_INSTRUCTOR_CHECK_ROLES.includes(u.role) && (
                 <button onClick={() => setExpandedGicId((id) => (id === u.id ? null : u.id))}>
                   {expandedGicId === u.id ? 'Close' : 'Ground Instructor Check'}
+                </button>
+              )}
+              {PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role) && (
+                <button onClick={() => setExpandedPacId((id) => (id === u.id ? null : u.id))}>
+                  {expandedPacId === u.id ? 'Close' : 'Personnel Competency Check'}
                 </button>
               )}
               <button onClick={() => openEditForm(u)}>Edit</button>
@@ -336,6 +348,11 @@ function StaffAccountsPanel() {
           {expandedGicId === u.id && (
             <div style={{ marginTop: 10 }}>
               <GroundInstructorCheckForm userId={u.id} userName={u.name} />
+            </div>
+          )}
+          {expandedPacId === u.id && (
+            <div style={{ marginTop: 10 }}>
+              <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />
             </div>
           )}
         </div>

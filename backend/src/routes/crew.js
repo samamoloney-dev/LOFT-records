@@ -454,6 +454,10 @@ const updateSchema = z.object({
   // Links this crew profile to an existing staff account (see CREW_SELECT)
   // so name is read live from Staff instead of drifting out of sync.
   userId: z.string().uuid().nullable().optional(),
+  // One-off manual backfill for staff already employed when this feature
+  // shipped - going forward, licence photos are captured via the IPC form
+  // instead (see checks.js PATCH /:id/licence-photo).
+  licencePhoto: z.string().nullable().optional(),
 });
 
 const COLUMN_MAP = {
@@ -464,6 +468,7 @@ const COLUMN_MAP = {
   lineCheckAnchorDate: 'line_check_anchor_date',
   arn: 'arn',
   userId: 'user_id',
+  licencePhoto: 'licence_photo',
 };
 const CAST_MAP = { fleets: '::fleet[]' };
 

@@ -19,6 +19,7 @@ const surveyRoutes = require('./routes/survey');
 const competencyTypeRoutes = require('./routes/competency-types');
 const checkFormItemRoutes = require('./routes/check-form-items');
 const instructorCheckRoutes = require('./routes/instructor-checks');
+const personnelCheckRoutes = require('./routes/personnel-checks');
 const planningRoutes = require('./routes/planning');
 const signatureRoutes = require('./routes/signatures');
 
@@ -48,6 +49,7 @@ app.use('/api/survey', surveyRoutes);
 app.use('/api/competency-types', competencyTypeRoutes);
 app.use('/api/check-form-items', checkFormItemRoutes);
 app.use('/api/instructor-checks', instructorCheckRoutes);
+app.use('/api/personnel-checks', personnelCheckRoutes);
 app.use('/api/planning', planningRoutes);
 app.use('/api/signatures', signatureRoutes);
 

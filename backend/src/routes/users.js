@@ -4,7 +4,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, GROUND_INSTRUCTOR_CHECK_ROLES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { nextDueRolling, statusFor } = require('../lib/currency');
 
@@ -65,6 +65,27 @@ async function withGroundInstructorCheck(user) {
   };
 }
 
+// Flight Standards Personnel (Air) Competency Check (SA_518) currency -
+// only Training Captain/Check Captain/CA Trainer/CA Checker need this
+// (Examiners are excluded, unlike the Ground Instructor Competency Check
+// above) - renews every 24 months (730 days) from the most recent
+// completed check, same rolling-due mechanics as EP/IPC/CA Line Check.
+async function withPersonnelAirCompetency(user) {
+  if (!PERSONNEL_AIR_COMPETENCY_ROLES.includes(user.role)) return user;
+  const { rows } = await pool.query(
+    `SELECT completed_at FROM personnel_competency_checks
+     WHERE user_id = $1 AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC LIMIT 1`,
+    [user.id],
+  );
+  const completedDate = rows[0]?.completed_at || null;
+  const dueDate = nextDueRolling(completedDate, 730);
+  return {
+    ...user,
+    personnelAirCompetency: { status: statusFor(dueDate), dueDate, completedDate },
+  };
+}
+
 router.use(requireAuth);
 
 // Open to any authenticated staff member (not admin-only) - lets check forms
@@ -77,7 +98,9 @@ router.get('/roster', async (req, res) => {
 
 router.get('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM users ORDER BY name ASC');
-  const users = await Promise.all(rows.map(serialize).map(withGroundInstructorCheck));
+  const users = await Promise.all(
+    rows.map(serialize).map(withGroundInstructorCheck).map((p) => p.then(withPersonnelAirCompetency)),
+  );
   res.json(users);
 });
 

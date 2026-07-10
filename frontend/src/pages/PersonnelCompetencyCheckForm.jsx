@@ -1,0 +1,289 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { formatDate } from '../lib/format';
+import { PinSignature } from '../components/PinSignature';
+import { ArchiveButton } from '../components/ArchiveButton';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow, section, signatureBlock } from '../lib/print';
+import { CHECK_ROLES } from '../lib/roles';
+
+const SECTION_LABELS = {
+  TRAINING_PILOT: '2a — Training Pilot',
+  CHECK_PILOT: '2b — Check Pilot',
+  TRAINING_CABIN_CREW: '3a — Training Cabin Crew',
+  CHECK_CABIN_CREW: '3b — Check Cabin Crew',
+};
+
+// Section 1 (Preflight) and Section 4 (Debrief) apply to every check;
+// the candidate's own role-specific sub-section sits between them. Items
+// come back from the API with sort_order reset to 0 per section (all
+// sharing fleet = NULL), so ordering has to be done here rather than
+// trusting the API's raw row order.
+const SECTION_PRIORITY = { PREFLIGHT: 0, DEBRIEF: 2 };
+
+function relevantItems(items, candidateSection) {
+  return items
+    .filter((i) => i.section === 'PREFLIGHT' || i.section === candidateSection || i.section === 'DEBRIEF')
+    .sort((a, b) => (SECTION_PRIORITY[a.section] ?? 1) - (SECTION_PRIORITY[b.section] ?? 1) || a.sortOrder - b.sortOrder);
+}
+
+function expiryDate(checkDate) {
+  if (!checkDate) return null;
+  const d = new Date(checkDate);
+  d.setMonth(d.getMonth() + 24);
+  return d.toISOString().slice(0, 10);
+}
+
+function ItemRow({ item, value, disabled, onChange }) {
+  return (
+    <div className="row" style={{ cursor: 'default' }}>
+      <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button className={`tick-btn ${value === 'S' ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange(value === 'S' ? undefined : 'S')}>S</button>
+        <button className={`tick-btn ${value === 'U' ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange(value === 'U' ? undefined : 'U')}>U</button>
+      </div>
+    </div>
+  );
+}
+
+function SectionItems({ title, items, check, disabled, onChange }) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{title}</div>
+      {items.map((item) => (
+        <ItemRow key={item.id} item={item} value={check.items?.[item.id]} disabled={disabled} onChange={(v) => onChange(item, v)} />
+      ))}
+    </div>
+  );
+}
+
+export function PersonnelCompetencyCheckForm({ userId, userName }) {
+  const { user } = useAuth();
+  const [items, setItems] = useState([]);
+  const [checks, setChecks] = useState([]);
+  const [staff, setStaff] = useState([]);
+  const [openId, setOpenId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const canEdit = CHECK_ROLES.includes(user.role);
+
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY').then(setItems).catch(() => {});
+    api.get('/api/users/roster').then(setStaff).catch(() => {});
+  }, []);
+
+  function load() {
+    api.get(`/api/personnel-checks?userId=${userId}`).then(setChecks).catch((e) => setError(e.message));
+  }
+  useEffect(load, [userId]);
+
+  async function createCheck() {
+    setError(null);
+    try {
+      const created = await api.post('/api/personnel-checks', { userId });
+      setChecks((cs) => [created, ...cs]);
+      setOpenId(created.id);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function save(id, patch) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/personnel-checks/${id}`, patch);
+      setChecks((cs) => cs.map((c) => (c.id === id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
+  function setLocal(id, patch) {
+    setChecks((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
+
+  async function toggleItem(check, item, value) {
+    const next = { ...check.items, [item.id]: check.items?.[item.id] === value ? undefined : value };
+    await save(check.id, { items: next });
+  }
+
+  async function archiveCheck(check) {
+    setError(null);
+    try {
+      const updated = await api.post(`/api/personnel-checks/${check.id}/archive`);
+      setLocal(check.id, updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function unarchiveCheck(check) {
+    setError(null);
+    try {
+      const updated = await api.post(`/api/personnel-checks/${check.id}/unarchive`);
+      setLocal(check.id, updated);
+    } catch (err) { setError(err.message); }
+  }
+
+  function printCheck(check) {
+    const relevant = relevantItems(items, check.candidateSection);
+    const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
+    const subsection = relevant.filter((i) => i.section === check.candidateSection);
+    const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
+    const rowFor = (item) => [item.description, check.items?.[item.id] || ''];
+
+    let body = '<h1>Flight Standards Personnel (Air) Competency Check</h1>';
+    body += `<div class="meta">Candidate: ${userName} · ${SECTION_LABELS[check.candidateSection] || ''} · Completed ${check.completedAt ? formatDate(check.completedAt) : '—'}</div>`;
+    body += section('Details', [
+      ['Training / Check Type', check.trainingCheckType],
+      ['Date', check.checkDate ? formatDate(check.checkDate) : ''],
+      ['Assessor', check.assessorName],
+      ['Expiry (24m)', check.checkDate ? formatDate(expiryDate(check.checkDate)) : ''],
+      ['Aircraft Type', check.aircraftType],
+    ]);
+    body += section('Section 1 — Preflight Examination', preflight.map(rowFor));
+    body += section(SECTION_LABELS[check.candidateSection] || 'Section', subsection.map(rowFor));
+    body += section('Section 4 — Debrief', debrief.map(rowFor));
+    body += section('Comments', [['Comments', check.comments], ['Recommendations', check.recommendations]]);
+    body += `<div style="font-size:12px;font-style:italic;margin:0.75rem 0;">I certify that the purpose of this assessment as specified in E.6.16 has been achieved.</div>`;
+    body += signatureBlock([['Assessor', check.certifiedSignature]]);
+    openPrintWindow('Flight Standards Personnel (Air) Competency Check', body);
+  }
+
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 500 }}>Flight Standards Personnel (Air) Competency Check</div>
+        {canEdit && <button onClick={createCheck}>New check</button>}
+      </div>
+      {checks.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
+      )}
+      {checks.map((check) => {
+        const locked = !canEdit || !!check.completedAt;
+        const open = openId === check.id;
+        const relevant = relevantItems(items, check.candidateSection);
+        const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
+        const subsection = relevant.filter((i) => i.section === check.candidateSection);
+        const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
+        const allItemsAnswered = relevant.length > 0 && relevant.every((item) => check.items?.[item.id] !== undefined);
+        const eligibleAssessors = staff.filter((s) => CHECK_ROLES.includes(s.role));
+
+        return (
+          <div key={check.id} className="card" style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 13 }}>
+                {check.completedAt ? `Completed ${formatDate(check.completedAt)}` : 'In progress'}
+                {check.trainingCheckType ? ` · ${check.trainingCheckType}` : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {check.archived && <PrintButton onPrint={() => printCheck(check)} />}
+                <ArchiveButton
+                  archived={check.archived}
+                  canArchive={!!check.completedAt}
+                  onArchive={() => archiveCheck(check)}
+                  onUnarchive={() => unarchiveCheck(check)}
+                />
+                <button onClick={() => setOpenId(open ? null : check.id)}>{open ? 'Close' : 'Open'}</button>
+              </div>
+            </div>
+
+            {open && (
+              <div style={{ marginTop: 8 }}>
+                <div className="grid2">
+                  <div className="field">
+                    <label>Training / Check Type</label>
+                    <input
+                      disabled={locked}
+                      value={check.trainingCheckType || ''}
+                      onChange={(e) => setLocal(check.id, { trainingCheckType: e.target.value })}
+                      onBlur={() => save(check.id, { trainingCheckType: check.trainingCheckType })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Date</label>
+                    <input
+                      type="date" disabled={locked}
+                      value={check.checkDate || ''}
+                      onChange={(e) => save(check.id, { checkDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid2">
+                  <div className="field">
+                    <label>Assessor</label>
+                    <select
+                      disabled={locked}
+                      value={check.assessorId || ''}
+                      onChange={(e) => save(check.id, { assessorId: e.target.value || null })}
+                    >
+                      <option value="">—</option>
+                      {eligibleAssessors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>Expiry (24m)</label>
+                    <input disabled value={check.checkDate ? formatDate(expiryDate(check.checkDate)) : ''} />
+                  </div>
+                </div>
+                <div className="grid2">
+                  <div className="field"><label>Candidate</label><input disabled value={userName} /></div>
+                  <div className="field">
+                    <label>Aircraft Type</label>
+                    <input
+                      disabled={locked}
+                      value={check.aircraftType || ''}
+                      onChange={(e) => setLocal(check.id, { aircraftType: e.target.value })}
+                      onBlur={() => save(check.id, { aircraftType: check.aircraftType })}
+                    />
+                  </div>
+                </div>
+
+                <SectionItems title="Section 1 — Preflight Examination" items={preflight} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
+                <SectionItems title={SECTION_LABELS[check.candidateSection] || 'Section'} items={subsection} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
+                <SectionItems title="Section 4 — Debrief" items={debrief} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
+
+                <div className="field" style={{ marginTop: 10 }}>
+                  <label>Comments</label>
+                  <textarea
+                    disabled={locked} rows={3}
+                    value={check.comments || ''}
+                    onChange={(e) => setLocal(check.id, { comments: e.target.value })}
+                    onBlur={() => save(check.id, { comments: check.comments })}
+                  />
+                </div>
+                <div className="field">
+                  <label>Recommendations</label>
+                  <textarea
+                    disabled={locked} rows={3}
+                    value={check.recommendations || ''}
+                    onChange={(e) => setLocal(check.id, { recommendations: e.target.value })}
+                    onBlur={() => save(check.id, { recommendations: check.recommendations })}
+                  />
+                </div>
+
+                {!check.completedAt && (
+                  <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
+                    I certify that the purpose of this assessment as specified in E.6.16 has been achieved.
+                  </div>
+                )}
+                {check.assessorId ? (
+                  <PinSignature
+                    label="Assessor signature" personType="user" personId={check.assessorId}
+                    signedName={check.certifiedSignature} signedAt={check.certifiedSignedAt}
+                    disabled={locked || !allItemsAnswered}
+                    onSigned={(name, at) => save(check.id, { certifiedSignature: name, certifiedSignedAt: at, completedAt: name ? at : null })}
+                  />
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Select an assessor above before signing.</div>
+                )}
+                {!check.completedAt && !allItemsAnswered && (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+                    Every item above must be ticked S or U before the check can be signed off.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}

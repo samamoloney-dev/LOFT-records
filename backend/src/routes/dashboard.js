@@ -80,7 +80,11 @@ router.get('/summary', async (req, res) => {
        WHERE t.archived = false
          AND NOT EXISTS (SELECT 1 FROM check_to_line_forms ctl WHERE ctl.trainee_id = t.id AND ctl.completed_at IS NOT NULL)`,
     ),
-    pool.query('SELECT COUNT(*)::int AS n FROM checks WHERE result IS NULL AND archived = false'),
+    // completed_at (not result) is the actual "is this check done" signal -
+    // not every check type records a PASS/FAIL result (e.g. Emergency
+    // Procedures uses a 1-5 score instead), so filtering on result IS NULL
+    // was counting already-completed checks as still in progress.
+    pool.query('SELECT COUNT(*)::int AS n FROM checks WHERE completed_at IS NULL AND archived = false'),
     // Non-archived flights with at least one syllabus item not yet signed
     // off - a stalled sign-off backlog, not the flight-in-progress case.
     // flight_syllabus_progress rows only exist once an item is actually
@@ -188,20 +192,49 @@ router.get('/summary', async (req, res) => {
     emergencyProcedures: 'Emergency Procedures', ipc: 'IPC', proficiencyCheck: 'Proficiency Check', lineCheck: 'Line Check',
   };
 
+  // A crew profile whose person is still an active (non-archived) LOFT
+  // trainee hasn't started their recurrent clock yet - their EP/IPC/PC/Line
+  // Check reading "overdue" is expected, not something needing attention.
+  // Matched by the crew_members.trainee_id link (set by the "new hire"
+  // quick-add flow) and, as a fallback in case that link isn't set, by name.
+  const activeTraineeIds = new Set(traineeRows.map((t) => t.id));
+  const activeTraineeNames = new Set(traineeRows.map((t) => `${t.first_name} ${t.last_name}`.trim().toLowerCase()));
+  const isActiveLoftTrainee = (member) => (
+    (member.traineeId && activeTraineeIds.has(member.traineeId))
+    || activeTraineeNames.has(member.name.trim().toLowerCase())
+  );
+
+  // Needs Attention is meant to be actionable: overdue or approaching-expiry
+  // items that haven't already been rostered (see crew_planned_checks/
+  // crew_competencies.planned_date, both already carried through onto each
+  // item as plannedDate) - once something's booked in, it's in hand and
+  // doesn't need a dashboard nudge.
+  const attentionCurrencyItems = allItems.filter((i) => (
+    (i.status === 'overdue' || i.status === 'due_soon') && !i.plannedDate && !isActiveLoftTrainee(i.member)
+  ));
+  const overdueAttention = attentionCurrencyItems
+    .filter((i) => i.status === 'overdue')
+    .sort((a, b) => (b.dueDate ? daysOverdue(b.dueDate) : Infinity) - (a.dueDate ? daysOverdue(a.dueDate) : Infinity));
+  const dueSoonAttention = attentionCurrencyItems
+    .filter((i) => i.status === 'due_soon')
+    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
   const needsAttention = [
-    ...overdueItems
-      .slice()
-      // A currency item can be "overdue" with no due date at all - never
-      // completed and nothing to compute a rolling due date from (see
-      // crew.js dueInfo) - those are the most urgent, so they sort first.
-      .sort((a, b) => (b.dueDate ? daysOverdue(b.dueDate) : Infinity) - (a.dueDate ? daysOverdue(a.dueDate) : Infinity))
-      .map((i) => ({
+    ...overdueAttention.map((i) => ({
+      key: `currency:${i.member.id}:${i.label}`,
+      text: i.dueDate
+        ? `${i.member.name} — ${i.label} — overdue by ${daysOverdue(i.dueDate)} day${daysOverdue(i.dueDate) === 1 ? '' : 's'} — not yet rostered`
+        : `${i.member.name} — ${i.label} — never completed — not yet rostered`,
+      linkTo: `/crew/${i.member.id}`,
+    })),
+    ...dueSoonAttention.map((i) => {
+      const daysUntil = -daysOverdue(i.dueDate);
+      return {
         key: `currency:${i.member.id}:${i.label}`,
-        text: i.dueDate
-          ? `${i.member.name} — ${i.label} — overdue by ${daysOverdue(i.dueDate)} day${daysOverdue(i.dueDate) === 1 ? '' : 's'}`
-          : `${i.member.name} — ${i.label} — never completed`,
+        text: `${i.member.name} — ${i.label} — due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — not yet rostered`,
         linkTo: `/crew/${i.member.id}`,
-      })),
+      };
+    }),
     ...flightsRows.map((r) => ({
       key: `flight:${r.flight_id}`,
       text: `${r.first_name} ${r.last_name} — Flight ${new Date(r.date).toISOString().slice(0, 10)} — ${r.outstanding} item${r.outstanding === 1 ? '' : 's'} not yet signed off`,

@@ -195,9 +195,8 @@ export function Dashboard() {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{formatUserRole(user.role)} · {formatDate(new Date().toISOString())}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => navigate('/trainees?new=1')}>Add Trainee</button>
           <button onClick={() => navigate('/checks')}>Add Check</button>
-          <button onClick={() => navigate('/crew?quickAdd=1')}>Quick Add Crew Member</button>
+          <button onClick={() => navigate('/planning')}>Go to Planning</button>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 
@@ -8,8 +8,11 @@ const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
 const ROLES = ['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT'];
 
 export function Trainees() {
+  const [searchParams] = useSearchParams();
   const [trainees, setTrainees] = useState([]);
-  const [showForm, setShowForm] = useState(false);
+  // Lets the Home Dashboard's "Add Trainee" quick action (?new=1) land here
+  // with the form already open, instead of requiring an extra click.
+  const [showForm, setShowForm] = useState(searchParams.get('new') === '1');
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
   const navigate = useNavigate();

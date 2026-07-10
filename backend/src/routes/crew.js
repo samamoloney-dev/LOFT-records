@@ -320,17 +320,24 @@ async function withCurrency(member) {
   };
 }
 
-router.get('/', async (req, res) => {
-  const { type, archived } = req.query;
+// Shared by GET / below and the Home Dashboard (dashboard.js) - both need
+// the exact same currency computation over the roster, and must never
+// disagree about what's overdue/due soon/current.
+async function listCrewWithCurrency({ type, archived = false } = {}) {
   const conditions = ['crew_members.archived = $1'];
-  const params = [archived === 'true'];
+  const params = [archived];
   if (type) { params.push(type); conditions.push(`crew_members.type = $${params.length}`); }
 
   const { rows } = await pool.query(
     `${CREW_SELECT} WHERE ${conditions.join(' AND ')} ORDER BY crew_members.last_name ASC`,
     params,
   );
-  const members = await Promise.all(rows.map(serializeCrewMember).map(withCurrency));
+  return Promise.all(rows.map(serializeCrewMember).map(withCurrency));
+}
+
+router.get('/', async (req, res) => {
+  const { type, archived } = req.query;
+  const members = await listCrewWithCurrency({ type, archived: archived === 'true' });
   // Roster/overview views don't need the (potentially large) base64 licence
   // photo - only the crew member's own detail page does (see GET /:id).
   res.json(members.map(({ licencePhoto, ...rest }) => rest));
@@ -778,3 +785,4 @@ router.delete('/:id/clearances/:clearanceId', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listCrewWithCurrency = listCrewWithCurrency;

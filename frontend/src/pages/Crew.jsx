@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { DueBadge } from '../components/DueBadge';
 import { TabBar } from '../components/TabBar';
@@ -79,9 +79,12 @@ function FleetPicker({ type, value, onChange }) {
 }
 
 function CrewRoster({ type }) {
+  const [searchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
   const [staff, setStaff] = useState([]);
-  const [showForm, setShowForm] = useState(false);
+  // Lets the Home Dashboard's "Quick Add Crew Member" quick action
+  // (?quickAdd=1) land here with the form already open.
+  const [showForm, setShowForm] = useState(searchParams.get('quickAdd') === '1');
   const [form, setForm] = useState(emptyForm(type));
   const [error, setError] = useState(null);
   const navigate = useNavigate();

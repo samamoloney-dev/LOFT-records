@@ -2,6 +2,7 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
+import { Dashboard } from './pages/Dashboard';
 import { Trainees } from './pages/Trainees';
 import { TraineeDetail } from './pages/TraineeDetail';
 import { Archive } from './pages/Archive';
@@ -28,7 +29,8 @@ function Shell({ children }) {
         <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
       </div>
       <nav className="top-nav">
-        <NavLink to="/" end>LOFT Trainees</NavLink>
+        {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
+        <NavLink to="/trainees">LOFT Trainees</NavLink>
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
@@ -51,6 +53,19 @@ function Home() {
   if (user.role === 'TRAINEE' && user.traineeId) {
     return <Navigate to={`/trainees/${user.traineeId}`} replace />;
   }
+  // The Home Dashboard is an operations view for HOTC/HOFO/Flight Ops
+  // Admin/Alternate only - every other role keeps landing on the flat
+  // trainee list, same as before this existed.
+  return ADMIN_ROLES.includes(user.role) ? <Dashboard /> : <Trainees />;
+}
+
+// Mirrors Home()'s own TRAINEE-redirect guard so a trainee can't reach the
+// full roster by navigating to /trainees directly.
+function TraineesPage() {
+  const { user } = useAuth();
+  if (user.role === 'TRAINEE' && user.traineeId) {
+    return <Navigate to={`/trainees/${user.traineeId}`} replace />;
+  }
   return <Trainees />;
 }
 
@@ -65,6 +80,7 @@ export default function App() {
             <Shell>
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/trainees" element={<TraineesPage />} />
                 <Route path="/trainees/:id" element={<TraineeDetail />} />
                 <Route path="/syllabus" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
 
@@ -90,9 +90,15 @@ function allRows(member) {
 }
 
 export function CurrencyOverview() {
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Lets the Home Dashboard's summary cards (?filter=overdue etc.) land
+  // here pre-filtered - falls back to "all" for any unrecognised value.
+  const requestedFilter = searchParams.get('filter');
+  const [statusFilter, setStatusFilter] = useState(
+    STATUS_FILTERS.some((f) => f.key === requestedFilter) ? requestedFilter : 'all',
+  );
   const navigate = useNavigate();
 
   useEffect(() => {

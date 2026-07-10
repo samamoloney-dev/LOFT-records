@@ -160,7 +160,7 @@ router.get('/summary', async (req, res) => {
       `SELECT t.id AS trainee_id,
               COUNT(DISTINCT f.id)::int AS flight_count,
               COUNT(DISTINCT si.id)::int AS items_per_flight,
-              COUNT(fsp.id) FILTER (WHERE fsp.completed_at IS NOT NULL)::int AS loft_complete
+              COUNT(fsp.syllabus_item_id) FILTER (WHERE fsp.completed_at IS NOT NULL)::int AS loft_complete
        FROM trainees t
        LEFT JOIN flights f ON f.trainee_id = t.id AND f.archived = false
        LEFT JOIN syllabus_items si ON si.fleet = t.fleet AND si.section = 'SYLLABUS'

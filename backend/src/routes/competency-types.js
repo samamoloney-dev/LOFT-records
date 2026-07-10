@@ -1,7 +1,7 @@
 const express = require('express');
 const { z } = require('zod');
 const pool = require('../../db/pool');
-const { rowToCamel } = require('../../db/serialize');
+const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
@@ -9,6 +9,14 @@ const { logAction } = require('../lib/audit');
 const router = express.Router();
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+
+// node-postgres doesn't decode arrays of custom enum types (fleet[]) on
+// its own - see db/serialize.js's parsePgArray - so fleets needs parsing
+// on every response, not just rowToCamel's key-casing.
+function serialize(row) {
+  const t = rowToCamel(row);
+  return { ...t, fleets: parsePgArray(t.fleets) };
+}
 
 // Admin-managed catalog of competency types (Dangerous Goods, First Aid,
 // etc.) - see 0037_competency_types.sql. Every active type applies to
@@ -23,7 +31,7 @@ router.get('/', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT * FROM competency_types ${includeArchived ? '' : 'WHERE archived = false'} ORDER BY sort_order ASC, created_at ASC`,
   );
-  res.json(rows.map(rowToCamel));
+  res.json(rows.map(serialize));
 });
 
 const createSchema = z.object({
@@ -49,7 +57,7 @@ router.post('/', async (req, res) => {
       [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null, parsed.data.fleets?.length ? parsed.data.fleets : null],
     );
     await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id });
-    res.status(201).json(rowToCamel(rows[0]));
+    res.status(201).json(serialize(rows[0]));
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A competency with that name already exists' });
     throw err;
@@ -82,7 +90,7 @@ router.patch('/:id', async (req, res) => {
   );
   if (!rows[0]) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'competency_types', targetId: rows[0].id });
-  res.json(rowToCamel(rows[0]));
+  res.json(serialize(rows[0]));
 });
 
 // A hard delete cascades to every crew member's crew_competencies row for

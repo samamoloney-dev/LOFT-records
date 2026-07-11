@@ -44,6 +44,8 @@ async function getRecentActivity(limit = 15) {
     let linkTo = '/syllabus'; // competency_types/check_form_items/syllabus_items/ground_school_items - no per-item route
     if (r.target_table === 'crew_members') {
       linkTo = `/crew/${r.target_id}`;
+    } else if (r.target_table === 'meeting_minutes') {
+      linkTo = `/meeting-minutes/${r.target_id}`;
     } else if (TRAINEE_LINKED_TABLES.has(r.target_table)) {
       linkTo = `/trainees/${r.target_id}`;
     } else if (r.target_table === 'checks') {

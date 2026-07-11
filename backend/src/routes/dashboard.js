@@ -63,7 +63,6 @@ router.get('/summary', async (req, res) => {
   const [
     { rows: activeTraineesRows },
     { rows: inTrainingChecksRows },
-    { rows: flightsRows },
     { rows: groundSchoolRows },
     { rows: plannedChecksRows },
     { rows: plannedCompetenciesRows },
@@ -85,27 +84,6 @@ router.get('/summary', async (req, res) => {
     // Procedures uses a 1-5 score instead), so filtering on result IS NULL
     // was counting already-completed checks as still in progress.
     pool.query('SELECT COUNT(*)::int AS n FROM checks WHERE completed_at IS NULL AND archived = false'),
-    // Non-archived flights with at least one syllabus item not yet signed
-    // off - a stalled sign-off backlog, not the flight-in-progress case.
-    // flight_syllabus_progress rows only exist once an item is actually
-    // signed (see syllabus.js's /flight/:flightId/complete, an INSERT ... ON
-    // CONFLICT with no pre-seeded rows) - so "outstanding" has to start from
-    // the full syllabus_items catalog for that fleet/role (same join
-    // syllabus.js's own GET /flight/:flightId uses), not just existing
-    // progress rows, or an untouched item would silently count as done.
-    pool.query(
-      `SELECT f.trainee_id, f.id AS flight_id, f.date, t.first_name, t.last_name,
-              COUNT(si.id) FILTER (WHERE fsp.completed_at IS NULL)::int AS outstanding
-       FROM flights f
-       JOIN trainees t ON t.id = f.trainee_id
-       JOIN syllabus_items si ON si.fleet = t.fleet AND si.section = 'SYLLABUS'
-         AND (si.role_scope = 'BOTH' OR si.role_scope = (CASE t.role WHEN 'CAPTAIN' THEN 'CAPTAIN_ONLY' WHEN 'FIRST_OFFICER' THEN 'FO_ONLY' ELSE 'BOTH' END)::role_scope)
-       LEFT JOIN flight_syllabus_progress fsp ON fsp.flight_id = f.id AND fsp.syllabus_item_id = si.id
-       WHERE f.archived = false AND t.archived = false
-       GROUP BY f.trainee_id, f.id, f.date, t.first_name, t.last_name
-       HAVING COUNT(si.id) FILTER (WHERE fsp.completed_at IS NULL) > 0
-       ORDER BY outstanding DESC`,
-    ),
     // Required ground school items not yet completed (and not N/A) per
     // trainee - blocks them progressing to the simulator.
     pool.query(
@@ -235,11 +213,11 @@ router.get('/summary', async (req, res) => {
         linkTo: `/crew/${i.member.id}`,
       };
     }),
-    ...flightsRows.map((r) => ({
-      key: `flight:${r.flight_id}`,
-      text: `${r.first_name} ${r.last_name} — Flight ${new Date(r.date).toISOString().slice(0, 10)} — ${r.outstanding} item${r.outstanding === 1 ? '' : 's'} not yet signed off`,
-      linkTo: `/trainees/${r.trainee_id}`,
-    })),
+    // A single flight not covering every syllabus item isn't a problem worth
+    // an attention nudge - that's normal, expected progress (items get
+    // signed off gradually across many flights), not a stalled backlog.
+    // That reminder belongs on the trainee's own LOFT package (SyllabusPanel's
+    // phase-outstanding summary), not here.
     ...groundSchoolRows.map((r) => ({
       key: `groundschool:${r.trainee_id}`,
       text: `${r.first_name} ${r.last_name} — ${r.outstanding} course${r.outstanding === 1 ? '' : 's'}/exam${r.outstanding === 1 ? '' : 's'} outstanding before simulator`,

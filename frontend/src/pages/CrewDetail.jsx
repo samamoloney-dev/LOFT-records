@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { ADMIN_ROLES } from '../lib/checkAccess';
@@ -102,6 +102,8 @@ function CrewInfoEditor({ member, onSaved }) {
     } catch (err) { setError(err.message); }
   }
 
+  if (member.archived) return null;
+
   if (!editing) {
     return (
       <button
@@ -165,8 +167,8 @@ function ArnDisplay({ member, onSaved }) {
   const [value, setValue] = useState('');
   const [error, setError] = useState(null);
 
-  if (member.arn) {
-    return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>ARN {member.arn}</div>;
+  if (member.arn || member.archived) {
+    return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>ARN {member.arn || 'Not yet entered'}</div>;
   }
 
   async function save() {
@@ -185,11 +187,37 @@ function ArnDisplay({ member, onSaved }) {
   );
 }
 
+const RETENTION_YEARS = 4;
+
+// The operator is required to retain a crew member's record for 4 years
+// after they leave the company (archiving date) - permanent deletion is
+// only ever offered once that period has actually elapsed. Mirrors the
+// same rule enforced server-side in crew.js's DELETE /:id.
+function eligibleForDeletion(member) {
+  if (!member.archived || !member.archivedAt) return false;
+  const retainUntil = new Date(member.archivedAt);
+  retainUntil.setFullYear(retainUntil.getFullYear() + RETENTION_YEARS);
+  return retainUntil <= new Date();
+}
+
+function DeleteArchivedCrewButton({ member, onDelete }) {
+  const { user } = useAuth();
+  if (!ADMIN_ROLES.includes(user.role) || !eligibleForDeletion(member)) return null;
+  return (
+    <button
+      className="danger"
+      onClick={() => {
+        if (window.confirm(`Permanently delete ${member.name}'s record? The 4-year retention period has passed. This cannot be undone.`)) onDelete();
+      }}
+    >Delete permanently</button>
+  );
+}
+
 // HOTC/HOFO/Flight Ops Admin only (this whole page is admin-gated already) -
 // notes a planned date for an upcoming recurrent check, purely informational
 // and distinct from the computed due date. Surfaced via DueBadge and
 // Currency Overview as "Planned for X".
-function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
+function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved, disabled }) {
   const [value, setValue] = useState(plannedDate ? plannedDate.slice(0, 10) : '');
 
   async function save(next) {
@@ -201,7 +229,7 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
-      <input type="date" value={value} onChange={(e) => save(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
+      <input type="date" value={value} disabled={disabled} onChange={(e) => save(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
     </div>
   );
 }
@@ -212,7 +240,7 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved }) {
 // Medical tab (see MedicalTab below); this stays a read-only-plus-planning
 // summary, same as EP/IPC/PC/Line Check's boxes work (their due/completed
 // dates aren't editable here either - only planning an upcoming date is).
-function MedicalBox({ medical, onUpdate }) {
+function MedicalBox({ medical, onUpdate, disabled }) {
   const status = competencyStatus(medical.dueDate);
   const [value, setValue] = useState(medical.plannedDate ? medical.plannedDate.slice(0, 10) : '');
 
@@ -226,7 +254,7 @@ function MedicalBox({ medical, onUpdate }) {
       <DueBadge label="Medical" info={{ dueDate: medical.dueDate, status, completedDate: medical.completedDate, plannedDate: medical.plannedDate }} />
       <div style={{ marginTop: 4 }}>
         <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
-        <input type="date" value={value} onChange={(e) => savePlanned(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
+        <input type="date" value={value} disabled={disabled} onChange={(e) => savePlanned(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
       </div>
     </div>
   );
@@ -236,12 +264,12 @@ function MedicalBox({ medical, onUpdate }) {
 // rather than mixed into the general Competencies list (see CrewDetail) -
 // reuses the same CompetencyRow the Competencies list uses for everything
 // else, just scoped to the one Medical entry.
-function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error }) {
+function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error, archived }) {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Medical</div>
       {error && <div className="error-text">{error}</div>}
-      <CompetencyRow c={medical} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} />
+      <CompetencyRow c={medical} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
     </div>
   );
 }
@@ -281,8 +309,12 @@ function LicencePhotoTab({ member, onSaved }) {
         ) : (
           <div style={{ color: 'var(--text-secondary)', marginBottom: 10 }}>No licence photo on file yet - add one from an IPC form.</div>
         )}
-        <div style={{ fontSize: 12, marginBottom: 4 }}>{busy ? 'Uploading…' : member.licencePhoto ? 'Replace photo' : 'Add photo'}</div>
-        <input type="file" accept="image/*" disabled={busy} onChange={(e) => pickPhoto(e.target.files[0])} />
+        {!member.archived && (
+          <>
+            <div style={{ fontSize: 12, marginBottom: 4 }}>{busy ? 'Uploading…' : member.licencePhoto ? 'Replace photo' : 'Add photo'}</div>
+            <input type="file" accept="image/*" disabled={busy} onChange={(e) => pickPhoto(e.target.files[0])} />
+          </>
+        )}
         {error && <div className="error-text">{error}</div>}
       </div>
     </div>
@@ -334,7 +366,7 @@ function CurrencyFolder({ member }) {
 // One competency's status badge + editable dates - used by the general
 // Competencies list below the top block (Medical is special-cased into its
 // own compact MedicalBox above instead - see ExpiryTab).
-function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
+function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
   const { user } = useAuth();
   // Refresher Training is the one exception - Flight Ops Admin administers
   // that course's completions too (see PilotLineCheck.jsx's Refresher
@@ -353,7 +385,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
   // Refresher Training) get the "Edit dates" toggle to unlock and correct
   // it; everyone else is stuck read-only from here.
   const datesSet = !!(c.completedDate || c.dueDate || c.plannedDate);
-  const datesLocked = datesSet && !(canUnlock && unlocked[c.competencyTypeId]);
+  const datesLocked = archived || (datesSet && !(canUnlock && unlocked[c.competencyTypeId]));
   // A competency that's current collapses into a closed dropdown by
   // default, so a long list of dates that don't need attention doesn't
   // clutter the tab - anything not yet current, overdue, due soon (or, on
@@ -373,6 +405,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
           <input
             type="checkbox"
+            disabled={archived}
             checked={!!c.na}
             onChange={(e) => onUpdate(c.competencyTypeId, { na: e.target.checked })}
             style={{ width: 'auto' }}
@@ -382,7 +415,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
       )}
       {!c.na && (
         <>
-          {datesSet && canUnlock && (
+          {datesSet && canUnlock && !archived && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
               <input
                 type="checkbox"
@@ -410,6 +443,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
             <input
               type="checkbox"
+              disabled={archived}
               checked={!!c.courseSent}
               onChange={(e) => onUpdate(c.competencyTypeId, { courseSent: e.target.checked })}
               style={{ width: 'auto' }}
@@ -445,7 +479,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked }) {
 // from a dropdown. Medical is pulled out and shown in the top block instead
 // (see ExpiryTab) - state/fetching for both live in ExpiryTab so they share
 // one source of truth rather than fetching the same data twice.
-function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked }) {
+function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked, archived }) {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Competencies</div>
@@ -454,7 +488,7 @@ function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked }) {
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No competencies set up yet - add some on the Syllabus tab.</div>
       )}
       {competencies.map((c) => (
-        <CompetencyRow key={c.competencyTypeId} c={c} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} />
+        <CompetencyRow key={c.competencyTypeId} c={c} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
       ))}
     </div>
   );
@@ -468,41 +502,43 @@ function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked }) {
 // here, so both agree on one source of truth.
 function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompetency, unlocked, setUnlocked, competencyError }) {
   const isPilot = member.type === 'PILOT';
+  const archived = member.archived;
 
   return (
     <div>
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         <div>
           <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} disabled={archived} />
         </div>
         {isPilot && (
           <div>
             <DueBadge label="IPC" info={member.currency.ipc} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} disabled={archived} />
           </div>
         )}
         {isPilot && (
           <div>
             <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} />
+            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} disabled={archived} />
           </div>
         )}
         <div>
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} />
+          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} disabled={archived} />
         </div>
-        {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} />}
+        {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}
 
-      <CompetencyList competencies={otherCompetencies} onUpdate={onUpdateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} />
+      <CompetencyList competencies={otherCompetencies} onUpdate={onUpdateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
     </div>
   );
 }
 
 export function CrewDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [member, setMember] = useState(null);
   const [error, setError] = useState(null);
   const [topTab, setTopTab] = useState('currency');
@@ -566,6 +602,13 @@ export function CrewDetail() {
     try { setMember(await api.post(`/api/crew/${id}/unarchive`)); }
     catch (err) { setError(err.message); }
   }
+  async function deleteMember() {
+    setError(null);
+    try {
+      await api.delete(`/api/crew/${id}`);
+      navigate('/crew');
+    } catch (err) { setError(err.message); }
+  }
 
   if (error) return <div className="error-text">{error}</div>;
   if (!member) return null;
@@ -588,8 +631,17 @@ export function CrewDetail() {
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{member.fleets.map(formatFleet).join(', ')} · {formatTraineeRole(member.role)}</div>
           {member.type === 'PILOT' && <ArnDisplay member={member} onSaved={setMember} />}
         </div>
-        <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <DeleteArchivedCrewButton member={member} onDelete={deleteMember} />
+          <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
+        </div>
       </div>
+
+      {member.archived && (
+        <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', marginBottom: '1rem' }}>
+          This crew member is archived - their record is read-only and retained for 4 years. Unarchive them first to make any changes.
+        </div>
+      )}
 
       <CrewInfoEditor member={member} onSaved={setMember} />
 
@@ -604,7 +656,7 @@ export function CrewDetail() {
         />
       )}
       {topTab === 'medical' && medical && (
-        <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} />
+        <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
       )}
       {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
     </div>

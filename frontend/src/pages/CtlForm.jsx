@@ -76,7 +76,9 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   }
   useEffect(load, [traineeId]);
 
-  const canEdit = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'].includes(user.role);
+  // Flight Ops Admin excluded - Check to Line is a check, and they cannot
+  // conduct any checking.
+  const canEdit = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'].includes(user.role);
   const form = data?.form || { assessmentItems: {}, sectorDetails: {}, ntsScores: {}, comments: '', overallResult: null, overallScore: null };
 
   async function save(patch) {

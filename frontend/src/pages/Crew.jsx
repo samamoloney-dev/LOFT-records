@@ -8,6 +8,20 @@ import { compressImage } from '../lib/imageCompress';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
+// Active crew is grouped by fleet, then rank within that fleet (Captain
+// before First Officer; Cabin Attendant has no internal rank so this is a
+// no-op for that tab), then name as the final tie-break.
+const RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1, CABIN_ATTENDANT: 0 };
+function sortByFleetAndRank(members) {
+  return [...members].sort((a, b) => {
+    const fleetDiff = FLEETS.indexOf(a.fleets[0]) - FLEETS.indexOf(b.fleets[0]);
+    if (fleetDiff !== 0) return fleetDiff;
+    const rankDiff = (RANK_ORDER[a.role] ?? 99) - (RANK_ORDER[b.role] ?? 99);
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
@@ -90,7 +104,7 @@ function CrewRoster({ type }) {
   const navigate = useNavigate();
 
   function load() {
-    api.get(`/api/crew?type=${type}`).then(setMembers).catch((e) => setError(e.message));
+    api.get(`/api/crew?type=${type}`).then((data) => setMembers(sortByFleetAndRank(data))).catch((e) => setError(e.message));
   }
   useEffect(load, [type]);
   useEffect(() => { api.get('/api/users').then(setStaff).catch(() => {}); }, []);

@@ -67,6 +67,17 @@ async function findCrewMember(id) {
   return rows[0] ? serializeCrewMember(rows[0]) : null;
 }
 
+// Archived crew records must be retained unaltered - the only way back to
+// an editable state is the dedicated unarchive route below, which is
+// deliberately exempt from this guard.
+function assertNotArchived(member, res) {
+  if (member.archived) {
+    res.status(403).json({ error: 'This crew member is archived - unarchive them first to make changes' });
+    return false;
+  }
+  return true;
+}
+
 async function lastCompletedCheck(crewMemberId, checkType, variant) {
   const params = [crewMemberId, checkType];
   let variantClause = '';
@@ -491,6 +502,7 @@ const CAST_MAP = { fleets: '::fleet[]' };
 router.patch('/:id', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -529,6 +541,7 @@ const plannedCheckSchema = z.object({
 router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
   if (!PLANNED_CHECK_KEYS.includes(req.params.checkKey)) return res.status(400).json({ error: 'Invalid check' });
 
   const parsed = plannedCheckSchema.safeParse(req.body);
@@ -573,6 +586,7 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
 router.post('/:id/planned-checks/:checkKey/create-check', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
   if (!PLANNED_CHECK_KEYS.includes(req.params.checkKey)) return res.status(400).json({ error: 'Invalid check' });
 
   const { rows: plannedRows } = await pool.query(
@@ -647,6 +661,37 @@ router.post('/:id/unarchive', async (req, res) => {
   res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
+const RETENTION_YEARS = 4;
+
+// Permanent deletion is only ever offered once a record has been archived
+// for the full retention period the operator is required to keep it for
+// (4 years after leaving the company) - see findCrewMember/ArchiveButton on
+// CrewDetail.jsx for the matching frontend gate. checks.crew_member_id is
+// ON DELETE SET NULL (history survives, just unlinked - see
+// checkSubjectName/crew_member_name snapshot in checks.js); crew_competencies/
+// crew_planned_checks/crew_clearances CASCADE since they're just this
+// person's current-state tracking, not a record worth keeping once they're
+// gone for good.
+router.delete('/:id', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!member.archived || !member.archivedAt) {
+    return res.status(403).json({ error: 'Only archived records can be deleted' });
+  }
+  const retainUntil = new Date(member.archivedAt);
+  retainUntil.setFullYear(retainUntil.getFullYear() + RETENTION_YEARS);
+  if (retainUntil > new Date()) {
+    return res.status(403).json({ error: `This record must be retained until ${retainUntil.toISOString().slice(0, 10)} (4 years after archiving)` });
+  }
+
+  await pool.query('DELETE FROM crew_members WHERE id = $1', [member.id]);
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'crew_members', targetId: member.id,
+    description: `Permanently deleted crew record for ${member.name} (retention period expired)`,
+  });
+  res.status(204).send();
+});
+
 // Every active competency type (managed on the Syllabus tab - see
 // competency-types.js) is required for every crew member, so this always
 // returns one row per active type rather than needing them added one at a
@@ -684,6 +729,7 @@ const competencyDatesSchema = z.object({
 router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
 
   const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -766,6 +812,7 @@ router.post('/:id/clearances', async (req, res) => {
   if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
 
   const parsed = clearanceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -784,6 +831,9 @@ router.post('/:id/clearances', async (req, res) => {
 
 router.delete('/:id/clearances/:clearanceId', async (req, res) => {
   if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
   const { rows } = await pool.query(
     'DELETE FROM crew_clearances WHERE id = $1 AND crew_member_id = $2 RETURNING id',
     [req.params.clearanceId, req.params.id],

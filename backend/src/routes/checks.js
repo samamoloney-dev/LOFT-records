@@ -55,6 +55,14 @@ async function revalidateRhsCompetency(assignedToUserId, completedAt) {
   }
 }
 
+// Archived crew records must be retained unaltered - blocks editing a check
+// belonging to a crew member who has since left the company (see crew.js's
+// own assertNotArchived for the matching guard on the crew profile itself).
+async function isCrewMemberArchived(crewMemberId) {
+  const { rows } = await pool.query('SELECT archived FROM crew_members WHERE id = $1', [crewMemberId]);
+  return rows[0]?.archived === true;
+}
+
 const CHECK_TYPE_LABELS = {
   RECURRENT_SIMULATOR: 'Recurrent Simulator Check',
   EMERGENCY_PROCEDURES: 'Emergency Procedures',
@@ -189,6 +197,9 @@ router.patch('/:id', async (req, res) => {
   if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
   const existing = rowToCamel(existingRows[0]);
   if (!canAccessCheckType(req.user, existing.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  if (existing.crewMemberId && await isCrewMemberArchived(existing.crewMemberId)) {
+    return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
+  }
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

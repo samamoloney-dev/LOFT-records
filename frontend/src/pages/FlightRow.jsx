@@ -165,11 +165,16 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
               <strong>Homework:</strong> {flight.nextSortieNotes}
             </div>
           )}
+          {/* Not every required task gets covered on every single flight -
+              that's normal, not a failure. This is just a record of what
+              this particular flight didn't get to; the running reminder of
+              what's still genuinely outstanding lives on the trainee's LOFT
+              package (SyllabusPanel), where it's actually meant to stand out. */}
           {outstanding.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-warning)', marginTop: 4 }}>
-              <strong>Not yet signed off for this flight ({outstanding.length}):</strong>{' '}
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <strong>Not covered on this flight ({outstanding.length}):</strong>{' '}
               {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
-              {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''}
+              {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''} - still needed on a future flight.
             </div>
           )}
         </>

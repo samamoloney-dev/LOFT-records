@@ -14,11 +14,20 @@ import { CurrencyOverview } from './pages/CurrencyOverview';
 import { Planning } from './pages/Planning';
 import { SyllabusAdmin } from './pages/SyllabusAdmin';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
+import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
 import { formatUserRole } from './lib/format';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from './lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'CA_CHECKER', 'SIMULATOR_ONLY'];
+// Flight Ops Admin excluded - they cannot conduct any checking, so the
+// Checks tab has nothing for them to do.
+const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_CHECKER', 'SIMULATOR_ONLY'];
+// Every staff role - meeting minutes is for the whole operation, trainees
+// (who have their own restricted self-login view) excepted.
+const NON_TRAINEE_ROLES = [
+  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY',
+];
 
 function Shell({ children }) {
   const { user, logout } = useAuth();
@@ -39,7 +48,9 @@ function Shell({ children }) {
         {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
+        {user.role !== 'TRAINEE' && <NavLink to="/meeting-minutes">Meeting Minutes</NavLink>}
       </nav>
+      {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>
         <button onClick={logout}>Sign out</button>
@@ -91,6 +102,8 @@ export default function App() {
                 <Route path="/currency" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><CurrencyOverview /></ProtectedRoute>} />
                 <Route path="/planning" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Planning /></ProtectedRoute>} />
                 <Route path="/continuous-improvement" element={<ProtectedRoute roles={CONTINUOUS_IMPROVEMENT_ROLES}><ContinuousImprovement /></ProtectedRoute>} />
+                <Route path="/meeting-minutes" element={<ProtectedRoute roles={NON_TRAINEE_ROLES}><MeetingMinutesList /></ProtectedRoute>} />
+                <Route path="/meeting-minutes/:id" element={<ProtectedRoute roles={NON_TRAINEE_ROLES}><MeetingMinutesDetail /></ProtectedRoute>} />
               </Routes>
             </Shell>
           </ProtectedRoute>

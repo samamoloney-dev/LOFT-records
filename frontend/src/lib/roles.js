@@ -20,22 +20,25 @@ export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // Admin), but the survey itself can be filled in by anyone who can
 // conduct a RECURRENT_SIMULATOR check. Mirrors
 // backend/src/middleware/roles.js's CONTINUOUS_IMPROVEMENT_ROLES/SURVEY_FILL_ROLES.
+// Flight Ops Admin is deliberately excluded from every checking-related
+// list below - per the operator's explicit rule, Flight Ops Admin cannot
+// conduct any checking. Mirrors backend/src/middleware/roles.js.
 export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
-export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
+export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
 // Every role eligible to check/train Emergency Procedures - these are the
 // staff who must hold a current Ground Instructor Competency Check
 // (SA_520, renewed every 12 months), and also who can conduct one on a
 // colleague. Mirrors backend/src/middleware/roles.js's
 // GROUND_INSTRUCTOR_CHECK_ROLES.
-export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
+export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 
 // Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
 // who can conduct/assess a check generally, as opposed to who a given check
 // applies to. Used as the Assessor pool on the Ground Instructor Competency
 // Check (SA_520) and Flight Standards Personnel (Air) Competency Check
 // (SA_518) forms.
-export const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
+export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air, renewed every

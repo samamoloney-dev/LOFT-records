@@ -23,6 +23,7 @@ const personnelCheckRoutes = require('./routes/personnel-checks');
 const planningRoutes = require('./routes/planning');
 const signatureRoutes = require('./routes/signatures');
 const dashboardRoutes = require('./routes/dashboard');
+const meetingMinutesRoutes = require('./routes/meeting-minutes');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/personnel-checks', personnelCheckRoutes);
 app.use('/api/planning', planningRoutes);
 app.use('/api/signatures', signatureRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/meeting-minutes', meetingMinutesRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

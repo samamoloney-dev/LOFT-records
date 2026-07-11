@@ -9,8 +9,10 @@ const STATUSES = [
   { value: 'NA', label: 'N/A' },
 ];
 
+// Flight Ops Admin excluded - Captain in Training assessment is a check,
+// and they cannot conduct any checking.
 const CAN_EDIT_ROLES = [
-  'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN',
+  'HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN',
 ];
 
 function itemKey(item) {

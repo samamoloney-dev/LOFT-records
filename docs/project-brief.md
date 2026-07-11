@@ -134,7 +134,9 @@ loft-records/
 
 - **Training Captain**: can only edit flight records where they are the named TC. Not even HOTC can override this lock.
 - **Trainee**: can acknowledge their own flight debrief (checkbox + timestamp, then locked).
-- **HOTC / HOFO / Flight Ops Admin / Examiner**: can access and complete Recurrent Sim and Emergency Procedures checks.
+- **HOTC / HOFO / Alternate / Examiner**: can access and complete Recurrent Sim and Emergency Procedures checks.
+- **Flight Ops Admin**: cannot conduct any checking (excluded from every check type, Ground Instructor Competency Check, and survey fill) - retains every other admin capability (archiving, editing records, assigning checks, etc).
+- **Emergency Procedures checkAccess tick (Staff page)**: means that staff member can teach and check the Emergency Procedures course for both pilots and cabin attendants.
 - **CA Trainer**: manages Cabin Attendant records only, cannot create/view Pilot records.
 - **Archived records**: visible only to HOTC, HOFO, Flight Ops Admin.
 

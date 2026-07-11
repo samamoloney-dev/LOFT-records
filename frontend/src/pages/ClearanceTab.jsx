@@ -228,7 +228,9 @@ function ClearanceEntry({ isPilot, entry, onDelete, canSign }) {
 
 export function ClearanceTab({ member }) {
   const { user } = useAuth();
-  const canSign = canSignClearance(user);
+  // Archived crew records must be retained unaltered - no new clearance
+  // stage can be signed or removed once archived.
+  const canSign = canSignClearance(user) && !member.archived;
   const isPilot = member.type === 'PILOT';
   const stages = isPilot ? PILOT_STAGES : CA_STAGES;
   const stageLabels = isPilot ? PILOT_STAGE_LABELS : CA_STAGE_LABELS;

@@ -227,8 +227,12 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
         {outstanding.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>All required tasks signed off for this flight.</div>
         ) : (
-          <div style={{ fontSize: 13, color: 'var(--text-warning)' }}>
-            {outstanding.length} required task(s) not yet signed off for this flight.
+          // Missing a task on this specific flight isn't a mark against
+          // it - just a reminder those tasks are still owed on a future
+          // flight (the trainee's LOFT package is where that's tracked
+          // and actually highlighted - see the phase summary above).
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            {outstanding.length} required task(s) not covered on this flight - still needed on a future flight.
           </div>
         )}
       </div>

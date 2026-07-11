@@ -4,7 +4,12 @@
 // the app, with one deliberate exception - it cannot sign the Clearance
 // Form (see crew.js isClearanceSigner), which stays HOTC/HOFO-only.
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
-const CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER'];
+// Flight Ops Admin is deliberately excluded here (and from every other
+// checking-related list below) - per the operator's explicit rule, Flight
+// Ops Admin cannot conduct any checking. They keep every other admin
+// capability (ADMIN_ROLES above) - archiving, editing records, etc. - just
+// not this one.
+const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 
 // Every role the operator counts as a "trainer": Training Captain, Check
@@ -27,8 +32,8 @@ const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // (canAccessChecks/CHECK_ROLES), plus CA Trainer/CA Checker who train and
 // check cabin attendant Emergency Procedures. These are the staff who must
 // hold a current Ground Instructor Competency Check (SA_520), renewed
-// every 12 months.
-const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
+// every 12 months. Flight Ops Admin excluded - see CHECK_ROLES above.
+const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
 
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air must hold a
@@ -54,7 +59,8 @@ const PERSONNEL_AIR_COMPETENCY_SECTION = {
 // filled in by whoever can already conduct a RECURRENT_SIMULATOR check
 // (mirrors checks.js canAccessCheckType).
 const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
-const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
+// Flight Ops Admin excluded - see CHECK_ROLES above.
+const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
 // Staff-profile check access ticks (Staff page). These decide which staff
 // show up as selectable assessors/assignees on each check form - they don't

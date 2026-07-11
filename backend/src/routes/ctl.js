@@ -85,6 +85,18 @@ router.put('/:traineeId', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
+  // Once this Check to Line has a named assignee, only that person may
+  // fill it in, complete it, and sign it - mirrors checks.js's own
+  // assignedTo safeguard. Admins keep an override.
+  const { rows: existingCtlRows } = await pool.query(
+    'SELECT assigned_to FROM check_to_line_forms WHERE trainee_id = $1',
+    [req.params.traineeId],
+  );
+  const existingAssignedTo = existingCtlRows[0]?.assigned_to || null;
+  if (existingAssignedTo && existingAssignedTo !== req.user.id && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only the assigned examiner can complete and sign this check' });
+  }
+
   // Distinguish "assignedTo not sent, leave as-is" from "assignedTo: null,
   // unassign" - zod would otherwise turn both into undefined.
   const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');

@@ -206,6 +206,14 @@ router.patch('/:id', async (req, res) => {
   if (existing.crewMemberId && await isCrewMemberArchived(existing.crewMemberId)) {
     return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
   }
+  // Once a check has a named assignee, only that person may fill it in,
+  // complete it, and sign it - a colleague who also happens to hold
+  // general access to this check type is not a substitute. Admins keep an
+  // override (e.g. to fix a mistake or reassign it), same as every other
+  // admin-only exception in this app.
+  if (existing.assignedTo && existing.assignedTo !== req.user.id && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'Only the assigned examiner can complete and sign this check' });
+  }
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

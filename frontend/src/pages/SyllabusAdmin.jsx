@@ -319,8 +319,8 @@ function SyllabusItemsSection() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Syllabus curriculum, by fleet, section and phase</div>
-        <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add syllabus item'}</button>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>LOFT Package curriculum, by fleet, section and phase</div>
+        <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add LOFT Package item'}</button>
       </div>
 
       {showForm && (
@@ -358,7 +358,7 @@ function SyllabusItemsSection() {
           <div className="field">
             <label>Section</label>
             <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
-              {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion'}</option>)}
+              {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'LOFT Package' : 'Line Training Discussion'}</option>)}
             </select>
           </div>
           <div className="grid2">
@@ -424,7 +424,7 @@ function SyllabusItemsSection() {
       {error && <div className="error-text">{error}</div>}
 
       {Object.keys(byFleet).length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No syllabus items yet.</div>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No LOFT Package items yet.</div>
       )}
       {Object.entries(byFleet).map(([fleet, fleetItems]) => {
         const bySection = fleetItems.reduce((acc, item) => {
@@ -443,7 +443,7 @@ function SyllabusItemsSection() {
             {isExpanded && Object.entries(bySection).map(([section, categories]) => (
               <div key={section} style={{ marginTop: 12 }}>
                 <div className="badge" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)', marginBottom: 8 }}>
-                  {section === 'SYLLABUS' ? 'Syllabus' : 'Line Training Discussion'}
+                  {section === 'SYLLABUS' ? 'LOFT Package' : 'Line Training Discussion'}
                 </div>
                 {Object.entries(categories).map(([category, categoryItems]) => (
                   <div key={category} style={{ marginBottom: 12 }}>
@@ -962,8 +962,8 @@ export function SyllabusAdmin() {
   const [tab, setTab] = useState('syllabus');
 
   const tabs = [
-    { key: 'syllabus', label: 'Syllabus' },
     { key: 'ground-school', label: 'Ground School' },
+    { key: 'syllabus', label: 'LOFT Package' },
     { key: 'check-forms', label: 'Check Forms' },
     { key: 'competencies', label: 'Competencies' },
     ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),

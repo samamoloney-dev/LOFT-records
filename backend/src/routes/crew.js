@@ -851,3 +851,4 @@ router.delete('/:id/clearances/:clearanceId', async (req, res) => {
 
 module.exports = router;
 module.exports.listCrewWithCurrency = listCrewWithCurrency;
+module.exports.hasIncompleteGroundSchool = hasIncompleteGroundSchool;

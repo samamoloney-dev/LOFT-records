@@ -5,6 +5,7 @@ const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { hasIncompleteGroundSchool } = require('./crew');
 
 const router = express.Router();
 
@@ -347,6 +348,15 @@ router.post('/trainee/:traineeId/phase-completions/:phase/complete', requireRole
   const completion = rows[0] ? rowToCamel(rows[0]) : null;
   if (!completion?.trainingCaptainSignature || !completion?.applicantSignature) {
     return res.status(400).json({ error: 'Both signatures are required before completing this phase' });
+  }
+
+  // Ground school (theory/exams) must be complete before a candidate is
+  // allowed to fly the aircraft at all - a phase can never be signed off
+  // while required ground school is still outstanding, regardless of which
+  // phase this is, since nothing about ground school changes phase to
+  // phase once it's actually done.
+  if (await hasIncompleteGroundSchool(trainee.id)) {
+    return res.status(400).json({ error: 'Required ground school items are not yet complete - this must be done before the candidate can fly' });
   }
 
   // Every required syllabus/discussion item for this phase must be signed

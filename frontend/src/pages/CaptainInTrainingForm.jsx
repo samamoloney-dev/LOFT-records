@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
@@ -16,6 +17,9 @@ import { formatDate, formatUserRole } from '../lib/format';
 // Line. Both share one checkType (CAPTAIN_IN_TRAINING) with a
 // details.variant, same pattern as RECURRENT_SIMULATOR's PC/IPC_PC.
 const VARIANT_LABELS = { PRELIMINARY: 'Captain in Training — Preliminary Assessment', FINAL: 'Captain in Training — Final Assessment' };
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
+// record - mirrors backend/src/routes/checks.js POST /.
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 const PRELIM_SECTION_1 = [
   'Comfort and orientation in LHS',
@@ -165,6 +169,8 @@ function ItemRow({ kind, description, value, disabled, onChange }) {
 const emptyDetails = (variant) => ({ variant, date: '', items: {}, recommendation: '', assessorComments: '', assessorSig: '', candidateSig: '' });
 
 export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, fleet, archived = false, crewArchived = false }) {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -357,7 +363,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
-        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Assign assessment'}</button>}
+        {!archived && !crewArchived && isAdmin && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Assign assessment'}</button>}
       </div>
 
       {!archived && creating && (

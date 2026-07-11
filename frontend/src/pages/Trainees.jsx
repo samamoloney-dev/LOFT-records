@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
 const ROLES = ['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT'];
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new trainee -
+// no other staff role. Mirrors backend/src/routes/trainees.js POST /.
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 export function Trainees() {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const [searchParams] = useSearchParams();
   const [trainees, setTrainees] = useState([]);
   // Lets the Home Dashboard's "Add Trainee" quick action (?new=1) land here
   // with the form already open, instead of requiring an extra click.
-  const [showForm, setShowForm] = useState(searchParams.get('new') === '1');
+  const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
   const navigate = useNavigate();
@@ -40,10 +46,10 @@ export function Trainees() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Active trainees</div>
-        <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Add trainee'}</button>
+        {isAdmin && <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Add trainee'}</button>}
       </div>
 
-      {showForm && (
+      {showForm && isAdmin && (
         <form className="card" onSubmit={handleCreate}>
           <div className="grid2">
             <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></div>

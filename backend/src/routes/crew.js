@@ -307,8 +307,14 @@ async function withCurrency(member) {
       ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete),
       proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete),
       // Falls back to the initial Check to Line anchor date when no
-      // recurrent Line Check has ever been completed yet.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete),
+      // recurrent Line Check has ever been completed yet. If there's no
+      // anchor at all (e.g. a crew profile onboarded without one) but a
+      // Line Check has genuinely been completed, that fixed-anniversary
+      // calculation has nothing to work from and returns null - fall back
+      // to a rolling 365 days from the last completion instead (same rule
+      // EP/IPC/PC already use), rather than leaving them stuck reading
+      // "never completed" forever despite a real completed check on file.
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete),
     };
   } else {
     const [epChk, lineCheckChk] = await Promise.all([

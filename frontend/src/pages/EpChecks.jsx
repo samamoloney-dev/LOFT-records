@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { CrewMemberPicker } from '../components/CrewMemberPicker';
@@ -15,11 +16,16 @@ const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
+// record - mirrors backend/src/routes/checks.js POST /.
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // recurring checks (see CrewDetail.jsx) instead of the free-text list used
 // for ad-hoc/initial-training checks.
 export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName, fleet, crewArchived = false }) {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -300,7 +306,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived emergency procedures checks' : '12-month cycle, separate from IPC and Proficiency Check'}</div>
-        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>}
+        {!archived && !crewArchived && isAdmin && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>}
       </div>
 
       {!archived && creating && (

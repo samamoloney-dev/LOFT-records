@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { PinSignature } from '../components/PinSignature';
@@ -19,6 +20,9 @@ import { competencyStatus } from '../lib/dueStatus';
 // free-text/ad-hoc use of this check type.
 const REFRESHER_ITEM_NAME = 'Refresher training and check';
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
+// record - mirrors backend/src/routes/checks.js POST /.
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // SA_490 only lists LHS/RHS (unlike ProficiencyChecks' three-seat check).
 const SEAT_OPTIONS = ['LHS', 'RHS'];
 
@@ -103,6 +107,8 @@ function ItemRow({ item, value, disabled, onChange }) {
 }
 
 export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false, fleet, crewArchived = false }) {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -392,7 +398,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived Line Checks' : 'Line Check — due 365 days from the initial Check to Line date, then every 365 days after'}</div>
-        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Log Line Check'}</button>}
+        {!archived && !crewArchived && isAdmin && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Log Line Check'}</button>}
       </div>
 
       {!archived && creating && (

@@ -615,7 +615,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
-        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>}
+        {!archived && !crewArchived && isAdmin && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>}
       </div>
 
       {!archived && creating && (

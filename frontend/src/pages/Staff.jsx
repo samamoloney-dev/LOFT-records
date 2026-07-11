@@ -13,6 +13,9 @@ import { GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '.
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+// ARN (Air Registration Number) is a pilot licence reference - not
+// applicable to the two cabin-attendant-specific staff roles.
+const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
 // Examiners, Check Captains, HOTC, HOFO, Alternate, CA Trainers and CA
 // Checkers can cover more than one fleet - only Training Captain is
 // qualified on a single fleet, same as real-world type ratings ("a Dash 8
@@ -229,6 +232,7 @@ function StaffAccountsPanel() {
 
   const isAdminRole = ADMIN_ROLES.includes(form.role);
   const isMultiFleetRole = MULTI_FLEET_ROLES.includes(form.role);
+  const isCaOnlyRole = CA_ONLY_ROLES.includes(form.role);
 
   return (
     <div>
@@ -279,7 +283,9 @@ function StaffAccountsPanel() {
               </select>
             </div>
           </div>
-          <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} /></div>
+          {!isCaOnlyRole && (
+            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} /></div>
+          )}
           <div className="field">
             <label>
               Fleet{isMultiFleetRole ? 's' : ''}

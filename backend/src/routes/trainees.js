@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin } = require('../middleware/roles');
+const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -63,10 +63,9 @@ router.get('/:id', async (req, res) => {
   res.json(await withHours(trainee));
 });
 
-router.post('/', async (req, res) => {
-  if (isCaOnlyRole(req.user) && req.body.type !== 'CABIN_ATTENDANT') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new trainee -
+// no other staff role, per the operator's explicit rule.
+router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

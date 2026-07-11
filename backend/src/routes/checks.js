@@ -156,15 +156,18 @@ async function createCheckRecord(d) {
   return rowToCamel(rows[0]);
 }
 
+// Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
+// record, regardless of check type - no other staff role, per the
+// operator's explicit rule. Whoever it's then assigned to (an examiner,
+// CA Checker, etc. - still governed by canAccessCheckType/checkAccess
+// ticks) is who actually conducts and completes it.
 router.post('/', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can add a check' });
+
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  if (!canAccessCheckType(req.user, parsed.data.checkType)) return res.status(403).json({ error: 'Forbidden' });
   if (parsed.data.crewMemberId && await isCrewMemberArchived(parsed.data.crewMemberId)) {
     return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
-  }
-  if (parsed.data.assignedTo && !isAdmin(req.user)) {
-    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }
   // Captain in Training is only ever offered for a pilot an admin has
   // explicitly allocated to a Captain upgrade (see crew.js

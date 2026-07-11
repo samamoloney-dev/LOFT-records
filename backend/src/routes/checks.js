@@ -160,6 +160,9 @@ router.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   if (!canAccessCheckType(req.user, parsed.data.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  if (parsed.data.crewMemberId && await isCrewMemberArchived(parsed.data.crewMemberId)) {
+    return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
+  }
   if (parsed.data.assignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }

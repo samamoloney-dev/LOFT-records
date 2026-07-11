@@ -352,13 +352,13 @@ function CurrencyFolder({ member }) {
         </button>
       </div>
 
-      {subTab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'ipc' && isPilot && <ProficiencyChecks variant="IPC_PC" label="IPC" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'citPrelim' && isPilot && <CaptainInTrainingForm variant="PRELIMINARY" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
-      {subTab === 'citFinal' && isPilot && <CaptainInTrainingForm variant="FINAL" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} />}
+      {subTab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'ipc' && isPilot && <ProficiencyChecks variant="IPC_PC" label="IPC" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'citPrelim' && isPilot && <CaptainInTrainingForm variant="PRELIMINARY" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'citFinal' && isPilot && <CaptainInTrainingForm variant="FINAL" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
     </div>
   );
 }

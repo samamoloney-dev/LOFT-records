@@ -164,7 +164,7 @@ function ItemRow({ kind, description, value, disabled, onChange }) {
 
 const emptyDetails = (variant) => ({ variant, date: '', items: {}, recommendation: '', assessorComments: '', assessorSig: '', candidateSig: '' });
 
-export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, fleet, archived = false }) {
+export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, fleet, archived = false, crewArchived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -357,7 +357,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
-        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Assign assessment'}</button>}
+        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Assign assessment'}</button>}
       </div>
 
       {!archived && creating && (

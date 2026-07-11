@@ -102,7 +102,7 @@ function ItemRow({ item, value, disabled, onChange }) {
   );
 }
 
-export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false, fleet }) {
+export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false, fleet, crewArchived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -392,7 +392,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived Line Checks' : 'Line Check — due 365 days from the initial Check to Line date, then every 365 days after'}</div>
-        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Log Line Check'}</button>}
+        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Log Line Check'}</button>}
       </div>
 
       {!archived && creating && (

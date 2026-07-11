@@ -19,7 +19,7 @@ const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // recurring checks (see CrewDetail.jsx) instead of the free-text list used
 // for ad-hoc/initial-training checks.
-export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName, fleet }) {
+export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crewMemberId, crewMemberName, fleet, crewArchived = false }) {
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -300,7 +300,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? 'Archived emergency procedures checks' : '12-month cycle, separate from IPC and Proficiency Check'}</div>
-        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>}
+        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add emergency procedures check'}</button>}
       </div>
 
       {!archived && creating && (

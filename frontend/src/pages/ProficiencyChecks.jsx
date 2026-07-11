@@ -177,7 +177,7 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
 // crewMemberId/crewMemberName scope this to one Crew roster member's own
 // IPC/PC history (see CrewDetail.jsx) instead of the free-text list used for
 // ad-hoc/initial-training checks.
-export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName, fleet }) {
+export function ProficiencyChecks({ variant, label, archived = false, crewMemberId, crewMemberName, fleet, crewArchived = false }) {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
@@ -615,7 +615,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
-        {!archived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>}
+        {!archived && !crewArchived && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Add check'}</button>}
       </div>
 
       {!archived && creating && (

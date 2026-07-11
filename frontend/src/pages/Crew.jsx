@@ -6,11 +6,14 @@ import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { compressImage } from '../lib/imageCompress';
 
-const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+// Order of preference: Fokker 100, then Dash 8, then Metro 23 (pilot fleets),
+// cabin attendant fleets after.
+const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
-// Active crew is grouped by fleet, then rank within that fleet (Captain
-// before First Officer; Cabin Attendant has no internal rank so this is a
-// no-op for that tab), then name as the final tie-break.
+// Active crew is grouped by fleet (Fokker 100, then Dash 8, then Metro 23 -
+// the operator's stated order of preference), then rank within that fleet
+// (Captain before First Officer; Cabin Attendant has no internal rank so
+// this is a no-op for that tab), then name as the final tie-break.
 const RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1, CABIN_ATTENDANT: 0 };
 function sortByFleetAndRank(members) {
   return [...members].sort((a, b) => {

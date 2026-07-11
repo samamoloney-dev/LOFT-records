@@ -207,7 +207,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 500 }}>Check to Line Assessment</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          {form.archived && <PrintButton onPrint={printForm} />}
+          {(form.archived || form.completedAt) && <PrintButton onPrint={printForm} />}
           <ArchiveButton
             archived={form.archived}
             canArchive={!!form.completedAt}

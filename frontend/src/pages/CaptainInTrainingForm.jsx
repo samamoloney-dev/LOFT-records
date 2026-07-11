@@ -285,7 +285,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
-            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton archived={selected.archived} canArchive={!!selected.result} onArchive={() => archiveCheck(selected)} onUnarchive={() => unarchiveCheck(selected)} />
             <DeleteButton archived={selected.archived} onDelete={() => deleteCheck(selected)} />
           </div>

@@ -155,7 +155,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
-            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}

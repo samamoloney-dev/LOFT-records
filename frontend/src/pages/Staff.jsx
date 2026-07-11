@@ -12,6 +12,8 @@ import { GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '.
 // existing accounts).
 const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const CA_FLEET_VALUES = ['CA_DASH_8', 'CA_FOKKER_100'];
+const PILOT_FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // ARN (Air Registration Number) is a pilot licence reference - not
 // applicable to the two cabin-attendant-specific staff roles.
@@ -113,7 +115,16 @@ function CheckAccessPicker({ value, onChange, disabled }) {
 // Captain only), picking a fleet replaces whatever was ticked - a Dash 8
 // trainer can't also be a Fokker 100 trainer. In multi mode (everyone else
 // except Training Captain), ticks toggle independently.
-function FleetAccessPicker({ value, onChange, multi, disabled }) {
+//
+// options defaults to every fleet, but the caller scopes it to just the
+// pilot or cabin-attendant fleets for a role restricted to one side - a
+// CA Trainer/CA Checker must never be tickable for a pilot fleet (Dash 8/
+// Fokker 100/Metro 23), since "Line Check" checkAccess is shared between
+// the pilot and cabin-attendant Line Check forms (see PilotLineCheck.jsx/
+// CaChecks.jsx's identical accessType="LINE_CHECK") - without this, a CA
+// Checker ticked for a pilot fleet by mistake would show up as an eligible
+// assessor on a Pilot Line Check, which they must never be able to conduct.
+function FleetAccessPicker({ value, onChange, multi, disabled, options = FLEET_VALUES }) {
   function toggle(v) {
     if (multi) {
       onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
@@ -123,7 +134,7 @@ function FleetAccessPicker({ value, onChange, multi, disabled }) {
   }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {FLEET_VALUES.map((f) => (
+      {options.map((f) => (
         <div
           key={f}
           onClick={() => !disabled && toggle(f)}
@@ -192,7 +203,15 @@ function StaffAccountsPanel() {
 
   function openEditForm(user) {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, fleets: user.fleets || [], arn: user.arn || '', checkAccess: user.checkAccess || [] });
+    // Drops any fleet tick from the wrong side (e.g. a pilot fleet left on
+    // a CA Trainer/CA Checker from before this restriction existed) rather
+    // than carrying it through silently - see FleetAccessPicker.
+    const validFleets = CA_ONLY_ROLES.includes(user.role) ? CA_FLEET_VALUES : PILOT_FLEET_VALUES;
+    setForm({
+      name: user.name, email: user.email, password: '', role: user.role,
+      fleets: (user.fleets || []).filter((f) => validFleets.includes(f)),
+      arn: user.arn || '', checkAccess: user.checkAccess || [],
+    });
     setShowForm(true);
   }
 
@@ -278,7 +297,12 @@ function StaffAccountsPanel() {
             )}
             <div className="field">
               <label>Role</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, fleets: MULTI_FLEET_ROLES.includes(e.target.value) ? form.fleets : form.fleets.slice(0, 1) })}>
+              <select value={form.role} onChange={(e) => {
+                const nextRole = e.target.value;
+                const nextOptions = CA_ONLY_ROLES.includes(nextRole) ? CA_FLEET_VALUES : PILOT_FLEET_VALUES;
+                const carriedFleets = form.fleets.filter((f) => nextOptions.includes(f));
+                setForm({ ...form, role: nextRole, fleets: MULTI_FLEET_ROLES.includes(nextRole) ? carriedFleets : carriedFleets.slice(0, 1) });
+              }}>
                 {ROLES.map((r) => <option key={r} value={r}>{formatUserRole(r)}</option>)}
               </select>
             </div>
@@ -295,6 +319,7 @@ function StaffAccountsPanel() {
               value={form.fleets}
               onChange={(fleets) => setForm({ ...form, fleets })}
               multi={isMultiFleetRole}
+              options={isCaOnlyRole ? CA_FLEET_VALUES : PILOT_FLEET_VALUES}
             />
           </div>
           <div className="field">

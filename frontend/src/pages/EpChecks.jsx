@@ -167,7 +167,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
-            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}
@@ -282,19 +282,17 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
           </div>
         )}
         <div className="card">
-          <div className="grid2">
-            <div className="field">
-              <label>Overall assessment</label>
-              <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
-                <option value="">—</option>
-                <option value="PASS">PASS</option>
-                <option value="FAIL">FAIL</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Overall score (1–5)</label>
-              <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
-            </div>
+          <div className="field">
+            <label>Overall score (1–5)</label>
+            <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
+          </div>
+          <div className="field">
+            <label>Overall assessment</label>
+            <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+              <option value="">—</option>
+              <option value="PASS">PASS</option>
+              <option value="FAIL">FAIL</option>
+            </select>
           </div>
         </div>
         {error && <div className="error-text">{error}</div>}

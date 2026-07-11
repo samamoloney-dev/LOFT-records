@@ -8,6 +8,8 @@ import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 
+const COURSE_TITLES = ['Emergency procedures', 'PMI', 'Ground school'];
+
 function ItemRow({ item, value, disabled, onChange }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
@@ -151,7 +153,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                 {check.courseTitle ? ` · ${check.courseTitle}` : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                {check.archived && <PrintButton onPrint={() => printCheck(check)} />}
+                {(check.archived || check.completedAt) && <PrintButton onPrint={() => printCheck(check)} />}
                 <ArchiveButton
                   archived={check.archived}
                   canArchive={!!check.completedAt}
@@ -167,12 +169,14 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                 <div className="grid2">
                   <div className="field">
                     <label>Course Title</label>
-                    <input
+                    <select
                       disabled={locked}
                       value={check.courseTitle || ''}
-                      onChange={(e) => setLocal(check.id, { courseTitle: e.target.value })}
-                      onBlur={() => save(check.id, { courseTitle: check.courseTitle })}
-                    />
+                      onChange={(e) => save(check.id, { courseTitle: e.target.value || null })}
+                    >
+                      <option value="">—</option>
+                      {COURSE_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div className="field">
                     <label>Date</label>

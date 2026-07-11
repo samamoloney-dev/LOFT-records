@@ -32,6 +32,13 @@ const emptyDetails = () => ({
 });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 
+// The Terminal section lists every named approach type (ILS/RNAV/VOR/NDB/
+// LLZ/DME or GNSS Arrival - see migration 0067) so the assessor can pick
+// whichever one was actually flown - only one approach is flown per check,
+// so unlike every other section here, this one is satisfied by a single
+// item ticked ✓ rather than requiring every item individually answered.
+const TERMINAL_SECTION = 'Terminal';
+
 function groupBySection(items) {
   const map = new Map();
   for (const item of items) {
@@ -267,13 +274,18 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const results = d.results || {};
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
     const locked = !!selected.completedAt;
-    const allItemsAnswered = tickableItems.length > 0 && tickableItems.every((item) => isItemAnswered(item, results[item.id]));
+    const nonTerminalItems = tickableItems.filter((i) => i.section !== TERMINAL_SECTION);
+    const terminalItems = tickableItems.filter((i) => i.section === TERMINAL_SECTION);
+    const terminalAnswered = terminalItems.length === 0 || terminalItems.some((item) => results[item.id] === true);
+    const allItemsAnswered = tickableItems.length > 0
+      && nonTerminalItems.every((item) => isItemAnswered(item, results[item.id]))
+      && terminalAnswered;
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
-            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}
@@ -316,6 +328,11 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         {sections.map(([sectionName, sectionItems]) => (
           <div key={sectionName} className="card">
             <div style={{ fontWeight: 500, marginBottom: 8 }}>{sectionName}</div>
+            {sectionName === TERMINAL_SECTION && (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                Tick ✓ the one approach actually flown - the rest can be left blank.
+              </div>
+            )}
             {sectionItems.map((item) => (
               <ItemRow
                 key={item.id}

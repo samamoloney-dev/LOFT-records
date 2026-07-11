@@ -8,6 +8,8 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { CHECK_ROLES } from '../lib/roles';
 
+const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
+
 const SECTION_LABELS = {
   TRAINING_PILOT: '2a — Training Pilot',
   CHECK_PILOT: '2b — Check Pilot',
@@ -173,7 +175,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
                 {check.trainingCheckType ? ` · ${check.trainingCheckType}` : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                {check.archived && <PrintButton onPrint={() => printCheck(check)} />}
+                {(check.archived || check.completedAt) && <PrintButton onPrint={() => printCheck(check)} />}
                 <ArchiveButton
                   archived={check.archived}
                   canArchive={!!check.completedAt}
@@ -189,12 +191,14 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
                 <div className="grid2">
                   <div className="field">
                     <label>Training / Check Type</label>
-                    <input
+                    <select
                       disabled={locked}
                       value={check.trainingCheckType || ''}
-                      onChange={(e) => setLocal(check.id, { trainingCheckType: e.target.value })}
-                      onBlur={() => save(check.id, { trainingCheckType: check.trainingCheckType })}
-                    />
+                      onChange={(e) => save(check.id, { trainingCheckType: e.target.value || null })}
+                    >
+                      <option value="">—</option>
+                      {TRAINING_CHECK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div className="field">
                     <label>Date</label>
@@ -216,10 +220,6 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
                       <option value="">—</option>
                       {eligibleAssessors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
-                  </div>
-                  <div className="field">
-                    <label>Expiry (24m)</label>
-                    <input disabled value={check.checkDate ? formatDate(expiryDate(check.checkDate)) : ''} />
                   </div>
                 </div>
                 <div className="grid2">

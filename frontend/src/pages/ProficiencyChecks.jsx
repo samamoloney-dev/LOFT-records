@@ -453,7 +453,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
             {selected.completedAt && (
               <button onClick={() => setShowSurvey((v) => !v)}>{showSurvey ? 'Hide Continuous Improvement Survey' : 'Continuous Improvement Survey'}</button>
             )}
-            {selected.archived && <PrintButton onPrint={() => printCheck(selected)} />}
+            {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}

@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow, section } from '../lib/print';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
@@ -181,6 +183,29 @@ function MinutesDetail() {
     } catch (err) { setError(err.message); }
   }
 
+  // Admin-only (see PrintButton) - includes who has/hasn't acknowledged yet,
+  // same completion data the on-screen AcknowledgementTracker shows.
+  async function printMinutes() {
+    let ackRows = [];
+    if (minutes.status !== 'DRAFT') {
+      try {
+        const ackData = await api.get(`/api/meeting-minutes/${id}/acknowledgements`);
+        ackRows = [
+          ['Acknowledged', `${ackData.acknowledgedCount}/${ackData.eligibleCount} staff`],
+          ...ackData.acknowledgedBy.map((a) => [a.name, formatDate(a.acknowledgedAt)]),
+        ];
+      } catch { /* non-admin viewer somehow reached this - just skip the list */ }
+    }
+
+    let body = '<h1>Flight Standards Meeting Minutes</h1>';
+    body += `<div class="meta">${minutes.meetingDate ? formatDate(minutes.meetingDate) : 'No date set'}${minutes.avsafeNumber ? ` · Avsafe ${minutes.avsafeNumber}` : ''}</div>`;
+    body += section('Attendance Register', [['Attendance', minutes.attendanceRegister]]);
+    body += section('Apologies', [['Apologies', minutes.apologies]]);
+    SECTIONS.forEach((s) => { body += section(s.label, [[s.label, minutes[s.key]]]); });
+    if (ackRows.length) body += section('Acknowledgement', ackRows);
+    openPrintWindow('Flight Standards Meeting Minutes', body);
+  }
+
   if (error) return <div className="error-text">{error}</div>;
   if (!minutes || !form) return <div className="page-loading">Loading…</div>;
 
@@ -188,7 +213,10 @@ function MinutesDetail() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <button onClick={() => navigate('/meeting-minutes')}>← Back</button>
-        <StatusBadge status={minutes.status} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <PrintButton onPrint={printMinutes} />
+          <StatusBadge status={minutes.status} />
+        </div>
       </div>
 
       {minutes.status !== 'DRAFT' && user.role !== 'TRAINEE' && (

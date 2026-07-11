@@ -11,18 +11,23 @@ import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
 import { CHECK_ROLES, GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
-const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER']; // Check to Line, Line Check
+const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER', 'CA_MANAGER']; // Check to Line, Line Check
 
 export function Checks() {
   const { user } = useAuth();
   // Simulator-only staff can reach the Pilots tab, but only its IPC/PC
   // sub-tabs - not Emergency Procedures.
   const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
+  // Cabin Attendant Manager is authorised to train and check Emergency
+  // Procedures for all pilots and cabin crew unconditionally - no
+  // checkAccess tick required (mirrors lib/checkAccess.js isEligibleForCheck
+  // and backend checks.js canAccessCheckType).
+  const isCaManager = user.role === 'CA_MANAGER';
   // A staff member ticked for Emergency Procedures on their Staff profile
   // (checkAccess) can conduct/check EP for both pilots and cabin attendants,
   // even if their broader role isn't one of the roles that otherwise unlocks
   // the Pilots/Cabin Attendants tabs (e.g. a CA_CHECKER or CA_TRAINER).
-  const hasEpAccess = (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  const hasEpAccess = isCaManager || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
   const canAccessPilotChecks = CHECK_ROLES.includes(user.role) || isSimulatorOnly;
   const canAccessPilotEp = !isSimulatorOnly && (CHECK_ROLES.includes(user.role) || hasEpAccess);
   const canAccessPilots = canAccessPilotChecks || canAccessPilotEp;

@@ -3,9 +3,12 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { hasIncompleteGroundSchool } = require('./crew');
+const { requestOrApply, applyToTable } = require('../lib/approvals');
+
+const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 
 const router = express.Router();
 
@@ -17,12 +20,17 @@ function roleScopeFor(traineeRole) {
 
 // Syllabus curriculum management - who gets to define what's on the syllabus
 // in the first place, as opposed to /trainee/:id which is for viewing and
-// ticking off progress against it.
-router.get('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+// ticking off progress against it. Cabin Attendant Manager can also edit
+// here, but only cabin attendant fleet items, and (unless they're HOTC/
+// Alternate, which nobody with this role is) every edit they make is queued
+// for HOTC review/approval rather than applying immediately - see
+// lib/approvals.js and content-changes.js.
+router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const { rows } = await pool.query(
     'SELECT * FROM syllabus_items ORDER BY fleet ASC, section ASC, category ASC, phase ASC, description ASC',
   );
-  res.json(rows.map(rowToCamel));
+  const items = rows.map(rowToCamel);
+  res.json(isCaOnlyRole(req.user) ? items.filter((i) => CA_FLEETS.includes(i.fleet)) : items);
 });
 
 const createItemSchema = z.object({
@@ -36,61 +44,98 @@ const createItemSchema = z.object({
   required: z.boolean().optional(),
 });
 
-router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+function forbiddenFleetForCaManager(req, fleet) {
+  return isCaOnlyRole(req.user) && fleet && !CA_FLEETS.includes(fleet);
+}
+
+router.post('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const parsed = createItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (forbiddenFleetForCaManager(req, parsed.data.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only add cabin attendant syllabus items' });
+  }
 
-  const { fleet, roleScope, phase, category, section, description, notes, required } = parsed.data;
-  const { rows } = await pool.query(
-    `INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, notes, required)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [fleet, roleScope, phase, category, section ?? 'SYLLABUS', description, notes ?? null, required ?? true],
-  );
-  const item = rowToCamel(rows[0]);
-  await logAction({
-    userId: req.user.id, action: 'CREATE', targetTable: 'syllabus_items', targetId: item.id,
-    description: `Added syllabus item "${item.description}"`,
+  const data = { ...parsed.data, section: parsed.data.section ?? 'SYLLABUS', required: parsed.data.required ?? true };
+  const { applied, result, pending } = await requestOrApply({
+    req, tableName: 'syllabus_items', action: 'CREATE', proposedData: data,
+    summary: `Add syllabus item "${data.description}"`,
+    applyFn: async () => {
+      const item = await applyToTable('syllabus_items', 'CREATE', null, data);
+      await logAction({
+        userId: req.user.id, action: 'CREATE', targetTable: 'syllabus_items', targetId: item.id,
+        description: `Added syllabus item "${item.description}"`,
+      });
+      return item;
+    },
   });
-  res.status(201).json(item);
+  if (applied) return res.status(201).json(result);
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted syllabus item "${data.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
-router.patch('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+router.patch('/items/:id', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const parsed = createItemSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const columnMap = {
-    fleet: 'fleet', roleScope: 'role_scope', phase: 'phase', category: 'category',
-    section: 'section', description: 'description', notes: 'notes', required: 'required',
-  };
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-  const setClauses = entries.map(([key], i) => `${columnMap[key]} = $${i + 1}`);
-  const values = entries.map(([, value]) => value);
-  values.push(req.params.id);
+  const { rows: existingRows } = await pool.query('SELECT * FROM syllabus_items WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (forbiddenFleetForCaManager(req, existing.fleet) || forbiddenFleetForCaManager(req, parsed.data.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only edit cabin attendant syllabus items' });
+  }
 
-  const { rows } = await pool.query(
-    `UPDATE syllabus_items SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
-    values,
-  );
-  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-
-  const item = rowToCamel(rows[0]);
-  await logAction({
-    userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_items', targetId: item.id,
-    description: `Updated syllabus item "${item.description}"`,
+  const { applied, result, pending } = await requestOrApply({
+    req, tableName: 'syllabus_items', action: 'UPDATE', itemId: existing.id,
+    proposedData: parsed.data, previousData: existing,
+    summary: `Update syllabus item "${existing.description}"`,
+    applyFn: async () => {
+      const item = await applyToTable('syllabus_items', 'UPDATE', existing.id, parsed.data);
+      await logAction({
+        userId: req.user.id, action: 'UPDATE', targetTable: 'syllabus_items', targetId: item.id,
+        description: `Updated syllabus item "${item.description}"`,
+      });
+      return item;
+    },
   });
-  res.json(item);
+  if (applied) return res.json(result);
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted a change to syllabus item "${existing.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
-router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  const { rows } = await pool.query('DELETE FROM syllabus_items WHERE id = $1 RETURNING description', [req.params.id]);
-  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({
-    userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: req.params.id,
-    description: `Deleted syllabus item "${rows[0].description}"`,
+router.delete('/items/:id', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
+  const { rows: existingRows } = await pool.query('SELECT * FROM syllabus_items WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (forbiddenFleetForCaManager(req, existing.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only delete cabin attendant syllabus items' });
+  }
+
+  const { applied, pending } = await requestOrApply({
+    req, tableName: 'syllabus_items', action: 'DELETE', itemId: existing.id, previousData: existing,
+    summary: `Delete syllabus item "${existing.description}"`,
+    applyFn: async () => {
+      await applyToTable('syllabus_items', 'DELETE', existing.id);
+      await logAction({
+        userId: req.user.id, action: 'DELETE', targetTable: 'syllabus_items', targetId: existing.id,
+        description: `Deleted syllabus item "${existing.description}"`,
+      });
+    },
   });
-  res.status(204).end();
+  if (applied) return res.status(204).end();
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted deletion of syllabus item "${existing.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
 async function findTrainee(id) {

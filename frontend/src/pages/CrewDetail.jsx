@@ -538,6 +538,8 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
 
 export function CrewDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
   const navigate = useNavigate();
   const [member, setMember] = useState(null);
   const [error, setError] = useState(null);
@@ -616,7 +618,11 @@ export function CrewDetail() {
   const name = member.name;
   const needsAttention = member.urgentItems.length > 0;
   const topTabs = [
-    { key: 'clearance', label: 'Clearance Form' },
+    // Clearance Form sign-off is HOTC/HOFO-only and the whole tab's GET is
+    // blocked for Cabin Attendant Manager (see crew.js blockCaManager on
+    // GET /:id/clearances) - hide the tab entirely rather than show one
+    // that always errors for them.
+    ...(isAdmin ? [{ key: 'clearance', label: 'Clearance Form' }] : []),
     { key: 'currency', label: 'Dates' },
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
@@ -633,7 +639,7 @@ export function CrewDetail() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <DeleteArchivedCrewButton member={member} onDelete={deleteMember} />
-          <ArchiveButton archived={member.archived} canArchive onArchive={archiveMember} onUnarchive={unarchiveMember} />
+          <ArchiveButton archived={member.archived} canArchive={isAdmin} onArchive={archiveMember} onUnarchive={unarchiveMember} />
         </div>
       </div>
 

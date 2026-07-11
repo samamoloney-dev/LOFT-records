@@ -12,7 +12,7 @@ import { Crew } from './pages/Crew';
 import { CrewDetail } from './pages/CrewDetail';
 import { CurrencyOverview } from './pages/CurrencyOverview';
 import { Planning } from './pages/Planning';
-import { SyllabusAdmin } from './pages/SyllabusAdmin';
+import { SyllabusAdmin, ContentApprovalAlert } from './pages/SyllabusAdmin';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
 import { formatUserRole } from './lib/format';
@@ -20,14 +20,22 @@ import { CONTINUOUS_IMPROVEMENT_ROLES } from './lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // Flight Ops Admin excluded - they cannot conduct any checking, so the
-// Checks tab has nothing for them to do.
-const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_CHECKER', 'SIMULATOR_ONLY'];
+// Checks tab has nothing for them to do. Cabin Attendant Manager is
+// included - they check Cabin Attendant Line Checks and Emergency
+// Procedures for all pilots and cabin crew (see checks.js canAccessCheckType).
+const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_CHECKER', 'CA_MANAGER', 'SIMULATOR_ONLY'];
 // Every staff role - meeting minutes is for the whole operation, trainees
 // (who have their own restricted self-login view) excepted.
 const NON_TRAINEE_ROLES = [
   'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'CC', 'SIMULATOR_ONLY',
 ];
+// Cabin Attendant Manager gets Crew tab access too, but scoped to cabin
+// attendant records only (see crew.js forbiddenForCaManager) and Syllabus
+// Admin access scoped to cabin attendant fleets (see syllabus.js/
+// ground-school.js approval-queue gating for non-HOTC editors).
+const CREW_VISIBLE_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
+const SYLLABUS_ADMIN_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
 
 function Shell({ children }) {
   const { user, logout } = useAuth();
@@ -40,17 +48,18 @@ function Shell({ children }) {
       <nav className="top-nav">
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
         <NavLink to="/trainees">LOFT Trainees</NavLink>
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
+        {CREW_VISIBLE_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
         {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
         {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
+        {SYLLABUS_ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
         {user.role !== 'TRAINEE' && <NavLink to="/meeting-minutes">Meeting Minutes</NavLink>}
       </nav>
       {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
+      {user.role !== 'TRAINEE' && <ContentApprovalAlert />}
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>
         <button onClick={logout}>Sign out</button>
@@ -93,12 +102,12 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/trainees" element={<TraineesPage />} />
                 <Route path="/trainees/:id" element={<TraineeDetail />} />
-                <Route path="/syllabus" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><SyllabusAdmin /></ProtectedRoute>} />
+                <Route path="/syllabus" element={<ProtectedRoute roles={SYLLABUS_ADMIN_ROLES}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Staff /></ProtectedRoute>} />
                 <Route path="/checks" element={<Checks />} />
-                <Route path="/crew" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Crew /></ProtectedRoute>} />
-                <Route path="/crew/:id" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><CrewDetail /></ProtectedRoute>} />
+                <Route path="/crew" element={<ProtectedRoute roles={CREW_VISIBLE_ROLES}><Crew /></ProtectedRoute>} />
+                <Route path="/crew/:id" element={<ProtectedRoute roles={CREW_VISIBLE_ROLES}><CrewDetail /></ProtectedRoute>} />
                 <Route path="/currency" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><CurrencyOverview /></ProtectedRoute>} />
                 <Route path="/planning" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Planning /></ProtectedRoute>} />
                 <Route path="/continuous-improvement" element={<ProtectedRoute roles={CONTINUOUS_IMPROVEMENT_ROLES}><ContinuousImprovement /></ProtectedRoute>} />

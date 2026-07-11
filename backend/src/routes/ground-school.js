@@ -3,20 +3,29 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { requestOrApply, applyToTable } = require('../lib/approvals');
 
 const router = express.Router();
 
 router.use(requireAuth);
 
-// Ground School curriculum management - same admin-only pattern as
-// syllabus items (/api/syllabus/items).
-router.get('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
+function forbiddenFleetForCaManager(req, fleet) {
+  return isCaOnlyRole(req.user) && fleet && !CA_FLEETS.includes(fleet);
+}
+
+// Ground School curriculum management - same admin-only pattern as syllabus
+// items (/api/syllabus/items), plus Cabin Attendant Manager scoped to cabin
+// attendant fleet items, whose edits queue for HOTC approval instead of
+// applying immediately - see lib/approvals.js.
+router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const { rows } = await pool.query(
     'SELECT * FROM ground_school_items ORDER BY fleet ASC, category ASC, description ASC',
   );
-  res.json(rows.map(rowToCamel));
+  const items = rows.map(rowToCamel);
+  res.json(isCaOnlyRole(req.user) ? items.filter((i) => CA_FLEETS.includes(i.fleet)) : items);
 });
 
 const createItemSchema = z.object({
@@ -27,57 +36,94 @@ const createItemSchema = z.object({
   required: z.boolean().optional(),
 });
 
-router.post('/items', requireRole(...ADMIN_ROLES), async (req, res) => {
+router.post('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const parsed = createItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (forbiddenFleetForCaManager(req, parsed.data.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only add cabin attendant ground school items' });
+  }
 
-  const { fleet, category, description, notes, required } = parsed.data;
-  const { rows } = await pool.query(
-    `INSERT INTO ground_school_items (fleet, category, description, notes, required)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [fleet, category, description, notes ?? null, required ?? true],
-  );
-  const item = rowToCamel(rows[0]);
-  await logAction({
-    userId: req.user.id, action: 'CREATE', targetTable: 'ground_school_items', targetId: item.id,
-    description: `Added ground school item "${item.description}"`,
+  const data = { ...parsed.data, required: parsed.data.required ?? true };
+  const { applied, result, pending } = await requestOrApply({
+    req, tableName: 'ground_school_items', action: 'CREATE', proposedData: data,
+    summary: `Add ground school item "${data.description}"`,
+    applyFn: async () => {
+      const item = await applyToTable('ground_school_items', 'CREATE', null, data);
+      await logAction({
+        userId: req.user.id, action: 'CREATE', targetTable: 'ground_school_items', targetId: item.id,
+        description: `Added ground school item "${item.description}"`,
+      });
+      return item;
+    },
   });
-  res.status(201).json(item);
+  if (applied) return res.status(201).json(result);
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted ground school item "${data.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
-router.patch('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+router.patch('/items/:id', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const parsed = createItemSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-  const setClauses = entries.map(([key], i) => `${key} = $${i + 1}`);
-  const values = entries.map(([, value]) => value);
-  values.push(req.params.id);
+  const { rows: existingRows } = await pool.query('SELECT * FROM ground_school_items WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (forbiddenFleetForCaManager(req, existing.fleet) || forbiddenFleetForCaManager(req, parsed.data.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only edit cabin attendant ground school items' });
+  }
 
-  const { rows } = await pool.query(
-    `UPDATE ground_school_items SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
-    values,
-  );
-  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-
-  const item = rowToCamel(rows[0]);
-  await logAction({
-    userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_items', targetId: item.id,
-    description: `Updated ground school item "${item.description}"`,
+  const { applied, result, pending } = await requestOrApply({
+    req, tableName: 'ground_school_items', action: 'UPDATE', itemId: existing.id,
+    proposedData: parsed.data, previousData: existing,
+    summary: `Update ground school item "${existing.description}"`,
+    applyFn: async () => {
+      const item = await applyToTable('ground_school_items', 'UPDATE', existing.id, parsed.data);
+      await logAction({
+        userId: req.user.id, action: 'UPDATE', targetTable: 'ground_school_items', targetId: item.id,
+        description: `Updated ground school item "${item.description}"`,
+      });
+      return item;
+    },
   });
-  res.json(item);
+  if (applied) return res.json(result);
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted a change to ground school item "${existing.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
-router.delete('/items/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
-  const { rows } = await pool.query('DELETE FROM ground_school_items WHERE id = $1 RETURNING description', [req.params.id]);
-  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  await logAction({
-    userId: req.user.id, action: 'DELETE', targetTable: 'ground_school_items', targetId: req.params.id,
-    description: `Deleted ground school item "${rows[0].description}"`,
+router.delete('/items/:id', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
+  const { rows: existingRows } = await pool.query('SELECT * FROM ground_school_items WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const existing = rowToCamel(existingRows[0]);
+  if (forbiddenFleetForCaManager(req, existing.fleet)) {
+    return res.status(403).json({ error: 'Cabin Attendant Manager can only delete cabin attendant ground school items' });
+  }
+
+  const { applied, pending } = await requestOrApply({
+    req, tableName: 'ground_school_items', action: 'DELETE', itemId: existing.id, previousData: existing,
+    summary: `Delete ground school item "${existing.description}"`,
+    applyFn: async () => {
+      await applyToTable('ground_school_items', 'DELETE', existing.id);
+      await logAction({
+        userId: req.user.id, action: 'DELETE', targetTable: 'ground_school_items', targetId: existing.id,
+        description: `Deleted ground school item "${existing.description}"`,
+      });
+    },
   });
-  res.status(204).end();
+  if (applied) return res.status(204).end();
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'content_change_requests', targetId: pending.id,
+    description: `Submitted deletion of ground school item "${existing.description}" for HOTC approval`,
+  });
+  res.status(202).json({ pending: true, changeRequest: pending });
 });
 
 async function findTrainee(id) {

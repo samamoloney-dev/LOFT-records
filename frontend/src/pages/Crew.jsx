@@ -5,24 +5,14 @@ import { DueBadge } from '../components/DueBadge';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { compressImage } from '../lib/imageCompress';
+import { useAuth } from '../context/AuthContext';
 
-// Order of preference: Fokker 100, then Dash 8, then Metro 23 (pilot fleets),
-// cabin attendant fleets after.
 const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
-// Active crew is grouped by fleet (Fokker 100, then Dash 8, then Metro 23 -
-// the operator's stated order of preference), then rank within that fleet
-// (Captain before First Officer; Cabin Attendant has no internal rank so
-// this is a no-op for that tab), then name as the final tie-break.
-const RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1, CABIN_ATTENDANT: 0 };
-function sortByFleetAndRank(members) {
-  return [...members].sort((a, b) => {
-    const fleetDiff = FLEETS.indexOf(a.fleets[0]) - FLEETS.indexOf(b.fleets[0]);
-    if (fleetDiff !== 0) return fleetDiff;
-    const rankDiff = (RANK_ORDER[a.role] ?? 99) - (RANK_ORDER[b.role] ?? 99);
-    if (rankDiff !== 0) return rankDiff;
-    return a.name.localeCompare(b.name);
-  });
+// Active crew ordered alphabetically by surname, per the operator's explicit
+// instruction (supersedes the earlier fleet-then-rank ordering).
+function sortBySurname(members) {
+  return [...members].sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
 }
 
 const emptyForm = (type) => ({
@@ -96,6 +86,11 @@ function FleetPicker({ type, value, onChange }) {
 }
 
 function CrewRoster({ type }) {
+  const { user } = useAuth();
+  // Cabin Attendant Manager can't create new crew records (see crew.js
+  // blockCaManager on POST /) - onboarding a new crew member stays an
+  // admin-only lifecycle action, same as adding a trainee/check.
+  const canAddCrew = user.role !== 'CA_MANAGER';
   const [searchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -107,7 +102,7 @@ function CrewRoster({ type }) {
   const navigate = useNavigate();
 
   function load() {
-    api.get(`/api/crew?type=${type}`).then((data) => setMembers(sortByFleetAndRank(data))).catch((e) => setError(e.message));
+    api.get(`/api/crew?type=${type}`).then((data) => setMembers(sortBySurname(data))).catch((e) => setError(e.message));
   }
   useEffect(load, [type]);
   useEffect(() => { api.get('/api/users').then(setStaff).catch(() => {}); }, []);
@@ -156,10 +151,10 @@ function CrewRoster({ type }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Active line crew</div>
-        <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Quick add crew member'}</button>
+        {canAddCrew && <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Quick add crew member'}</button>}
       </div>
 
-      {showForm && (
+      {canAddCrew && showForm && (
         <form className="card" onSubmit={handleCreate}>
           <StaffLinkPicker staff={staff} linkedUserIds={linkedUserIds} value={form.userId} onLink={linkStaff} />
           <div className="grid2">
@@ -287,8 +282,16 @@ function ArchivedCrew() {
 }
 
 export function Crew() {
-  const tabs = [{ key: 'pilots', label: 'Pilots' }, { key: 'cabin-attendants', label: 'Cabin Attendants' }, { key: 'archived', label: 'Archived' }];
-  const [tab, setTab] = useState('pilots');
+  const { user } = useAuth();
+  // Cabin Attendant Manager only ever sees cabin attendant crew - the
+  // backend already scopes every crew.js route to that type for them (see
+  // forbiddenForCaManager in crew.js), so a Pilots/Archived tab would just
+  // show an empty roster or broken archive actions.
+  const isCaManager = user.role === 'CA_MANAGER';
+  const tabs = isCaManager
+    ? [{ key: 'cabin-attendants', label: 'Cabin Attendants' }]
+    : [{ key: 'pilots', label: 'Pilots' }, { key: 'cabin-attendants', label: 'Cabin Attendants' }, { key: 'archived', label: 'Archived' }];
+  const [tab, setTab] = useState(isCaManager ? 'cabin-attendants' : 'pilots');
 
   return (
     <div>

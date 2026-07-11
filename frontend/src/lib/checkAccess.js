@@ -15,6 +15,10 @@ const ALWAYS_ELIGIBLE_ASSESSOR_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
 export function isEligibleForCheck(staffMember, accessType, fleet) {
   if (ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role)) return true;
   if (staffMember.role === 'FLIGHT_OPS_ADMIN') return false;
+  // Cabin Attendant Manager is authorised to train and check Emergency
+  // Procedures for all pilots and cabin crew, unconditionally - no
+  // checkAccess tick or fleet match required, unlike everyone else below.
+  if (staffMember.role === 'CA_MANAGER' && accessType === 'EMERGENCY_PROCEDURES') return true;
   if (!(staffMember.checkAccess || []).includes(accessType)) return false;
   return !fleet || (staffMember.fleets || []).includes(fleet);
 }

@@ -10,12 +10,18 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // capability (ADMIN_ROLES above) - archiving, editing records, etc. - just
 // not this one.
 const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
-const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER'];
+// Cabin Attendant Manager joins CA Trainer/CA Checker as CA-scoped-only for
+// general trainee/crew record access (see canAccessTraineeRecord below) -
+// their Emergency Procedures authority for pilots is granted separately
+// (see checks.js canAccessCheckType and lib/checkAccess.js isEligibleForCheck),
+// since that's deliberately not fleet-scoped.
+const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 
 // Every role the operator counts as a "trainer": Training Captain, Check
-// Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, HOFO,
-// HOTC and Alternate - deliberately excludes Flight Ops Admin.
-const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC', 'ALTERNATE'];
+// Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, Cabin
+// Attendant Manager, HOFO, HOTC and Alternate - deliberately excludes Flight
+// Ops Admin.
+const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator.
@@ -33,7 +39,7 @@ const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 // check cabin attendant Emergency Procedures. These are the staff who must
 // hold a current Ground Instructor Competency Check (SA_520), renewed
 // every 12 months. Flight Ops Admin excluded - see CHECK_ROLES above.
-const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER'];
+const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air must hold a
@@ -41,7 +47,7 @@ const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 
 // Examiners are deliberately excluded - per the operator's explicit request,
 // Examiners do not require this check (they still conduct/assess it, since
 // that's gated by canAccessChecks/CHECK_ROLES below, not this list).
-const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER'];
+const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 
 // Which SA_518 form sub-section (2a/2b/3a/3b) applies to a given eligible
 // role - fixed per check at creation time (see personnel-checks.js) so a
@@ -51,6 +57,10 @@ const PERSONNEL_AIR_COMPETENCY_SECTION = {
   CC: 'CHECK_PILOT',
   CA_TRAINER: 'TRAINING_CABIN_CREW',
   CA_CHECKER: 'CHECK_CABIN_CREW',
+  // Cabin Attendant Manager covers both training and checking - CHECK_CABIN_CREW
+  // is the more senior of the two sections, same rationale as a Check Cabin
+  // Attendant covering a Trainer's scope.
+  CA_MANAGER: 'CHECK_CABIN_CREW',
 };
 
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
@@ -72,7 +82,7 @@ const CHECK_ACCESS_TYPES = ['PC', 'IPC', 'LINE_CHECK', 'CHECK_TO_LINE', 'EMERGEN
 // are still limited to Cabin Attendant trainees only.
 const FLIGHT_CREATOR_ROLES = [
   'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
 ];
 
 function requireRole(...roles) {

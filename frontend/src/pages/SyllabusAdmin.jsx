@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
@@ -34,8 +35,16 @@ const emptyForm = () => ({ fleets: ['DASH_8'], roleScope: 'BOTH', phase: 1, cate
 const emptyGroundSchoolForm = () => ({ fleets: ['DASH_8'], category: '', description: '', notes: '', required: true });
 
 function GroundSchoolAdminSection() {
+  const { user } = useAuth();
+  // Cabin Attendant Manager can edit ground school here too, but only cabin
+  // attendant fleets - the backend enforces this too (see ground-school.js
+  // forbiddenFleetForCaManager), this just keeps the picker from offering a
+  // choice that would just get rejected.
+  const isCaManager = user.role === 'CA_MANAGER';
+  const fleetOptions = isCaManager ? CA_FLEETS : FLEETS;
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyGroundSchoolForm());
@@ -48,7 +57,7 @@ function GroundSchoolAdminSection() {
 
   function openCreateForm() {
     setEditingId(null);
-    setForm(emptyGroundSchoolForm());
+    setForm({ ...emptyGroundSchoolForm(), fleets: [fleetOptions[0]] });
     setShowForm((v) => !v);
   }
 
@@ -61,30 +70,39 @@ function GroundSchoolAdminSection() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     const { fleets, ...rest } = form;
     if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
+      let anyPending = false;
       if (editingId) {
-        await api.patch(`/api/ground-school/items/${editingId}`, { ...rest, fleet: fleets[0] });
+        const res = await api.patch(`/api/ground-school/items/${editingId}`, { ...rest, fleet: fleets[0] });
+        anyPending = !!res?.pending;
       } else {
         // One item per fleet ticked, so the same course/exam can be added
         // for several fleets at once instead of repeating this form.
         for (const fleet of fleets) {
-          await api.post('/api/ground-school/items', { ...rest, fleet });
+          const res = await api.post('/api/ground-school/items', { ...rest, fleet });
+          if (res?.pending) anyPending = true;
         }
       }
       setShowForm(false);
       setEditingId(null);
       setForm(emptyGroundSchoolForm());
       load();
+      if (anyPending) setNotice('Submitted for HOTC approval - this will appear once approved.');
     } catch (err) { setError(err.message); }
   }
 
   async function remove(item) {
     if (!window.confirm(`Permanently delete "${item.description}"? Any trainee's progress against it will be deleted too. This cannot be undone.`)) return;
     setError(null);
-    try { await api.delete(`/api/ground-school/items/${item.id}`); load(); }
-    catch (err) { setError(err.message); }
+    setNotice(null);
+    try {
+      const res = await api.delete(`/api/ground-school/items/${item.id}`);
+      load();
+      if (res?.pending) setNotice('Deletion submitted for HOTC approval.');
+    } catch (err) { setError(err.message); }
   }
 
   const byFleet = items.reduce((acc, item) => {
@@ -123,12 +141,12 @@ function GroundSchoolAdminSection() {
             <label>Fleet{!editingId ? 's' : ''}</label>
             {editingId ? (
               <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
-                {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+                {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             ) : (
               <>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {FLEETS.map((f) => (
+                  {fleetOptions.map((f) => (
                     <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
                       <input
                         type="checkbox" style={{ width: 'auto' }}
@@ -175,6 +193,7 @@ function GroundSchoolAdminSection() {
         </form>
       )}
       {error && <div className="error-text">{error}</div>}
+      {notice && <div className="card" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}>{notice}</div>}
 
       {Object.keys(byFleet).length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No ground school items yet.</div>
@@ -225,11 +244,17 @@ const NEW_CATEGORY_VALUE = '__new__';
 const NEW_SECTION_VALUE = '__new__';
 
 function SyllabusItemsSection() {
+  const { user } = useAuth();
+  // Cabin Attendant Manager can edit the LOFT Package here too, but only
+  // cabin attendant fleets - see syllabus.js forbiddenFleetForCaManager.
+  const isCaManager = user.role === 'CA_MANAGER';
+  const fleetOptions = isCaManager ? CA_FLEETS : FLEETS;
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(emptyForm());
+  const [form, setForm] = useState(() => ({ ...emptyForm(), fleets: [isCaManager ? CA_FLEETS[0] : 'DASH_8'] }));
   const [expandedFleet, setExpandedFleet] = useState(null);
   // Whether the Category field is showing a free-text box (for a brand new
   // category) rather than a dropdown of ones already in use for this
@@ -243,7 +268,7 @@ function SyllabusItemsSection() {
 
   function openCreateForm() {
     setEditingId(null);
-    setForm(emptyForm());
+    setForm({ ...emptyForm(), fleets: [fleetOptions[0]] });
     setAddingCategory(false);
     setShowForm((v) => !v);
   }
@@ -284,31 +309,40 @@ function SyllabusItemsSection() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     const { fleets, ...rest } = form;
     if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
       const payload = { ...rest, phase: Number(form.phase) };
+      let anyPending = false;
       if (editingId) {
-        await api.patch(`/api/syllabus/items/${editingId}`, { ...payload, fleet: fleets[0] });
+        const res = await api.patch(`/api/syllabus/items/${editingId}`, { ...payload, fleet: fleets[0] });
+        anyPending = !!res?.pending;
       } else {
         // One item per fleet ticked, so the same syllabus item can be
         // added for every pilot (or cabin crew) fleet in one go.
         for (const fleet of fleets) {
-          await api.post('/api/syllabus/items', { ...payload, fleet });
+          const res = await api.post('/api/syllabus/items', { ...payload, fleet });
+          if (res?.pending) anyPending = true;
         }
       }
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm());
       load();
+      if (anyPending) setNotice('Submitted for HOTC approval - this will appear once approved.');
     } catch (err) { setError(err.message); }
   }
 
   async function remove(item) {
     if (!window.confirm(`Permanently delete "${item.description}"? Any trainee's progress against it will be deleted too. This cannot be undone.`)) return;
     setError(null);
-    try { await api.delete(`/api/syllabus/items/${item.id}`); load(); }
-    catch (err) { setError(err.message); }
+    setNotice(null);
+    try {
+      const res = await api.delete(`/api/syllabus/items/${item.id}`);
+      load();
+      if (res?.pending) setNotice('Deletion submitted for HOTC approval.');
+    } catch (err) { setError(err.message); }
   }
 
   const byFleet = items.reduce((acc, item) => {
@@ -329,16 +363,16 @@ function SyllabusItemsSection() {
             <label>Fleet{!editingId ? 's' : ''}</label>
             {editingId ? (
               <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
-                {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+                {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button type="button" onClick={() => setForm({ ...form, fleets: PILOT_FLEETS })}>All pilot fleets</button>
+                  {!isCaManager && <button type="button" onClick={() => setForm({ ...form, fleets: PILOT_FLEETS })}>All pilot fleets</button>}
                   <button type="button" onClick={() => setForm({ ...form, fleets: CA_FLEETS })}>All cabin crew fleets</button>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {FLEETS.map((f) => (
+                  {fleetOptions.map((f) => (
                     <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
                       <input
                         type="checkbox" style={{ width: 'auto' }}
@@ -422,6 +456,7 @@ function SyllabusItemsSection() {
         </form>
       )}
       {error && <div className="error-text">{error}</div>}
+      {notice && <div className="card" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}>{notice}</div>}
 
       {Object.keys(byFleet).length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No LOFT Package items yet.</div>
@@ -950,32 +985,138 @@ function CompetencyTypesSection() {
   );
 }
 
+const CHANGE_TABLE_LABELS = { syllabus_items: 'LOFT Package item', ground_school_items: 'Ground school item' };
+const CHANGE_ACTION_LABELS = { CREATE: 'Add', UPDATE: 'Update', DELETE: 'Delete' };
+
+// Curriculum edits made by anyone other than HOTC (e.g. the Cabin Attendant
+// Manager) queue here instead of applying immediately - see
+// backend/src/lib/approvals.js. Only HOTC/Alternate can see or act on this
+// (mirrors content-changes.js's own gating).
+function PendingApprovalsSection() {
+  const [changes, setChanges] = useState([]);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/content-changes').then(setChanges).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function approve(id) {
+    setError(null);
+    try { await api.post(`/api/content-changes/${id}/approve`); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function reject(id) {
+    setError(null);
+    try { await api.post(`/api/content-changes/${id}/reject`); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Curriculum changes submitted by someone other than HOTC wait here until reviewed - approving applies the change, rejecting discards it.
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {changes.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing awaiting approval.</div>
+      )}
+      {changes.map((c) => (
+        <div key={c.id} className="card">
+          <div style={{ fontWeight: 500 }}>
+            {CHANGE_ACTION_LABELS[c.action]} - {CHANGE_TABLE_LABELS[c.tableName] || c.tableName}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0' }}>{c.summary}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            Submitted by {c.createdByName} · {new Date(c.createdAt).toLocaleString()}
+          </div>
+          {c.action !== 'DELETE' && c.proposedData && (
+            <pre style={{ fontSize: 11, background: 'var(--surface-2)', padding: 8, borderRadius: 6, overflowX: 'auto' }}>
+              {JSON.stringify(c.proposedData, null, 2)}
+            </pre>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="primary" onClick={() => approve(c.id)}>Approve</button>
+            <button className="danger" onClick={() => reject(c.id)}>Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Login banner telling HOTC/Alternate a curriculum change (e.g. from the
+// Cabin Attendant Manager) is waiting on their review - mirrors
+// MeetingMinutes.jsx's own MeetingMinutesAlert pattern.
+export function ContentApprovalAlert() {
+  const { user } = useAuth();
+  const [count, setCount] = useState(0);
+  const navigate = useNavigate();
+  const canReview = user.role === 'HOTC' || user.role === 'ALTERNATE';
+
+  useEffect(() => {
+    if (!canReview) return;
+    api.get('/api/content-changes').then((rows) => setCount(rows.length)).catch(() => {});
+  }, [canReview]);
+
+  if (!canReview || count === 0) return null;
+
+  return (
+    <div
+      className="card row"
+      style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', marginBottom: '1rem', cursor: 'pointer' }}
+      onClick={() => navigate('/syllabus?tab=approvals')}
+    >
+      <div style={{ flex: 1, fontSize: 13 }}>
+        {count} curriculum change{count === 1 ? '' : 's'} awaiting your approval.
+      </div>
+    </div>
+  );
+}
+
 // Single home for all course/form/survey editing: Syllabus curriculum,
 // Ground School courses/exams, check form item lists, the competency
 // catalog, and the Continuous Improvement survey question bank. Survey
 // Questions is HOTC/HOFO only (mirrors the Continuous Improvement
 // analytics tab's own gating) even though the page itself is reachable by
-// Flight Ops Admin too.
+// Flight Ops Admin too. Cabin Attendant Manager only gets Ground School and
+// LOFT Package (cabin attendant fleet only, see those sections) - Check
+// Forms/Competencies/Survey Questions stay out of scope for that role.
 export function SyllabusAdmin() {
   const { user } = useAuth();
   const canManageSurveyQuestions = CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role);
-  const [tab, setTab] = useState('syllabus');
+  const isCaManager = user.role === 'CA_MANAGER';
+  // Alternate mirrors HOTC everywhere else in the app (see
+  // lib/approvals.js) - it gets the same review access here.
+  const canReviewChanges = user.role === 'HOTC' || user.role === 'ALTERNATE';
+  const [searchParams] = useSearchParams();
+  // Lets ContentApprovalAlert's login banner land straight on the Pending
+  // Approvals tab (?tab=approvals) instead of just the page default.
+  const [tab, setTab] = useState(searchParams.get('tab') === 'approvals' && canReviewChanges ? 'approvals' : 'syllabus');
 
-  const tabs = [
-    { key: 'ground-school', label: 'Ground School' },
-    { key: 'syllabus', label: 'LOFT Package' },
-    { key: 'check-forms', label: 'Check Forms' },
-    { key: 'competencies', label: 'Competencies' },
-    ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
-  ];
+  const tabs = isCaManager
+    ? [
+      { key: 'ground-school', label: 'Ground School' },
+      { key: 'syllabus', label: 'LOFT Package' },
+    ]
+    : [
+      { key: 'ground-school', label: 'Ground School' },
+      { key: 'syllabus', label: 'LOFT Package' },
+      { key: 'check-forms', label: 'Check Forms' },
+      { key: 'competencies', label: 'Competencies' },
+      ...(canReviewChanges ? [{ key: 'approvals', label: 'Pending Approvals' }] : []),
+      ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
+    ];
 
   return (
     <div>
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       {tab === 'syllabus' && <SyllabusItemsSection />}
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
-      {tab === 'check-forms' && <CheckFormItemsSection />}
-      {tab === 'competencies' && <CompetencyTypesSection />}
+      {tab === 'check-forms' && !isCaManager && <CheckFormItemsSection />}
+      {tab === 'competencies' && !isCaManager && <CompetencyTypesSection />}
+      {tab === 'approvals' && canReviewChanges && <PendingApprovalsSection />}
       {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>
   );

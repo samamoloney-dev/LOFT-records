@@ -13,15 +13,29 @@ const router = express.Router();
 router.use(requireAuth);
 
 // Recurrent Sim and Emergency Procedures: HOTC / HOFO / Flight Ops Admin / Examiner.
-// Cabin Attendant Line Check: HOTC / CA Checker (mirrors the Flight Standards prototype).
+// Cabin Attendant Line Check: HOTC / CA Checker / CA Manager (mirrors the
+// Flight Standards prototype).
 // Simulator-only staff can additionally access Recurrent Sim (PC/IPC) only -
 // no Emergency Procedures, Line Checks, or Check to Line.
 function canAccessCheckType(user, checkType) {
   if (checkType === 'CABIN_ATTENDANT_LINE_CHECK') {
-    return user.role === 'HOTC' || user.role === 'CA_CHECKER';
+    return user.role === 'HOTC' || user.role === 'CA_CHECKER' || user.role === 'CA_MANAGER';
   }
   if (checkType === 'RECURRENT_SIMULATOR') {
     return canAccessChecks(user) || user.role === 'SIMULATOR_ONLY';
+  }
+  if (checkType === 'EMERGENCY_PROCEDURES') {
+    // Cabin Attendant Manager is authorised to train and check Emergency
+    // Procedures for all pilots and cabin crew, unconditionally - not just
+    // when ticked on their staff profile (that tick system is for everyone
+    // else, see the checkAccess branch below).
+    if (user.role === 'CA_MANAGER') return true;
+    // Anyone else ticked for Emergency Procedures on their staff profile
+    // (Staff tab checkAccess) is authorised to actually fill in and complete
+    // an EP check they're assigned to, not just appear as a selectable
+    // assessor for one - mirrors AssessorPicker/isEligibleForCheck, which
+    // already treats that tick as full EP authority.
+    return canAccessChecks(user) || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
   }
   return canAccessChecks(user);
 }

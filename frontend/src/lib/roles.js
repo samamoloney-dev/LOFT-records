@@ -2,7 +2,7 @@
 // Captain, Check Captain, Examiner, Check Cabin Attendant, Trainer Cabin
 // Attendant, HOFO and HOTC. Used to gate trainer-only reference material
 // (e.g. sign-off guidance notes) that shouldn't be visible to trainees.
-export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'HOFO', 'HOTC', 'ALTERNATE'];
+export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator. Mirrors
@@ -31,7 +31,7 @@ export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMU
 // (SA_520, renewed every 12 months), and also who can conduct one on a
 // colleague. Mirrors backend/src/middleware/roles.js's
 // GROUND_INSTRUCTOR_CHECK_ROLES.
-export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
+export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 
 // Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
 // who can conduct/assess a check generally, as opposed to who a given check
@@ -46,4 +46,4 @@ export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 // GROUND_INSTRUCTOR_CHECK_ROLES) - they still conduct/assess this check
 // (see CHECK_ROLES above), they just don't need it done on themselves.
 // Mirrors backend/src/middleware/roles.js's PERSONNEL_AIR_COMPETENCY_ROLES.
-export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER'];
+export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];

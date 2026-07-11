@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
+const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
@@ -26,9 +26,24 @@ const router = express.Router();
 // Crew (already-qualified line pilots/cabin attendants, tracked for
 // recurrency) is a separate concept from trainees (people going through
 // initial qualification) - see 0018 migration comment. Restricted to
-// HOTC/HOFO/Flight Ops Admin for now, same as Staff/Archive.
+// HOTC/HOFO/Flight Ops Admin for now, same as Staff/Archive - plus Cabin
+// Attendant Manager, who is additionally let in but scoped to cabin
+// attendant records only (see isCaOnlyRole checks below) and blocked
+// entirely from the lifecycle/admin-only routes (create, archive/unarchive,
+// delete, clearances, converting a planned check into a real one).
 router.use(requireAuth);
-router.use(requireRole(...ADMIN_ROLES));
+router.use(requireRole(...ADMIN_ROLES, 'CA_MANAGER'));
+
+function blockCaManager(req, res, next) {
+  if (req.user.role === 'CA_MANAGER') return res.status(403).json({ error: 'Forbidden' });
+  next();
+}
+
+// A Cabin Attendant Manager reaching this far (past the router-wide gate
+// above) may only ever see/touch cabin attendant crew - never a pilot.
+function forbiddenForCaManager(req, member) {
+  return isCaOnlyRole(req.user) && member.type !== 'CABIN_ATTENDANT';
+}
 
 // Some crew members are also staff accounts (e.g. a Training Captain who is
 // themselves subject to recurrent currency) - when crew_members.user_id
@@ -354,7 +369,8 @@ async function listCrewWithCurrency({ type, archived = false } = {}) {
 
 router.get('/', async (req, res) => {
   const { type, archived } = req.query;
-  const members = await listCrewWithCurrency({ type, archived: archived === 'true' });
+  const effectiveType = isCaOnlyRole(req.user) ? 'CABIN_ATTENDANT' : type;
+  const members = await listCrewWithCurrency({ type: effectiveType, archived: archived === 'true' });
   // Roster/overview views don't need the (potentially large) base64 licence
   // photo - only the crew member's own detail page does (see GET /:id).
   res.json(members.map(({ licencePhoto, ...rest }) => rest));
@@ -363,6 +379,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   res.json(await withCurrency(member));
 });
 
@@ -407,7 +424,7 @@ const quickAddSchema = z.object({
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', blockCaManager, async (req, res) => {
   const parsed = quickAddSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
@@ -508,6 +525,7 @@ const CAST_MAP = { fleets: '::fleet[]' };
 router.patch('/:id', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
 
   const parsed = updateSchema.safeParse(req.body);
@@ -547,6 +565,7 @@ const plannedCheckSchema = z.object({
 router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
   if (!PLANNED_CHECK_KEYS.includes(req.params.checkKey)) return res.status(400).json({ error: 'Invalid check' });
 
@@ -589,7 +608,7 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
 // tab only shows this button once both are set (see Planning.jsx). Deletes
 // the planned-check row afterwards, so the Planning tab row disappears now
 // that it's a real, in-progress check instead of just a plan.
-router.post('/:id/planned-checks/:checkKey/create-check', async (req, res) => {
+router.post('/:id/planned-checks/:checkKey/create-check', blockCaManager, async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (!assertNotArchived(member, res)) return;
@@ -641,7 +660,7 @@ router.post('/:id/planned-checks/:checkKey/create-check', async (req, res) => {
   res.status(201).json(check);
 });
 
-router.post('/:id/archive', async (req, res) => {
+router.post('/:id/archive', blockCaManager, async (req, res) => {
   const { rows } = await pool.query(
     'UPDATE crew_members SET archived = true, archived_at = now() WHERE id = $1 RETURNING *',
     [req.params.id],
@@ -657,7 +676,7 @@ router.post('/:id/archive', async (req, res) => {
   res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
-router.post('/:id/unarchive', async (req, res) => {
+router.post('/:id/unarchive', blockCaManager, async (req, res) => {
   const { rows } = await pool.query(
     'UPDATE crew_members SET archived = false, archived_at = null WHERE id = $1 RETURNING *',
     [req.params.id],
@@ -678,7 +697,7 @@ const RETENTION_YEARS = 4;
 // crew_planned_checks/crew_clearances CASCADE since they're just this
 // person's current-state tracking, not a record worth keeping once they're
 // gone for good.
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', blockCaManager, async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (!member.archived || !member.archivedAt) {
@@ -705,6 +724,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id/competencies', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
     `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
@@ -735,6 +755,7 @@ const competencyDatesSchema = z.object({
 router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
 
   const parsed = competencyDatesSchema.safeParse(req.body);
@@ -787,7 +808,7 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
 // HOTC/HOFO/Flight Ops Admin can even reach this router (see requireRole
 // above), so the signing-off "FSM/HOFO" is simply whichever of them is
 // logged in and adding the entry - no separate signature step.
-router.get('/:id/clearances', async (req, res) => {
+router.get('/:id/clearances', blockCaManager, async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
 

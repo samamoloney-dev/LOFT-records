@@ -89,15 +89,23 @@ const COLUMN_MAP = {
   type: 'type',
   role: 'role',
   fleet: 'fleet',
-  phase: 'phase',
 };
+
+// `phase` is deliberately not patchable here - the only legitimate way a
+// trainee's phase advances is by signing off every required item and
+// completing the phase via POST /trainee/:traineeId/phase-completions/:phase/complete
+// (syllabus.js), which enforces ground school + all required phase items
+// first. Allowing it through this generic update would let anyone bypass
+// that gate entirely - exactly the "phase 2 incomplete but advanced to
+// phase 3" bug the operator flagged.
+const updateSchema = createSchema.omit({ phase: true }).partial();
 
 router.patch('/:id', async (req, res) => {
   const trainee = await findTrainee(req.params.id);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
-  const parsed = createSchema.partial().safeParse(req.body);
+  const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const entries = Object.entries(parsed.data);

@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
 import { PrintButton } from '../components/PrintButton';
+import { AutoTextarea } from '../components/AutoTextarea';
 import { openPrintWindow, section } from '../lib/print';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
@@ -99,7 +100,7 @@ function SectionField({ label, value, onChange, disabled, big }) {
     <div className="field">
       <label>{label}</label>
       {big ? (
-        <textarea value={value || ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ minHeight: 90 }} />
+        <AutoTextarea value={value || ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} minHeight={90} />
       ) : (
         <input value={value || ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
       )}

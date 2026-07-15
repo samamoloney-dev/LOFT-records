@@ -39,6 +39,7 @@ const USER_ROLE_LABELS = {
   CA_TRAINER: 'Cabin Attendant Trainer',
   CA_CHECKER: 'Cabin Attendant Checker',
   CA_MANAGER: 'Cabin Attendant Manager',
+  GROUND_INSTRUCTOR: 'Ground Instructor',
   CC: 'Check Captain',
   SIMULATOR_ONLY: 'Simulator Only Examiner',
   TRAINEE: 'Trainee',

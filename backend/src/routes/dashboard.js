@@ -19,6 +19,19 @@ router.use(requireRole(...ADMIN_ROLES));
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
+// Mirrors frontend/src/lib/checkNav.js's crewLinkForItem - lets a Home
+// Dashboard row land straight on the specific check/tab rather than just
+// the crew profile root.
+const CHECK_SUB_TABS = {
+  'Emergency Procedures': 'ep', IPC: 'ipc', 'Proficiency Check': 'pc', 'Line Check': 'linecheck',
+};
+function crewLinkForItem(memberId, label) {
+  const subTab = CHECK_SUB_TABS[label];
+  if (subTab) return `/crew/${memberId}?top=currency&sub=${subTab}`;
+  if (label === 'Medical') return `/crew/${memberId}?top=medical`;
+  return `/crew/${memberId}?top=expiry`;
+}
+
 // A crew member's currency/competency items aren't fleet-specific
 // themselves (they belong to the person, e.g. Dangerous Goods), so a
 // member holding more than one fleet counts toward each of them - matches
@@ -58,7 +71,11 @@ router.get('/summary', async (req, res) => {
   const overdueItems = allItems.filter((i) => i.status === 'overdue');
   const dueSoonItems = allItems.filter((i) => i.status === 'due_soon');
   const notCompletedItems = allItems.filter((i) => i.status === 'not_completed');
-  const currentCount = allItems.filter((i) => i.status === 'ok').length;
+  // "Current" for this headline stat means "nothing's actually a problem" -
+  // due_soon is just an advance warning ahead of a real deadline, not itself
+  // an issue, so it counts toward 100% the same as ok. Only overdue/
+  // not_completed should ever pull this below 100%.
+  const currentCount = allItems.filter((i) => i.status === 'ok' || i.status === 'due_soon').length;
 
   const [
     { rows: activeTraineesRows },
@@ -203,14 +220,14 @@ router.get('/summary', async (req, res) => {
       text: i.dueDate
         ? `${i.member.name} — ${i.label} — overdue by ${daysOverdue(i.dueDate)} day${daysOverdue(i.dueDate) === 1 ? '' : 's'} — not yet rostered`
         : `${i.member.name} — ${i.label} — never completed — not yet rostered`,
-      linkTo: `/crew/${i.member.id}`,
+      linkTo: crewLinkForItem(i.member.id, i.label),
     })),
     ...dueSoonAttention.map((i) => {
       const daysUntil = -daysOverdue(i.dueDate);
       return {
         key: `currency:${i.member.id}:${i.label}`,
         text: `${i.member.name} — ${i.label} — due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — not yet rostered`,
-        linkTo: `/crew/${i.member.id}`,
+        linkTo: crewLinkForItem(i.member.id, i.label),
       };
     }),
     // A single flight not covering every syllabus item isn't a problem worth

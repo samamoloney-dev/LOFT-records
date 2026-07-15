@@ -26,6 +26,16 @@ async function assertTraineeVisible(req, res, traineeId) {
   return trainee;
 }
 
+// Filling in and signing a Check to Line is an assessor's job - for cabin
+// attendants that's specifically the Checker (Cabin Attendant Checker or
+// Cabin Attendant Manager), never the Trainer, even though a CA Trainer can
+// otherwise view/access this trainee's record. Pilot Check to Line is
+// unaffected - unchanged from canAccessTraineeRecord alone.
+function canAssessCheckToLine(user, trainee) {
+  if (trainee.type !== 'CABIN_ATTENDANT') return true;
+  return isAdmin(user) || user.role === 'CA_CHECKER' || user.role === 'CA_MANAGER';
+}
+
 // Archive view - browses archived Check to Line forms across all trainees,
 // unlike the per-trainee route below.
 router.get('/', async (req, res) => {
@@ -80,6 +90,9 @@ const upsertSchema = z.object({
 router.put('/:traineeId', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
+  if (!canAssessCheckToLine(req.user, trainee)) {
+    return res.status(403).json({ error: 'Only a Cabin Attendant Checker, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
+  }
 
   const parsed = upsertSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -155,6 +168,9 @@ router.put('/:traineeId', async (req, res) => {
 router.post('/:traineeId/complete', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
+  if (!canAssessCheckToLine(req.user, trainee)) {
+    return res.status(403).json({ error: 'Only a Cabin Attendant Checker, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
+  }
 
   const { rows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'No CTL form to complete' });

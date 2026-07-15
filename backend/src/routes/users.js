@@ -4,7 +4,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { nextDueRolling, statusFor } = require('../lib/currency');
 
@@ -24,7 +24,7 @@ const createSchema = z.object({
   // this enum rejecting their current role.
   role: z.enum([
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
+    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]),
   fleets: fleetsSchema,
   arn: z.string().optional(),
@@ -46,11 +46,11 @@ function serialize(row) {
 }
 
 // Ground Instructor Competency Check (SA_520) currency - only eligible
-// roles (see GROUND_INSTRUCTOR_CHECK_ROLES) need this, computed the same
+// staff (see isGroundInstructorCheckEligible) need this, computed the same
 // way as EP/IPC/CA Line Check recurrency (365 days from the most recent
 // completed check of that type).
 async function withGroundInstructorCheck(user) {
-  if (!GROUND_INSTRUCTOR_CHECK_ROLES.includes(user.role)) return user;
+  if (!isGroundInstructorCheckEligible(user)) return user;
   const { rows } = await pool.query(
     `SELECT completed_at FROM instructor_competency_checks
      WHERE user_id = $1 AND completed_at IS NOT NULL
@@ -125,7 +125,7 @@ const updateSchema = z.object({
   // TRAINEE stays valid here too, same reason as createSchema above.
   role: z.enum([
     'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
+    'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]).optional(),
   fleets: fleetsSchema,
   arn: z.string().optional(),

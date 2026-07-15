@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { FlightRow, APPROACH_TYPES } from './FlightRow';
+import { FlightRow, APPROACH_TYPES, DASH_8_VARIANTS } from './FlightRow';
 import { CtlForm } from './CtlForm';
 import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
 import { Phase4Form } from './Phase4Form';
@@ -60,6 +60,18 @@ function approachTally(flights) {
   return counts;
 }
 
+// How many LOFT flights have been conducted on each Dash 8 variant - only
+// meaningful for a cabin attendant trainee on the CA_DASH_8 fleet (see
+// DASH_8_VARIANTS in FlightRow.jsx).
+function aircraftVariantTally(flights) {
+  const counts = Object.fromEntries(DASH_8_VARIANTS.map((v) => [v, 0]));
+  for (const f of flights) {
+    const aircraft = f.sectorDetails?.aircraft;
+    if (aircraft && counts[aircraft] !== undefined) counts[aircraft] += 1;
+  }
+  return counts;
+}
+
 function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted }) {
   const { user } = useAuth();
   const [error, setError] = useState(null);
@@ -98,6 +110,8 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
 
   const totalHours = flights.reduce((sum, f) => sum + Number(f.hours), 0);
   const tally = approachTally(flights);
+  const isDash8Ca = isCabinAttendant && trainee.fleet === 'CA_DASH_8';
+  const aircraftTally = isDash8Ca ? aircraftVariantTally(flights) : null;
   const finalisedFlights = flights.filter((f) => f.locked);
   const packageArchived = finalisedFlights.length > 0 && finalisedFlights.every((f) => f.archived);
 
@@ -131,6 +145,15 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
             ? `${flights.length} flight${flights.length === 1 ? '' : 's'}`
             : `${flights.length} flight${flights.length === 1 ? '' : 's'} · ${totalHours.toFixed(1)}h total`}
         </div>
+        {isDash8Ca && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {DASH_8_VARIANTS.map((v) => (
+              <span key={v} className="badge" style={{ background: 'var(--surface-1)', color: 'var(--text-secondary)' }}>
+                {v}: {aircraftTally[v]}
+              </span>
+            ))}
+          </div>
+        )}
         {!isCabinAttendant && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {APPROACH_TYPES.map((t) => (

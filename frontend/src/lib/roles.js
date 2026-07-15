@@ -2,7 +2,7 @@
 // Captain, Check Captain, Examiner, Check Cabin Attendant, Trainer Cabin
 // Attendant, HOFO and HOTC. Used to gate trainer-only reference material
 // (e.g. sign-off guidance notes) that shouldn't be visible to trainees.
-export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'HOFO', 'HOTC', 'ALTERNATE'];
+export const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator. Mirrors
@@ -26,12 +26,19 @@ export const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
 export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
-// Every role eligible to check/train Emergency Procedures - these are the
-// staff who must hold a current Ground Instructor Competency Check
-// (SA_520, renewed every 12 months), and also who can conduct one on a
-// colleague. Mirrors backend/src/middleware/roles.js's
-// GROUND_INSTRUCTOR_CHECK_ROLES.
-export const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
+// Who must hold (and is eligible to conduct) a current Ground Instructor
+// Competency Check (SA_520, renewed every 12 months) - the dedicated
+// Ground Instructor role, Cabin Attendant Checker/Manager ("checkers"),
+// admins/Examiner, or anyone individually ticked for Emergency Procedures
+// checkAccess ("EP trainers"). Mirrors backend/src/middleware/roles.js's
+// isGroundInstructorCheckEligible.
+export function isGroundInstructorCheckEligible(user) {
+  return user.role === 'GROUND_INSTRUCTOR'
+    || user.role === 'CA_CHECKER'
+    || user.role === 'CA_MANAGER'
+    || CHECK_ROLES.includes(user.role)
+    || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+}
 
 // Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
 // who can conduct/assess a check generally, as opposed to who a given check
@@ -43,7 +50,7 @@ export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air, renewed every
 // 24 months. Examiners are deliberately excluded (unlike
-// GROUND_INSTRUCTOR_CHECK_ROLES) - they still conduct/assess this check
+// isGroundInstructorCheckEligible) - they still conduct/assess this check
 // (see CHECK_ROLES above), they just don't need it done on themselves.
 // Mirrors backend/src/middleware/roles.js's PERSONNEL_AIR_COMPETENCY_ROLES.
 export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];

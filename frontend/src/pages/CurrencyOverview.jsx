@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
+import { crewLinkForItem } from '../lib/checkNav';
 
 const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3, in_training: 4 };
 
@@ -139,7 +140,7 @@ export function CurrencyOverview() {
 
       {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing here.</div>}
       {filteredRows.map((r, i) => (
-        <div key={i} className="card row" onClick={() => navigate(`/crew/${r.memberId}`)}>
+        <div key={i} className="card row" onClick={() => navigate(crewLinkForItem(r.memberId, r.item))}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{r.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>

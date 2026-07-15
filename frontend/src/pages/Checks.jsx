@@ -1,17 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
 import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { CheckToLinePicker } from './CheckToLinePicker';
-import { CaptainInTrainingPicker } from './CaptainInTrainingPicker';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
 import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
-import { CHECK_ROLES, GROUND_INSTRUCTOR_CHECK_ROLES, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
+import { CHECK_ROLES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
 const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER', 'CA_MANAGER']; // Check to Line, Line Check
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+
+// Tells an admin an IPC/PC/EP/Line Check/Check to Line just finished, so
+// they know to go update the crew member's records elsewhere (this app
+// doesn't do that automatically) - see checks.js GET/POST /alerts/*. Mirrors
+// the red count badge on the Checks nav tab (App.jsx ChecksAlertBadge),
+// which this banner's "Mark reviewed" button clears.
+function CompletedChecksAlert() {
+  const { user } = useAuth();
+  const isAdmin = ADMIN_ROLES.includes(user.role);
+  const [count, setCount] = useState(0);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/checks/alerts/count').then((d) => setCount(d.count)).catch(() => {});
+  }
+  useEffect(load, []);
+
+  async function markReviewed() {
+    setError(null);
+    try { await api.post('/api/checks/alerts/mark-reviewed'); setCount(0); }
+    catch (err) { setError(err.message); }
+  }
+
+  if (count === 0) return null;
+  return (
+    <div className="card row" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', marginBottom: '1rem' }}>
+      <div style={{ flex: 1, fontSize: 13 }}>
+        {count} check{count === 1 ? '' : 's'} recently completed - go update the crew's records.
+        {error && <div className="error-text">{error}</div>}
+      </div>
+      {isAdmin && <button onClick={markReviewed}>Mark reviewed</button>}
+    </div>
+  );
+}
 
 export function Checks() {
   const { user } = useAuth();
@@ -51,7 +86,6 @@ export function Checks() {
     canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
     canAccessPilotChecks && { key: 'pc', label: 'PC' },
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
-    canAccessPilotChecks && { key: 'cit', label: 'Captain in Training' },
   ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
@@ -70,6 +104,7 @@ export function Checks() {
 
   return (
     <div>
+      <CompletedChecksAlert />
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />
 
       {topTab === 'pilots' && canAccessPilots && (
@@ -78,7 +113,6 @@ export function Checks() {
           {pilotTab === 'ipc' && canAccessPilotChecks && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
           {pilotTab === 'pc' && canAccessPilotChecks && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
           {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
-          {pilotTab === 'cit' && canAccessPilotChecks && <CaptainInTrainingPicker />}
         </div>
       )}
 
@@ -96,7 +130,7 @@ export function Checks() {
           <TabBar tabs={othersTabs} active={othersTab} onSelect={setOthersTab} />
           {othersTab === 'gic' && (
             <StaffCheckPicker
-              roles={GROUND_INSTRUCTOR_CHECK_ROLES}
+              roles={isGroundInstructorCheckEligible}
               description="Select a staff member to view or complete their Ground Instructor Competency Check."
               renderForm={(s) => <GroundInstructorCheckForm userId={s.id} userName={s.name} />}
             />

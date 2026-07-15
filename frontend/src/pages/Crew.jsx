@@ -6,6 +6,7 @@ import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { compressImage } from '../lib/imageCompress';
 import { useAuth } from '../context/AuthContext';
+import { crewLinkForItem } from '../lib/checkNav';
 
 const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -238,7 +239,11 @@ function CrewRoster({ type }) {
           </div>
           {m.urgentItems.length > 0 && (
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {m.urgentItems.map((item, i) => <DueBadge key={i} label={item.label} info={item} />)}
+              {m.urgentItems.map((item, i) => (
+                <div key={i} onClick={(e) => { e.stopPropagation(); navigate(crewLinkForItem(m.id, item.label)); }}>
+                  <DueBadge label={item.label} info={item} />
+                </div>
+              ))}
             </div>
           )}
         </div>

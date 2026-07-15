@@ -7,6 +7,9 @@ import { formatUserRole } from '../lib/format';
 // same as EP/IPC/PC are keyed to a specific pilot - this is the equivalent
 // "pick who, then show their check history" front door for the Checks tab,
 // mirroring CheckToLinePicker/CaptainInTrainingPicker's crew-member pickers.
+// `roles` can be a plain array (membership check) or a predicate function
+// `(staffMember) => boolean` for eligibility that depends on more than just
+// role (see isGroundInstructorCheckEligible in lib/roles.js).
 export function StaffCheckPicker({ roles, description, renderForm }) {
   const [staff, setStaff] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -16,7 +19,7 @@ export function StaffCheckPicker({ roles, description, renderForm }) {
     api.get('/api/users/roster').then(setStaff).catch((e) => setError(e.message));
   }, []);
 
-  const eligible = staff.filter((s) => roles.includes(s.role));
+  const eligible = staff.filter((s) => (typeof roles === 'function' ? roles(s) : roles.includes(s.role)));
   const selected = eligible.find((s) => s.id === selectedId);
 
   if (selected) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { ADMIN_ROLES } from '../lib/checkAccess';
@@ -324,7 +324,7 @@ function LicencePhotoTab({ member, onSaved }) {
 // Recurrent checks archived from here (once redone/superseded) still need to
 // be visible from this person's own profile, not just the general Archive
 // tab - this toggle flips the archived prop the check list already supports.
-function CurrencyFolder({ member }) {
+function CurrencyFolder({ member, initialSubTab }) {
   const isPilot = member.type === 'PILOT';
   const subTabs = isPilot
     ? [
@@ -334,7 +334,7 @@ function CurrencyFolder({ member }) {
       ...(member.captainInTraining ? [{ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' }] : []),
     ]
     : [{ key: 'ep', label: 'Emergency Procedures' }, { key: 'linecheck', label: 'Line Check' }];
-  const [subTab, setSubTab] = useState('ep');
+  const [subTab, setSubTab] = useState(subTabs.some((t) => t.key === initialSubTab) ? initialSubTab : 'ep');
   const [showArchived, setShowArchived] = useState(false);
 
   const name = member.name;
@@ -541,9 +541,15 @@ export function CrewDetail() {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const navigate = useNavigate();
+  // A "due soon"/overdue row elsewhere in the app (Currency Overview, the
+  // Home Dashboard) links straight here with ?top=&sub= (see lib/checkNav.js)
+  // so the admin lands directly on the relevant check instead of the
+  // profile root.
+  const [searchParams] = useSearchParams();
   const [member, setMember] = useState(null);
   const [error, setError] = useState(null);
-  const [topTab, setTopTab] = useState('currency');
+  const [topTab, setTopTab] = useState(searchParams.get('top') || 'currency');
+  const initialSubTab = searchParams.get('sub');
   const [competencies, setCompetencies] = useState([]);
   const [competencyError, setCompetencyError] = useState(null);
   // Once completed + planned dates are both set, the dates are locked to
@@ -654,7 +660,7 @@ export function CrewDetail() {
       <TabBar tabs={topTabs} active={topTab} onSelect={setTopTab} />
 
       {topTab === 'clearance' && <ClearanceTab member={member} />}
-      {topTab === 'currency' && <CurrencyFolder member={member} />}
+      {topTab === 'currency' && <CurrencyFolder member={member} initialSubTab={initialSubTab} />}
       {topTab === 'expiry' && (
         <ExpiryTab
           member={member} onSaved={setMember} medical={medical} otherCompetencies={otherCompetencies}

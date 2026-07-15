@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
 import { TRAINER_ROLES } from '../lib/roles';
 import { NoteInfoIcon } from '../components/NoteInfoIcon';
+import { AutoTextarea } from '../components/AutoTextarea';
 
 function groupByCategory(items) {
   const groups = new Map();
@@ -44,11 +45,11 @@ function CategoryNoteField({ traineeId, category, section, initialNotes }) {
   return (
     <div className="field" style={{ marginTop: 10 }}>
       <label>Comments — {category}</label>
-      <textarea
+      <AutoTextarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={save}
-        style={{ minHeight: 50 }}
+        minHeight={50}
         placeholder="Notes on this subject"
       />
       {error && <div className="error-text">{error}</div>}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
-import { GROUND_INSTRUCTOR_CHECK_ROLES, CHECK_ROLES } from '../lib/roles';
+import { isGroundInstructorCheckEligible, CHECK_ROLES } from '../lib/roles';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
@@ -42,7 +42,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
   const [openId, setOpenId] = useState(null);
   const [error, setError] = useState(null);
 
-  const canEdit = GROUND_INSTRUCTOR_CHECK_ROLES.includes(user.role);
+  const canEdit = isGroundInstructorCheckEligible(user);
 
   useEffect(() => {
     api.get('/api/check-form-items?formKey=GROUND_INSTRUCTOR_COMPETENCY').then(setItems).catch(() => {});

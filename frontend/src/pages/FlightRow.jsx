@@ -3,12 +3,20 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { formatDate, formatUserRole } from '../lib/format';
 import { FlightSyllabusList } from './SyllabusPanel';
+import { AutoTextarea } from '../components/AutoTextarea';
 
 const RATINGS = ['Below standard', 'Standard', 'Above average', 'Outstanding'];
 
 // Matches the approach tally table in the Dash 8 / Metro 23 / Fokker 100
 // Line Training Records - no circling approaches are conducted.
 export const APPROACH_TYPES = ['ILS', 'LLZ', 'RNP LNAV', 'NDB', 'VOR', 'DGA'];
+
+// The Dash 8 fleet covers two distinct aircraft variants - a cabin
+// attendant's LOFT flights need to record which one, so a tally of each
+// can be kept (see aircraftVariantTally in TraineeDetail.jsx). Only
+// meaningful for CA_DASH_8 - the Fokker 100 fleet has no such split, so
+// that field stays free text.
+export const DASH_8_VARIANTS = ['Dash 8-100', 'Dash 8-300'];
 
 export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   const { user } = useAuth();
@@ -233,13 +241,23 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
                   </div>
                   <div className="field">
                     <label>Aircraft</label>
-                    <input
-                      disabled={!canEdit}
-                      value={aircraft}
-                      onChange={(e) => setAircraft(e.target.value)}
-                      onBlur={() => saveSectorDetails({ aircraft })}
-                      placeholder="e.g. Dash 8-300"
-                    />
+                    {trainee?.fleet === 'CA_DASH_8' ? (
+                      <select
+                        disabled={!canEdit}
+                        value={aircraft}
+                        onChange={(e) => { setAircraft(e.target.value); saveSectorDetails({ aircraft: e.target.value }); }}
+                      >
+                        <option value="">—</option>
+                        {DASH_8_VARIANTS.map((v) => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        disabled={!canEdit}
+                        value={aircraft}
+                        onChange={(e) => setAircraft(e.target.value)}
+                        onBlur={() => saveSectorDetails({ aircraft })}
+                      />
+                    )}
                   </div>
                   <div className="field">
                     <label>Destination</label>
@@ -279,12 +297,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
                 <>
                   <div className="field">
                     <label>Flight Comments</label>
-                    <textarea
+                    <AutoTextarea
                       disabled={!canEdit}
                       value={comments}
                       onChange={(e) => setComments(e.target.value)}
                       onBlur={saveComments}
-                      style={{ minHeight: 70 }}
+                      minHeight={70}
                     />
                   </div>
                   <div className="field">
@@ -331,12 +349,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           {subTab === 'nextSortie' && !isCabinAttendant && (
             <div className="field">
               <label>Notes for the next sortie</label>
-              <textarea
+              <AutoTextarea
                 disabled={!canEdit}
                 value={nextSortie}
                 onChange={(e) => setNextSortie(e.target.value)}
                 onBlur={saveNextSortie}
-                style={{ minHeight: 100 }}
+                minHeight={100}
                 placeholder="What should the next Training Captain focus on?"
               />
             </div>
@@ -349,12 +367,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           {subTab === 'other' && isCabinAttendant && (
             <div className="field">
               <label>Other Completed Tasks</label>
-              <textarea
+              <AutoTextarea
                 disabled={!canEdit}
                 value={otherTasks}
                 onChange={(e) => setOtherTasks(e.target.value)}
                 onBlur={saveOtherTasks}
-                style={{ minHeight: 100 }}
+                minHeight={100}
                 placeholder="Anything else the trainee completed on this flight"
               />
             </div>
@@ -363,12 +381,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           {subTab === 'development' && isCabinAttendant && (
             <div className="field">
               <label>Development Required</label>
-              <textarea
+              <AutoTextarea
                 disabled={!canEdit}
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
                 onBlur={saveComments}
-                style={{ minHeight: 100 }}
+                minHeight={100}
                 placeholder="Areas the trainee needs to work on"
               />
             </div>
@@ -377,12 +395,12 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           {subTab === 'homework' && isCabinAttendant && (
             <div className="field">
               <label>Homework</label>
-              <textarea
+              <AutoTextarea
                 disabled={!canEdit}
                 value={nextSortie}
                 onChange={(e) => setNextSortie(e.target.value)}
                 onBlur={saveNextSortie}
-                style={{ minHeight: 100 }}
+                minHeight={100}
                 placeholder="What should the trainee prepare/study before the next flight?"
               />
             </div>

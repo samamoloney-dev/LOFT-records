@@ -3,19 +3,21 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessChecks, isAdmin, GROUND_INSTRUCTOR_CHECK_ROLES } = require('../middleware/roles');
+const { canAccessChecks, isAdmin, isGroundInstructorCheckEligible } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
+const { parsePgArray } = require('../../db/serialize');
 
 const router = express.Router();
 
 router.use(requireAuth);
 
 async function findEligibleUser(userId) {
-  const { rows } = await pool.query('SELECT id, name, role, arn FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT id, name, role, arn, check_access FROM users WHERE id = $1', [userId]);
   if (rows.length === 0) return null;
   const user = rowToCamel(rows[0]);
-  if (!GROUND_INSTRUCTOR_CHECK_ROLES.includes(user.role)) return null;
+  user.checkAccess = parsePgArray(user.checkAccess);
+  if (!isGroundInstructorCheckEligible(user)) return null;
   return user;
 }
 
@@ -61,7 +63,7 @@ router.post('/', async (req, res) => {
   const d = parsed.data;
 
   const instructor = await findEligibleUser(d.userId);
-  if (!instructor) return res.status(400).json({ error: 'Not an eligible instructor (must be HOTC, HOFO, Flight Ops Admin or Examiner)' });
+  if (!instructor) return res.status(400).json({ error: 'Not an eligible instructor (must be a Ground Instructor, a Cabin Attendant Checker/Manager, an admin/Examiner, or ticked for Emergency Procedures)' });
   if (d.assignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }

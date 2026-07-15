@@ -19,9 +19,9 @@ const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 
 // Every role the operator counts as a "trainer": Training Captain, Check
 // Captain, Examiner, Check Cabin Attendant, Trainer Cabin Attendant, Cabin
-// Attendant Manager, HOFO, HOTC and Alternate - deliberately excludes Flight
-// Ops Admin.
-const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'HOFO', 'HOTC', 'ALTERNATE'];
+// Attendant Manager, Ground Instructor, HOFO, HOTC and Alternate -
+// deliberately excludes Flight Ops Admin.
+const TRAINER_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER', 'CA_CHECKER', 'CA_TRAINER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'HOFO', 'HOTC', 'ALTERNATE'];
 
 // Pre-Simulator Assessment sign-off is narrower still - only the roles who
 // actually fly with the candidate before the simulator.
@@ -33,17 +33,24 @@ const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 // get an editing exception here, only view access via canAccessTraineeRecord.
 const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 
-// Every role the operator counts as able to check/train Emergency
-// Procedures - mirrors checks.js's canAccessCheckType default branch
-// (canAccessChecks/CHECK_ROLES), plus CA Trainer/CA Checker who train and
-// check cabin attendant Emergency Procedures. These are the staff who must
-// hold a current Ground Instructor Competency Check (SA_520), renewed
-// every 12 months. Flight Ops Admin excluded - see CHECK_ROLES above.
-const GROUND_INSTRUCTOR_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
+// Who must hold (and is eligible to conduct) a current Ground Instructor
+// Competency Check (SA_520, renewed every 12 months) - the dedicated
+// Ground Instructor role, Cabin Attendant Checker/Manager ("checkers"),
+// admins/Examiner (canAccessChecks), and anyone else individually ticked
+// for Emergency Procedures checkAccess on their Staff profile ("EP
+// trainers") - rather than a fixed role list, since a Training Captain or
+// similar might also train/check EP without that being their primary job.
+function isGroundInstructorCheckEligible(user) {
+  return user.role === 'GROUND_INSTRUCTOR'
+    || user.role === 'CA_CHECKER'
+    || user.role === 'CA_MANAGER'
+    || canAccessChecks(user)
+    || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+}
 
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air must hold a
-// current one, renewed every 24 months. Unlike GROUND_INSTRUCTOR_CHECK_ROLES,
+// current one, renewed every 24 months. Unlike isGroundInstructorCheckEligible,
 // Examiners are deliberately excluded - per the operator's explicit request,
 // Examiners do not require this check (they still conduct/assess it, since
 // that's gated by canAccessChecks/CHECK_ROLES below, not this list).
@@ -139,7 +146,7 @@ module.exports = {
   TRAINER_ROLES,
   PRE_SIM_ASSESSOR_ROLES,
   LANDING_ASSESSMENT_EDIT_ROLES,
-  GROUND_INSTRUCTOR_CHECK_ROLES,
+  isGroundInstructorCheckEligible,
   PERSONNEL_AIR_COMPETENCY_ROLES,
   PERSONNEL_AIR_COMPETENCY_SECTION,
   CONTINUOUS_IMPROVEMENT_ROLES,

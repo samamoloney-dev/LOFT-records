@@ -53,8 +53,10 @@ function isGroundInstructorCheckEligible(user) {
 // current one, renewed every 24 months. Unlike isGroundInstructorCheckEligible,
 // Examiners are deliberately excluded - per the operator's explicit request,
 // Examiners do not require this check (they still conduct/assess it, since
-// that's gated by canAccessChecks/CHECK_ROLES below, not this list).
-const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
+// that's gated by canAccessChecks/CHECK_ROLES below, not this list). Simulator
+// Only Examiner is included, per the operator's explicit request - they
+// still check pilots in the simulator, just not on the line.
+const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'SIMULATOR_ONLY'];
 
 // Which SA_518 form sub-section (2a/2b/3a/3b) applies to a given eligible
 // role - fixed per check at creation time (see personnel-checks.js) so a
@@ -68,6 +70,9 @@ const PERSONNEL_AIR_COMPETENCY_SECTION = {
   // is the more senior of the two sections, same rationale as a Check Cabin
   // Attendant covering a Trainer's scope.
   CA_MANAGER: 'CHECK_CABIN_CREW',
+  // Simulator Only Examiner only ever checks (never trains) - mirrors Check
+  // Captain's own section.
+  SIMULATOR_ONLY: 'CHECK_PILOT',
 };
 
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
@@ -127,11 +132,16 @@ function canAccessArchived(user) {
   return isAdmin(user);
 }
 
-// Only whoever created a flight record may edit it - this lock applies
-// regardless of role (even HOTC), and does not transfer if someone else
-// with a flight-creator role tries to edit it.
+// Only whoever created a flight record may edit it - this lock does not
+// transfer just because someone else also holds a flight-creator role.
+// Admins keep an override, same as every other assignee-style lock in this
+// app (checks.js/ctl.js's own assignedTo) - without it, a flight opened by
+// an admin (e.g. during onboarding/setup) or by a trainer no longer around
+// to finish it would sit open forever, permanently blocking that trainee's
+// next flight for everyone (see the CA Trainer "one open flight at a time"
+// rule this can otherwise deadlock).
 function canEditFlight(user, flight) {
-  return flight.trainingCaptainId === user.id;
+  return flight.trainingCaptainId === user.id || isAdmin(user);
 }
 
 // Trainee may acknowledge only their own flight debrief.

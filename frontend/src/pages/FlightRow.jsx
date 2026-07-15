@@ -50,13 +50,18 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
 
   const outstanding = syllabusItems.filter((i) => !i.completedAt);
 
-  // Only whoever created the flight may edit it - no role check here, this
-  // is an ownership lock (mirrors backend canEditFlight).
-  const canEdit = user.id === flight.trainingCaptainId && !flight.locked;
+  // Only whoever created the flight may edit it - an ownership lock, not a
+  // role check. Admins keep an override (mirrors backend canEditFlight) so
+  // a flight opened by someone no longer around to finish it (or by an
+  // admin during setup) doesn't sit open forever, permanently blocking that
+  // trainee's next flight for everyone else.
+  const isAdmin = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'].includes(user.role);
+  const canEdit = (user.id === flight.trainingCaptainId || isAdmin) && !flight.locked;
   const canAcknowledge = user.role === 'TRAINEE' && user.traineeId === flight.traineeId && flight.locked && !flight.acknowledgedByTrainee;
-  // Once completed, only the training captain who completed it can reopen
-  // it - cabin attendant flights only (see backend flights.js /:id/reopen).
-  const canReopen = isCabinAttendant && flight.locked && user.id === flight.trainingCaptainId;
+  // Once completed, only the training captain who completed it (or an
+  // admin) can reopen it - cabin attendant flights only (see backend
+  // flights.js /:id/reopen).
+  const canReopen = isCabinAttendant && flight.locked && (user.id === flight.trainingCaptainId || isAdmin);
 
   async function saveComments() {
     setError(null);

@@ -505,7 +505,7 @@ const updateSchema = z.object({
   licencePhoto: z.string().nullable().optional(),
   // Captain in Training assessments (SA 567/568) are only ever offered for
   // a pilot an admin has explicitly allocated to a Captain upgrade - see
-  // CrewDetail.jsx/CaptainInTrainingPicker.jsx.
+  // CrewDetail.jsx's CurrencyFolder (citPrelim/citFinal tabs).
   captainInTraining: z.boolean().optional(),
 });
 

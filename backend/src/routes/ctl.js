@@ -61,10 +61,14 @@ router.get('/:traineeId', async (req, res) => {
   // Pilot Check to Line items are an admin-editable catalog (form_key
   // CHECK_TO_LINE, one item set per fleet) - see Syllabus > Check Forms.
   // Cabin attendant items stay the fixed 6-item list in CtlForm.jsx.
+  // Includes archived items too (unlike the admin catalog view) - a
+  // historical Check to Line that already ticked a since-archived item
+  // would otherwise silently lose that row entirely (see frontend
+  // lib/checkFormItems.js visibleCheckFormItems, which the form applies).
   const { rows: itemRows } = trainee.type === 'CABIN_ATTENDANT'
     ? { rows: [] }
     : await pool.query(
-      `SELECT * FROM check_form_items WHERE form_key = 'CHECK_TO_LINE' AND fleet = $1 AND archived = false
+      `SELECT * FROM check_form_items WHERE form_key = 'CHECK_TO_LINE' AND fleet = $1
        ORDER BY sort_order ASC, created_at ASC`,
       [trainee.fleet],
     );

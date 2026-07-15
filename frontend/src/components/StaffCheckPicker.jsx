@@ -6,7 +6,7 @@ import { formatUserRole } from '../lib/format';
 // Personnel (Air) Competency Check) are keyed to a specific staff member,
 // same as EP/IPC/PC are keyed to a specific pilot - this is the equivalent
 // "pick who, then show their check history" front door for the Checks tab,
-// mirroring CheckToLinePicker/CaptainInTrainingPicker's crew-member pickers.
+// mirroring CheckToLinePicker's crew-member picker.
 // `roles` can be a plain array (membership check) or a predicate function
 // `(staffMember) => boolean` for eligibility that depends on more than just
 // role (see isGroundInstructorCheckEligible in lib/roles.js).

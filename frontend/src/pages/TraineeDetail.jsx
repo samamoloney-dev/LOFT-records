@@ -8,6 +8,7 @@ import { SyllabusItemsList, PhaseCompletionPanel } from './SyllabusPanel';
 import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { LandingAssessmentForm } from './LandingAssessmentForm';
+import { CaptainInTrainingForm } from './CaptainInTrainingForm';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
@@ -18,7 +19,7 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
 const FLIGHT_CREATOR_ROLES = [
   'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER',
+  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
 ];
 
 // The Landing Assessment tab only applies to Fokker 100/Dash 8 pilot
@@ -26,7 +27,13 @@ const FLIGHT_CREATOR_ROLES = [
 // than being a fixed tab like the rest.
 const LANDING_ASSESSMENT_FLEETS = ['FOKKER_100', 'DASH_8'];
 
-function pilotTabs(fleet) {
+// A trainee entered on the Captain track from the start of LOFT (see
+// Trainees.jsx's Captain role option) gets Captain in Training assessments
+// on their own LOFT tab, next to Landing Assessment - same form/checkType
+// as the crew-level flow for an already-qualified First Officer upgrading
+// later (see CrewDetail.jsx CurrencyFolder's citPrelim/citFinal), just
+// scoped by traineeId instead of crewMemberId.
+function pilotTabs(fleet, role) {
   const tabs = [
     { key: 'groundSchool', label: 'Ground School' },
     { key: 'flights', label: 'Flights' },
@@ -38,6 +45,9 @@ function pilotTabs(fleet) {
   ];
   if (LANDING_ASSESSMENT_FLEETS.includes(fleet)) {
     tabs.push({ key: 'landingAssessment', label: 'Landing Assessment' });
+  }
+  if (role === 'CAPTAIN') {
+    tabs.push({ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' });
   }
   return tabs;
 }
@@ -283,7 +293,7 @@ export function TraineeDetail() {
   if (!trainee) return <div>Loading…</div>;
 
   const isCabinAttendant = trainee.type === 'CABIN_ATTENDANT';
-  const tabs = isCabinAttendant ? CA_TABS : pilotTabs(trainee.fleet);
+  const tabs = isCabinAttendant ? CA_TABS : pilotTabs(trainee.fleet, trainee.role);
 
   return (
     <div>
@@ -319,6 +329,12 @@ export function TraineeDetail() {
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} fleet={trainee.fleet} onCompleted={load} />}
       {tab === 'landingAssessment' && !isCabinAttendant && <LandingAssessmentForm traineeId={id} fleet={trainee.fleet} />}
+      {tab === 'citPrelim' && !isCabinAttendant && trainee.role === 'CAPTAIN' && (
+        <CaptainInTrainingForm variant="PRELIMINARY" traineeId={id} crewMemberName={`${trainee.firstName} ${trainee.lastName}`} fleet={trainee.fleet} crewArchived={trainee.archived} />
+      )}
+      {tab === 'citFinal' && !isCabinAttendant && trainee.role === 'CAPTAIN' && (
+        <CaptainInTrainingForm variant="FINAL" traineeId={id} crewMemberName={`${trainee.firstName} ${trainee.lastName}`} fleet={trainee.fleet} crewArchived={trainee.archived} />
+      )}
     </div>
   );
 }

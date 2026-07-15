@@ -168,7 +168,12 @@ function ItemRow({ kind, description, value, disabled, onChange }) {
 
 const emptyDetails = (variant) => ({ variant, date: '', items: {}, recommendation: '', assessorComments: '', assessorSig: '', candidateSig: '' });
 
-export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, fleet, archived = false, crewArchived = false }) {
+// A LOFT trainee flagged as a Captain candidate from the start (see
+// Trainees.jsx's Captain role option) gets this on their own LOFT tab via
+// traineeId, scoped exactly like the crewMemberId path used for an
+// already-qualified First Officer upgrading later - same form either way,
+// just a different subject.
+export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMemberName, fleet, archived = false, crewArchived = false }) {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
@@ -176,13 +181,16 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState({ date: '', assignedTo: '' });
   const [error, setError] = useState(null);
+  const subjectParam = crewMemberId ? `crewMemberId=${crewMemberId}` : `traineeId=${traineeId}`;
+  const candidatePersonType = crewMemberId ? 'crewMember' : 'trainee';
+  const candidatePersonId = crewMemberId || traineeId;
 
   function load() {
-    api.get(`/api/checks?checkType=CAPTAIN_IN_TRAINING&archived=${archived}&crewMemberId=${crewMemberId}`)
+    api.get(`/api/checks?checkType=CAPTAIN_IN_TRAINING&archived=${archived}&${subjectParam}`)
       .then((all) => setChecks(all.filter((c) => c.details?.variant === variant)))
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [variant, archived, crewMemberId]);
+  useEffect(load, [variant, archived, crewMemberId, traineeId]);
 
   const selected = checks.find((c) => c.id === selectedId);
   const sections = sectionsFor(variant);
@@ -194,7 +202,8 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
     setError(null);
     try {
       await api.post('/api/checks', {
-        checkType: 'CAPTAIN_IN_TRAINING', appliesTo: 'PILOT', crewMemberId,
+        checkType: 'CAPTAIN_IN_TRAINING', appliesTo: 'PILOT',
+        ...(crewMemberId ? { crewMemberId } : { traineeId }),
         assignedTo: newForm.assignedTo || undefined,
         details: { ...emptyDetails(variant), date: newForm.date },
       });
@@ -328,7 +337,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, crewMemberName, f
               <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
             )}
             <PinSignature
-              label="Candidate signature" personType="crewMember" personId={crewMemberId}
+              label="Candidate signature" personType={candidatePersonType} personId={candidatePersonId}
               signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={locked}
               onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
             />

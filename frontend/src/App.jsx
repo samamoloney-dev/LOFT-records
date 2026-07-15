@@ -15,7 +15,6 @@ import { CrewDetail } from './pages/CrewDetail';
 import { CurrencyOverview } from './pages/CurrencyOverview';
 import { Planning } from './pages/Planning';
 import { SyllabusAdmin, ContentApprovalAlert } from './pages/SyllabusAdmin';
-import { CaptainInTrainingPicker } from './pages/CaptainInTrainingPicker';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
 import { formatUserRole } from './lib/format';
@@ -39,11 +38,6 @@ const NON_TRAINEE_ROLES = [
 // ground-school.js approval-queue gating for non-HOTC editors).
 const CREW_VISIBLE_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
 const SYLLABUS_ADMIN_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
-// Captain in Training assessments live alongside LOFT Trainees rather than
-// under Checks - same roles who could actually complete one before (HOTC/
-// HOFO/Alternate/Examiner - the only roles canAccessCheckType lets through
-// for CAPTAIN_IN_TRAINING, see backend checks.js).
-const CIT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 
 // A red count badge on the Checks nav tab - "an IPC/PC/EP/Line Check/Check
 // to Line just finished, go update the crew's records" (see checks.js
@@ -81,7 +75,6 @@ function Shell({ children }) {
       <nav className="top-nav">
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
         <NavLink to="/trainees">LOFT Trainees</NavLink>
-        {CIT_ROLES.includes(user.role) && <NavLink to="/captain-in-training">Captain in Training</NavLink>}
         {CREW_VISIBLE_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
         {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
@@ -136,7 +129,6 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/trainees" element={<TraineesPage />} />
                 <Route path="/trainees/:id" element={<TraineeDetail />} />
-                <Route path="/captain-in-training" element={<ProtectedRoute roles={CIT_ROLES}><CaptainInTrainingPicker /></ProtectedRoute>} />
                 <Route path="/syllabus" element={<ProtectedRoute roles={SYLLABUS_ADMIN_ROLES}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Staff /></ProtectedRoute>} />

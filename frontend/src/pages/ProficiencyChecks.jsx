@@ -14,6 +14,7 @@ import {
 import { formatUserRole, formatFleet } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
 import { compressImage } from '../lib/imageCompress';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -204,11 +205,14 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   // by each item's id instead of its position in the list.
   const [pcItems, setPcItems] = useState([]);
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=PROFICIENCY_CHECK').then(setPcItems).catch(() => {});
+    api.get('/api/check-form-items?formKey=PROFICIENCY_CHECK&includeArchived=true').then(setPcItems).catch(() => {});
   }, []);
-  const recurrentItems = pcItems.filter((item) => item.section === RECURRENT_SECTION);
-  const knowledgeItems = pcItems.filter((item) => item.section === KNOWLEDGE_SECTION);
-  const flightSectionGroups = groupFlightSections(pcItems);
+  // Unfiltered by archived status - each render site below narrows this to
+  // that specific check's own results via visibleCheckFormItems, so an
+  // archived item only shows for a check that already answered it.
+  const allRecurrentItems = pcItems.filter((item) => item.section === RECURRENT_SECTION);
+  const allKnowledgeItems = pcItems.filter((item) => item.section === KNOWLEDGE_SECTION);
+  const allFlightSectionGroups = groupFlightSections(pcItems);
 
   function load() {
     api.get(`/api/checks?checkType=RECURRENT_SIMULATOR&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
@@ -357,9 +361,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     const isIpc = d.variant === 'IPC_PC';
     const results = d.results || {};
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : (d.seatCheck ? [d.seatCheck] : []);
-    const flightSections = flightSectionGroups.map((s) => ({
+    const recurrentItems = visibleCheckFormItems(allRecurrentItems, results);
+    const knowledgeItems = visibleCheckFormItems(allKnowledgeItems, results);
+    const flightSections = allFlightSectionGroups.map((s) => ({
       ...s,
-      allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
+      allItems: visibleCheckFormItems(s.items.filter((item) => !item.ipcOnly || isIpc), results),
     }));
     const title = VARIANT_LABELS[d.variant] || 'Proficiency Check';
 
@@ -434,9 +440,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       patchDetails(selected, { results: { ...results, [id]: value } });
     }
 
-    const flightSections = flightSectionGroups.map((s) => ({
+    const recurrentItems = visibleCheckFormItems(allRecurrentItems, results);
+    const knowledgeItems = visibleCheckFormItems(allKnowledgeItems, results);
+    const flightSections = allFlightSectionGroups.map((s) => ({
       ...s,
-      allItems: s.items.filter((item) => !item.ipcOnly || isIpc),
+      allItems: visibleCheckFormItems(s.items.filter((item) => !item.ipcOnly || isIpc), results),
     }));
     const allRequiredItems = [
       ...recurrentItems,

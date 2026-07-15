@@ -10,6 +10,7 @@ import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
@@ -37,7 +38,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
   const [caItems, setCaItems] = useState([]);
   const [ntsMarkers, setNtsMarkers] = useState([]);
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=CABIN_ATTENDANT_LINE_CHECK').then((items) => {
+    api.get('/api/check-form-items?formKey=CABIN_ATTENDANT_LINE_CHECK&includeArchived=true').then((items) => {
       setCaItems(items.filter((i) => i.kind === 'tick'));
       setNtsMarkers(items.filter((i) => i.kind === 'score_code'));
     }).catch(() => {});
@@ -124,8 +125,9 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
   function printCheck(check) {
     const d = check.details || {};
-    const itemRows = caItems.map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N/A' : '']);
-    const ntsRows = ntsMarkers.map((m) => [m.description, `Score ${d.nts?.[`score-${m.id}`] || '—'} · Code ${d.nts?.[`code-${m.id}`] || '—'}`]);
+    const itemRows = visibleCheckFormItems(caItems, d.items).map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N/A' : '']);
+    const visibleNtsMarkers = ntsMarkers.filter((m) => !m.archived || d.nts?.[`score-${m.id}`] !== undefined || d.nts?.[`code-${m.id}`] !== undefined);
+    const ntsRows = visibleNtsMarkers.map((m) => [m.description, `Score ${d.nts?.[`score-${m.id}`] || '—'} · Code ${d.nts?.[`code-${m.id}`] || '—'}`]);
     const html = `
       <h1>Cabin Attendant Line Check (SA 540)</h1>
       <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
@@ -149,7 +151,9 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
   if (selected) {
     const d = selected.details || {};
-    const allItemsAnswered = caItems.length > 0 && caItems.every((item) => d.items?.[item.id] !== undefined);
+    const visibleCaItems = visibleCheckFormItems(caItems, d.items);
+    const visibleNtsMarkers = ntsMarkers.filter((m) => !m.archived || d.nts?.[`score-${m.id}`] !== undefined || d.nts?.[`code-${m.id}`] !== undefined);
+    const allItemsAnswered = visibleCaItems.length > 0 && visibleCaItems.every((item) => d.items?.[item.id] !== undefined);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -179,7 +183,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
 
         <div className="card">
           <div className="section-tag" style={{ fontWeight: 500, marginBottom: 8 }}>ASSESSMENT</div>
-          {caItems.map((item) => (
+          {visibleCaItems.map((item) => (
             <div key={item.id} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
@@ -211,7 +215,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 8 }}>NON TECHNICAL SKILL ASSESSMENT</div>
           <div className="grid2">
-            {ntsMarkers.map((m) => (
+            {visibleNtsMarkers.map((m) => (
               <div key={m.id} style={{ padding: '6px 0' }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{m.description}</div>
                 <div className="grid2" style={{ gap: 6 }}>

@@ -7,6 +7,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { CHECK_ROLES } from '../lib/roles';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
 
@@ -72,7 +73,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
   const canEdit = CHECK_ROLES.includes(user.role);
 
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY').then(setItems).catch(() => {});
+    api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY&includeArchived=true').then(setItems).catch(() => {});
     api.get('/api/users/roster').then(setStaff).catch(() => {});
   }, []);
 
@@ -124,7 +125,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
   }
 
   function printCheck(check) {
-    const relevant = relevantItems(items, check.candidateSection);
+    const relevant = visibleCheckFormItems(relevantItems(items, check.candidateSection), check.items);
     const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
     const subsection = relevant.filter((i) => i.section === check.candidateSection);
     const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
@@ -160,7 +161,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
       {checks.map((check) => {
         const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
-        const relevant = relevantItems(items, check.candidateSection);
+        const relevant = visibleCheckFormItems(relevantItems(items, check.candidateSection), check.items);
         const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
         const subsection = relevant.filter((i) => i.section === check.candidateSection);
         const debrief = relevant.filter((i) => i.section === 'DEBRIEF');

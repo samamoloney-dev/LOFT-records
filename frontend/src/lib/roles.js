@@ -52,5 +52,7 @@ export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 // 24 months. Examiners are deliberately excluded (unlike
 // isGroundInstructorCheckEligible) - they still conduct/assess this check
 // (see CHECK_ROLES above), they just don't need it done on themselves.
-// Mirrors backend/src/middleware/roles.js's PERSONNEL_AIR_COMPETENCY_ROLES.
-export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
+// Simulator Only Examiner is included - they still check pilots in the
+// simulator, just not on the line. Mirrors backend/src/middleware/roles.js's
+// PERSONNEL_AIR_COMPETENCY_ROLES.
+export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'SIMULATOR_ONLY'];

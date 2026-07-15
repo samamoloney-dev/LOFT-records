@@ -212,15 +212,23 @@ router.post('/', async (req, res) => {
   if (parsed.data.crewMemberId && await isCrewMemberArchived(parsed.data.crewMemberId)) {
     return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
   }
-  // Captain in Training is only ever offered for a pilot an admin has
-  // explicitly allocated to a Captain upgrade (see crew.js
-  // captainInTraining) - not something anyone can start ad hoc for any pilot.
+  // Captain in Training is only ever offered for a candidate already on the
+  // Captain track - either an already-qualified First Officer an admin has
+  // explicitly allocated to a Captain upgrade (crew_members.captain_in_training,
+  // see crew.js), or a LOFT trainee entered as a Captain candidate from the
+  // start (trainees.role === 'CAPTAIN', see trainees.js) - not something
+  // anyone can start ad hoc for any pilot.
   if (parsed.data.checkType === 'CAPTAIN_IN_TRAINING') {
-    const { rows } = parsed.data.crewMemberId
-      ? await pool.query('SELECT captain_in_training FROM crew_members WHERE id = $1', [parsed.data.crewMemberId])
-      : { rows: [] };
-    if (!rows[0]?.captain_in_training) {
-      return res.status(403).json({ error: 'This pilot has not been allocated to Captain in Training' });
+    let eligible = false;
+    if (parsed.data.crewMemberId) {
+      const { rows } = await pool.query('SELECT captain_in_training FROM crew_members WHERE id = $1', [parsed.data.crewMemberId]);
+      eligible = !!rows[0]?.captain_in_training;
+    } else if (parsed.data.traineeId) {
+      const { rows } = await pool.query('SELECT role FROM trainees WHERE id = $1', [parsed.data.traineeId]);
+      eligible = rows[0]?.role === 'CAPTAIN';
+    }
+    if (!eligible) {
+      return res.status(403).json({ error: 'This candidate has not been allocated to Captain in Training' });
     }
   }
 

@@ -7,6 +7,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const COURSE_TITLES = ['Emergency procedures', 'PMI', 'Ground school'];
 
@@ -45,7 +46,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
   const canEdit = isGroundInstructorCheckEligible(user);
 
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=GROUND_INSTRUCTOR_COMPETENCY').then(setItems).catch(() => {});
+    api.get('/api/check-form-items?formKey=GROUND_INSTRUCTOR_COMPETENCY&includeArchived=true').then(setItems).catch(() => {});
     api.get('/api/users/roster').then(setStaff).catch(() => {});
   }, []);
 
@@ -120,7 +121,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
       ['Date of Observation', check.dateOfObservation ? formatDate(check.dateOfObservation) : ''],
       ['Name of Assessor', check.assessorName],
     ]);
-    body += section('Items', items.map((item) => [
+    body += section('Items', visibleCheckFormItems(items, check.items).map((item) => [
       item.description,
       check.items?.[item.id] === true ? 'Yes' : check.items?.[item.id] === false ? 'No' : '',
     ]));
@@ -143,7 +144,8 @@ export function GroundInstructorCheckForm({ userId, userName }) {
       {checks.map((check) => {
         const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
-        const allItemsAnswered = items.length > 0 && items.every((item) => check.items?.[item.id] !== undefined);
+        const visibleItems = visibleCheckFormItems(items, check.items);
+        const allItemsAnswered = visibleItems.length > 0 && visibleItems.every((item) => check.items?.[item.id] !== undefined);
         const eligibleAssessors = staff.filter((s) => CHECK_ROLES.includes(s.role));
         return (
           <div key={check.id} className="card" style={{ marginTop: 8 }}>
@@ -199,7 +201,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                   </select>
                 </div>
 
-                {items.map((item) => (
+                {visibleItems.map((item) => (
                   <ItemRow key={item.id} item={item} value={check.items?.[item.id]} disabled={locked} onChange={(v) => toggleItem(check, item, v)} />
                 ))}
 

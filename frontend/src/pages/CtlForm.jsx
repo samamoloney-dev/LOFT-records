@@ -7,6 +7,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
 // Training Record.
@@ -149,9 +150,13 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
 
   if (!data) return null;
 
+  // Includes archived items too, but only ones this particular form already
+  // answered - retiring an item from the active catalog must never erase a
+  // historical Check to Line's ticked answer (see lib/checkFormItems.js).
+  const visibleItems = visibleCheckFormItems(data.items, form.assessmentItems);
   const grouped = new Map();
   if (!isCabinAttendant) {
-    for (const item of data.items) {
+    for (const item of visibleItems) {
       if (!grouped.has(item.section)) grouped.set(item.section, []);
       grouped.get(item.section).push(item);
     }
@@ -159,7 +164,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
 
   const allItemsAnswered = isCabinAttendant
     ? CA_ASSESSMENT_ITEMS.every((item) => form.assessmentItems[item] !== undefined)
-    : data.items.length > 0 && data.items.every((item) => form.assessmentItems[itemKey(item)] !== undefined);
+    : visibleItems.length > 0 && visibleItems.every((item) => form.assessmentItems[itemKey(item)] !== undefined);
 
   function printForm() {
     const statusLabel = (v) => (v === true ? '✓' : v === false ? '✗' : v === 'SATISFACTORY' ? '✓' : v === 'UNSATISFACTORY' ? '✗' : v === 'NA' ? 'N/A' : '');

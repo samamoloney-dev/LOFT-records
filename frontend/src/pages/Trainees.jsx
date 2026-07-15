@@ -6,7 +6,12 @@ import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
-const ROLES = ['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT'];
+// Scoped by type - a Cabin Attendant trainee was never actually offered
+// Captain/First Officer, this just closes a gap where the raw list showed
+// every role regardless of the type picked above it. Picking Captain here
+// flags them as a Captain candidate from day one of LOFT - see TraineeDetail
+// (Captain in Training tab, next to Landing Assessment).
+const ROLES_BY_TYPE = { PILOT: ['CAPTAIN', 'FIRST_OFFICER'], CABIN_ATTENDANT: ['CABIN_ATTENDANT'] };
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new trainee -
 // no other staff role. Mirrors backend/src/routes/trainees.js POST /.
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
@@ -58,14 +63,20 @@ export function Trainees() {
           <div className="grid2">
             <div className="field">
               <label>Type</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <select
+                value={form.type}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8' });
+                }}
+              >
                 {TYPES.map((t) => <option key={t} value={t}>{formatTraineeRole(t)}</option>)}
               </select>
             </div>
             <div className="field">
               <label>Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {ROLES.map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
+                {ROLES_BY_TYPE[form.type].map((r) => <option key={r} value={r}>{formatTraineeRole(r)}</option>)}
               </select>
             </div>
           </div>

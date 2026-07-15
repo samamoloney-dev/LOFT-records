@@ -10,6 +10,7 @@ import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -40,7 +41,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
   // by each item's id instead of its position in the list.
   const [epItems, setEpItems] = useState([]);
   useEffect(() => {
-    api.get('/api/check-form-items?formKey=EMERGENCY_PROCEDURES').then(setEpItems).catch(() => {});
+    api.get('/api/check-form-items?formKey=EMERGENCY_PROCEDURES&includeArchived=true').then(setEpItems).catch(() => {});
   }, []);
 
   function load() {
@@ -129,7 +130,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
 
   function printCheck(check) {
     const d = check.details || {};
-    const itemRows = epItems.map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N (Not Tested)' : '']);
+    const itemRows = visibleCheckFormItems(epItems, d.items).map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N (Not Tested)' : '']);
     const html = `
       <h1>Emergency Procedures Check</h1>
       <div class="meta">${d.name || ''} · ${d.date || ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
@@ -161,7 +162,8 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
 
   if (selected) {
     const d = selected.details || {};
-    const allItemsAnswered = epItems.length > 0 && epItems.every((item) => d.items?.[item.id] !== undefined);
+    const visibleEpItems = visibleCheckFormItems(epItems, d.items);
+    const allItemsAnswered = visibleEpItems.length > 0 && visibleEpItems.every((item) => d.items?.[item.id] !== undefined);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -196,7 +198,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         </div>
 
         <div className="card">
-          {epItems.map((item) => (
+          {visibleEpItems.map((item) => (
             <div key={item.id} className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
               <div style={{ display: 'flex', gap: 4 }}>

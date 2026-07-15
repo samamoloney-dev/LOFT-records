@@ -10,6 +10,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 // Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
@@ -130,7 +131,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     // means they'd also see the Dash 8/Metro 23-only "Narrow runway
     // supplement" item even if only one of their fleets needs it.
     const fleetParam = fleet ? `&fleet=${fleet}` : '';
-    api.get(`/api/check-form-items?formKey=PILOT_LINE_CHECK${fleetParam}`).then(setItems).catch(() => {});
+    api.get(`/api/check-form-items?formKey=PILOT_LINE_CHECK${fleetParam}&includeArchived=true`).then(setItems).catch(() => {});
   }, [fleet]);
   useEffect(() => {
     api.get(`/api/crew/${crewMemberId}/competencies`)
@@ -158,8 +159,11 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   useEffect(load, [archived, crewMemberId]);
 
   const selected = checks.find((c) => c.id === selectedId);
-  const tickableItems = items.filter((i) => i.description !== REFRESHER_ITEM_NAME);
-  const sections = groupBySection(tickableItems);
+  // Unfiltered by archived status - each render site below narrows this to
+  // that specific check's own results via visibleCheckFormItems, so an
+  // archived item is only ever shown if that particular check already
+  // answered it (see lib/checkFormItems.js).
+  const allTickableItems = items.filter((i) => i.description !== REFRESHER_ITEM_NAME);
 
   async function createCheck(e) {
     e.preventDefault();
@@ -243,6 +247,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const d = check.details || {};
     const results = d.results || {};
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
+    const sections = groupBySection(visibleCheckFormItems(allTickableItems, results));
     const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
     let body = `
       <h1>Line Check</h1>
@@ -274,6 +279,8 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const results = d.results || {};
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
     const locked = !!selected.completedAt;
+    const tickableItems = visibleCheckFormItems(allTickableItems, results);
+    const sections = groupBySection(tickableItems);
     const nonTerminalItems = tickableItems.filter((i) => i.section !== TERMINAL_SECTION);
     const terminalItems = tickableItems.filter((i) => i.section === TERMINAL_SECTION);
     const terminalAnswered = terminalItems.length === 0 || terminalItems.some((item) => results[item.id] === true);

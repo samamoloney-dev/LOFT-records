@@ -4,6 +4,17 @@
 // interactive edit UI (inputs, buttons) never has to double as a print
 // layout.
 import { formatDate } from './format';
+import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
+
+// Colour palette lifted directly from the operator's own SA518 Flight
+// Standards Personnel (Air) Competency Check paper form (the two navy
+// shades used on its section header rows, and the light blue/grey used for
+// alternating row shading) - applied here so every printed form in the app
+// matches the paper forms it's digitising, not an arbitrary house style.
+const NAVY_DARK = '#003366';
+const NAVY_MID = '#1A5276';
+const ROW_TINT = '#D6E4F0';
+const ROW_TINT_ALT = '#F0F0F0';
 
 const PRINT_STYLES = `
   @page { size: A4; margin: 16mm 14mm; }
@@ -11,15 +22,16 @@ const PRINT_STYLES = `
   body { font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 12px; margin: 0; padding: 0 2px; }
 
   .letterhead {
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; justify-content: space-between; align-items: flex-start;
     font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.08em;
-    border-bottom: 3px double #1a1a1a; padding-bottom: 8px; margin-bottom: 4px;
+    border-bottom: 3px double ${NAVY_DARK}; padding-bottom: 8px; margin-bottom: 4px;
   }
   .letterhead b { font-size: 12px; color: #111; letter-spacing: 0.04em; }
+  .letterhead img { height: 30px; display: block; margin-left: auto; }
 
   h1 {
     font-size: 19px; margin: 10px 0 16px; padding-bottom: 10px; font-weight: 800; letter-spacing: 0.01em;
-    text-transform: uppercase; text-align: center; border-bottom: 1px solid #ccc;
+    text-transform: uppercase; text-align: center; border-bottom: 1px solid #ccc; color: ${NAVY_DARK};
   }
 
   /* The one line of "who/what/when" context every form opens with -
@@ -40,14 +52,14 @@ const PRINT_STYLES = `
   .form-section { border: 1px solid #b9bfc7; border-radius: 3px; margin-bottom: 12px; break-inside: avoid; -webkit-column-break-inside: avoid; }
   .form-section h2 {
     font-size: 11.5px; margin: 0; padding: 6px 10px;
-    background: #2c333d; color: #fff; border-radius: 2px 2px 0 0;
+    background: ${NAVY_DARK}; color: #fff; border-radius: 2px 2px 0 0;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
   }
   table { width: 100%; border-collapse: collapse; }
   td, th { padding: 6px 10px; border-bottom: 1px solid #e4e6ea; text-align: left; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
-  tr:nth-child(even) td { background: #fafbfc; }
-  .label { color: #444; width: 36%; white-space: nowrap; font-weight: 600; }
+  tr:nth-child(even) td { background: ${ROW_TINT_ALT}; }
+  .label { color: ${NAVY_MID}; width: 36%; white-space: nowrap; font-weight: 600; }
 
   .disclaimer { font-style: italic; color: #444; margin: 14px 0; font-size: 10.5px; padding: 8px 10px; background: #fafafa; border: 1px solid #e0e0e0; border-left: 3px solid #888; border-radius: 2px; }
 
@@ -95,9 +107,9 @@ const PRINT_STYLES = `
   .check-row { display: grid; border-bottom: 1px solid #000; break-inside: avoid; -webkit-column-break-inside: avoid; }
   .check-row > div { padding: 3px 6px; border-right: 1px solid #000; overflow-wrap: break-word; }
   .check-row > div:last-child { border-right: none; text-align: center; }
-  .check-head { font-weight: 700; background: #ddd; font-size: 10px; text-transform: uppercase; }
+  .check-head { font-weight: 700; background: ${NAVY_MID}; color: #fff; font-size: 10px; text-transform: uppercase; }
   .check-subhead {
-    font-weight: 700; background: #eaeaea; padding: 3px 6px; text-align: center;
+    font-weight: 700; background: ${ROW_TINT}; padding: 3px 6px; text-align: center;
     border-bottom: 1px solid #000; break-inside: avoid; -webkit-column-break-inside: avoid;
   }
 
@@ -112,7 +124,7 @@ const PRINT_STYLES = `
   .labeled-row-group { border: 1px solid #000; margin-bottom: 10px; }
   .labeled-row { display: grid; border-bottom: 1px solid #000; }
   .labeled-row:last-child { border-bottom: none; }
-  .labeled-row .row-label { padding: 5px 8px; font-weight: 700; border-right: 1px solid #000; display: flex; align-items: center; font-size: 11px; background: #f4f4f4; }
+  .labeled-row .row-label { padding: 5px 8px; font-weight: 700; border-right: 1px solid #000; display: flex; align-items: center; font-size: 11px; background: ${ROW_TINT}; }
   .labeled-row > div:not(.row-label) { padding: 8px 6px 4px; border-right: 1px solid #000; text-align: center; }
   .labeled-row > div:last-child { border-right: none; }
   .labeled-row .cell-value { min-height: 14px; font-weight: 600; margin-bottom: 3px; }
@@ -134,7 +146,10 @@ const PRINT_STYLES = `
 export function openPrintWindow(title, bodyHtml) {
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return;
-  const letterhead = `<div class="letterhead"><b>Flight Standards System</b><span>Printed ${formatDate(new Date())}</span></div>`;
+  // Skippers logo top-right on every printed form, per the operator's
+  // request - sits above the "Printed {date}" line rather than replacing
+  // it, so both are visible in the corner.
+  const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;"><img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" /><span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
   const footer = `<div class="print-footer"><span>Flight Standards System</span><span>System-generated record</span></div>`;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${letterhead}${bodyHtml}${footer}</body></html>`);
   win.document.close();

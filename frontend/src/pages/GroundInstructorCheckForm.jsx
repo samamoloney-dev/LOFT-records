@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
-import { isGroundInstructorCheckEligible, CHECK_ROLES } from '../lib/roles';
+import { isGroundInstructorCheckEligible, COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
@@ -146,7 +146,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
         const open = openId === check.id;
         const visibleItems = visibleCheckFormItems(items, check.items);
         const allItemsAnswered = visibleItems.length > 0 && visibleItems.every((item) => check.items?.[item.id] !== undefined);
-        const eligibleAssessors = staff.filter((s) => CHECK_ROLES.includes(s.role));
+        const eligibleAssessors = staff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
         return (
           <div key={check.id} className="card" style={{ marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -184,7 +184,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                     <label>Date</label>
                     <input
                       type="date" disabled={locked}
-                      value={check.dateOfObservation || ''}
+                      value={check.dateOfObservation ? check.dateOfObservation.slice(0, 10) : ''}
                       onChange={(e) => save(check.id, { dateOfObservation: e.target.value })}
                     />
                   </div>

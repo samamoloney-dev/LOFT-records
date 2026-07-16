@@ -42,10 +42,18 @@ export function isGroundInstructorCheckEligible(user) {
 
 // Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
 // who can conduct/assess a check generally, as opposed to who a given check
-// applies to. Used as the Assessor pool on the Ground Instructor Competency
-// Check (SA_520) and Flight Standards Personnel (Air) Competency Check
-// (SA_518) forms.
+// applies to.
 export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
+
+// Assessor pool on the Ground Instructor Competency Check (SA_520) and
+// Flight Standards Personnel (Air) Competency Check (SA_518) forms
+// specifically - CHECK_ROLES plus Cabin Attendant Manager, who can
+// complete/assess both of these per the operator's explicit request (but
+// deliberately not folded into CHECK_ROLES itself, since that would also
+// hand CA Manager pilot-only Recurrent Sim/IPC/PC access - see Checks.jsx's
+// canAccessPilotChecks). Mirrors backend/src/middleware/roles.js's
+// canAccessCompetencyChecks.
+export const COMPETENCY_CHECK_ASSESSOR_ROLES = [...CHECK_ROLES, 'CA_MANAGER'];
 
 // Flight Standards Personnel (Air) Competency Check (SA_518) - every staff
 // member who trains or checks pilots/cabin crew in the air, renewed every

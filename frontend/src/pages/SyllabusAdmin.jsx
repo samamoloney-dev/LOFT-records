@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
-import { formatFleet } from '../lib/format';
+import { formatFleet, formatUserRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ROLE_SCOPES = ['BOTH', 'CAPTAIN_ONLY', 'FO_ONLY'];
@@ -849,6 +849,35 @@ function CheckFormItemsSection() {
 // shared, extensible catalog.
 const APPLIES_TO_LABELS = { PILOT: 'Pilots only', CABIN_ATTENDANT: 'Cabin attendants only' };
 
+// Further scopes a Pilots-only competency to pilots who are also linked to
+// a staff account holding one of these roles (e.g. a competency only
+// Examiners need) - see 0077_competency_type_staff_roles.sql. Only
+// meaningful when appliesTo is 'PILOT'; leaving none ticked applies to
+// every pilot, same as before this option existed.
+const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN'];
+
+function StaffRolePicker({ value, onChange }) {
+  function toggle(r) {
+    onChange(value.includes(r) ? value.filter((x) => x !== r) : [...value, r]);
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {STAFF_ROLE_VALUES.map((r) => (
+        <div
+          key={r}
+          onClick={() => toggle(r)}
+          style={{
+            padding: '6px 12px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+            cursor: 'pointer', fontSize: 13,
+            background: value.includes(r) ? 'var(--bg-accent)' : 'var(--surface-2)',
+            color: value.includes(r) ? 'var(--text-accent)' : 'inherit',
+          }}
+        >{formatUserRole(r)}</div>
+      ))}
+    </div>
+  );
+}
+
 function CompetencyFleetPicker({ value, onChange }) {
   function toggle(f) {
     onChange(value.includes(f) ? value.filter((x) => x !== f) : [...value, f]);
@@ -876,10 +905,12 @@ function CompetencyTypesSection() {
   const [name, setName] = useState('');
   const [appliesTo, setAppliesTo] = useState('');
   const [fleets, setFleets] = useState([]);
+  const [staffRoles, setStaffRoles] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [editingAppliesTo, setEditingAppliesTo] = useState('');
   const [editingFleets, setEditingFleets] = useState([]);
+  const [editingStaffRoles, setEditingStaffRoles] = useState([]);
   const [error, setError] = useState(null);
 
   function load() {
@@ -892,10 +923,14 @@ function CompetencyTypesSection() {
     if (!name.trim()) return;
     setError(null);
     try {
-      await api.post('/api/competency-types', { name: name.trim(), appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null });
+      await api.post('/api/competency-types', {
+        name: name.trim(), appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null,
+        staffRoles: appliesTo === 'PILOT' && staffRoles.length ? staffRoles : null,
+      });
       setName('');
       setAppliesTo('');
       setFleets([]);
+      setStaffRoles([]);
       load();
     } catch (err) { setError(err.message); }
   }
@@ -904,7 +939,10 @@ function CompetencyTypesSection() {
     if (!editingName.trim()) return;
     setError(null);
     try {
-      await api.patch(`/api/competency-types/${id}`, { name: editingName.trim(), appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null });
+      await api.patch(`/api/competency-types/${id}`, {
+        name: editingName.trim(), appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null,
+        staffRoles: editingAppliesTo === 'PILOT' && editingStaffRoles.length ? editingStaffRoles : null,
+      });
       setEditingId(null);
       load();
     } catch (err) { setError(err.message); }
@@ -926,7 +964,7 @@ function CompetencyTypesSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Every active competency here is required for every crew member (unless scoped to pilots/cabin attendants and/or specific fleets) - archiving one removes it from crew profiles going forward without losing past dates.
+        Every active competency here is required for every crew member (unless scoped to pilots/cabin attendants, specific fleets, and/or a specific pilot staff role) - archiving one removes it from crew profiles going forward without losing past dates.
       </div>
       <form className="card" onSubmit={addType}>
         <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
@@ -942,6 +980,12 @@ function CompetencyTypesSection() {
           <label>Fleets (leave none ticked for every fleet - e.g. tick only Fokker 100/Cabin Fokker 100 for a Fokker-specific course)</label>
           <CompetencyFleetPicker value={fleets} onChange={setFleets} />
         </div>
+        {appliesTo === 'PILOT' && (
+          <div className="field">
+            <label>Pilot roles (leave none ticked for every pilot - tick one or more to require this only of pilots who are also staff with that role)</label>
+            <StaffRolePicker value={staffRoles} onChange={setStaffRoles} />
+          </div>
+        )}
         <button type="submit" className="primary">Add</button>
       </form>
       {error && <div className="error-text">{error}</div>}
@@ -959,6 +1003,11 @@ function CompetencyTypesSection() {
                 </select>
               </div>
               <CompetencyFleetPicker value={editingFleets} onChange={setEditingFleets} />
+              {editingAppliesTo === 'PILOT' && (
+                <div style={{ marginTop: 8 }}>
+                  <StaffRolePicker value={editingStaffRoles} onChange={setEditingStaffRoles} />
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 <button onClick={() => saveName(t.id)}>Save</button>
                 <button onClick={() => setEditingId(null)}>Cancel</button>
@@ -970,10 +1019,11 @@ function CompetencyTypesSection() {
                 {t.name}
                 {t.appliesTo ? ` (${APPLIES_TO_LABELS[t.appliesTo]})` : ''}
                 {(t.fleets || []).length ? ` (${t.fleets.map(formatFleet).join(', ')} only)` : ''}
+                {(t.staffRoles || []).length ? ` (${t.staffRoles.map(formatUserRole).join(', ')} only)` : ''}
                 {t.archived ? ' (archived)' : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); setEditingFleets(t.fleets || []); }}>Edit</button>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); setEditingFleets(t.fleets || []); setEditingStaffRoles(t.staffRoles || []); }}>Edit</button>
                 <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
                 <button className="danger" onClick={() => remove(t)}>Delete</button>
               </div>

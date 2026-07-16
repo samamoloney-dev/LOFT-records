@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessChecks, isAdmin, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
+const { canAccessCompetencyChecks, isAdmin, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
 
@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
 
   const { userId } = req.query;
   if (!userId) return res.status(400).json({ error: 'userId is required' });
-  if (!canAccessChecks(req.user) && req.user.id !== userId) {
+  if (!canAccessCompetencyChecks(req.user) && req.user.id !== userId) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -51,7 +51,7 @@ const createSchema = z.object({
 });
 
 router.post('/', async (req, res) => {
-  if (!canAccessChecks(req.user)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessCompetencyChecks(req.user)) return res.status(403).json({ error: 'Forbidden' });
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
@@ -84,7 +84,7 @@ const updateSchema = z.object({
 });
 
 router.patch('/:id', async (req, res) => {
-  if (!canAccessChecks(req.user)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessCompetencyChecks(req.user)) return res.status(403).json({ error: 'Forbidden' });
   const { rows: existingRows } = await pool.query('SELECT * FROM personnel_competency_checks WHERE id = $1', [req.params.id]);
   if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
 

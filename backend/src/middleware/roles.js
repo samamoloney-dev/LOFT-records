@@ -114,6 +114,19 @@ function canAccessChecks(user) {
   return CHECK_ROLES.includes(user.role);
 }
 
+// Ground Instructor Competency Check (SA_520) and Personnel (Air)
+// Competency Check (SA_518) specifically - Cabin Attendant Manager can
+// complete/assess both of these (per the operator's explicit request),
+// unlike the broader canAccessChecks (which also covers pilot-only
+// Recurrent Sim/EP access CA Manager must NOT get - see
+// canAccessCheckType's EMERGENCY_PROCEDURES/RECURRENT_SIMULATOR handling
+// in checks.js, which grants CA Manager EP access separately and on
+// purpose but keeps them out of Recurrent Sim). Deliberately its own
+// function rather than widening canAccessChecks itself.
+function canAccessCompetencyChecks(user) {
+  return canAccessChecks(user) || user.role === 'CA_MANAGER';
+}
+
 function isCaOnlyRole(user) {
   return CA_ONLY_ROLES.includes(user.role);
 }
@@ -166,6 +179,7 @@ module.exports = {
   requireRole,
   isAdmin,
   canAccessChecks,
+  canAccessCompetencyChecks,
   isCaOnlyRole,
   canAccessTraineeRecord,
   canAccessArchived,

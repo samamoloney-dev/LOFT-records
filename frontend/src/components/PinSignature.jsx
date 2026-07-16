@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
+
+// Only these three (not Alternate) can reset someone's PIN, per the
+// operator's explicit request - a stronger restriction than the usual
+// HOTC/HOFO/Flight Ops Admin/Alternate admin quartet used elsewhere.
+const PIN_RESET_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // Replaces a plain typed-name signature field with a personal 4-digit PIN -
 // first sign sets the PIN (entered twice), every sign after that just
@@ -8,10 +14,13 @@ import { formatDate } from '../lib/format';
 // candidate with no linked crew/trainee record) - the parent form falls
 // back to its old plain text input in that case.
 export function PinSignature({ label, personType, personId, signedName, signedAt, disabled, onSigned }) {
+  const { user } = useAuth();
+  const canResetPin = PIN_RESET_ROLES.includes(user.role);
   const [mode, setMode] = useState('idle'); // idle | checking | set | verify
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState(null);
+  const [resetNotice, setResetNotice] = useState(null);
 
   if (!personId) return null;
 
@@ -24,6 +33,16 @@ export function PinSignature({ label, personType, personId, signedName, signedAt
   function finish(name) {
     onSigned(name, new Date().toISOString());
     reset();
+  }
+
+  async function resetPin() {
+    if (!window.confirm("Reset this person's signature PIN? They'll be asked to set a new one the next time they sign.")) return;
+    setError(null);
+    setResetNotice(null);
+    try {
+      const { name } = await api.post('/api/signatures/reset', { personType, personId });
+      setResetNotice(`PIN reset for ${name}.`);
+    } catch (err) { setError(err.message); }
   }
 
   async function startSign() {
@@ -64,8 +83,13 @@ export function PinSignature({ label, personType, personId, signedName, signedAt
         <label>{label}</label>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
           <span>Signed by {signedName}{signedAt ? ` · ${formatDate(signedAt)}` : ''}</span>
-          {!disabled && <button type="button" onClick={() => onSigned(null, null)}>Clear</button>}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {canResetPin && <button type="button" onClick={resetPin}>Reset PIN</button>}
+            {!disabled && <button type="button" onClick={() => onSigned(null, null)}>Clear</button>}
+          </div>
         </div>
+        {resetNotice && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{resetNotice}</div>}
+        {error && <div className="error-text">{error}</div>}
       </div>
     );
   }
@@ -73,7 +97,13 @@ export function PinSignature({ label, personType, personId, signedName, signedAt
   return (
     <div className="field">
       <label>{label}</label>
-      {mode === 'idle' && <button type="button" disabled={disabled} onClick={startSign}>Sign</button>}
+      {mode === 'idle' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" disabled={disabled} onClick={startSign}>Sign</button>
+          {canResetPin && <button type="button" onClick={resetPin}>Reset PIN</button>}
+        </div>
+      )}
+      {resetNotice && mode === 'idle' && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{resetNotice}</div>}
       {mode === 'checking' && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Checking…</div>}
       {mode === 'set' && (
         <form onSubmit={submitSet} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

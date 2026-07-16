@@ -9,13 +9,18 @@ const { logAction } = require('../lib/audit');
 const router = express.Router();
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+// Further scopes a Pilots-only competency to pilots who are also linked to
+// a staff account holding one of these specific roles (see
+// 0077_competency_type_staff_roles.sql) - null/empty applies to every
+// pilot, same as today.
+const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN'];
 
 // node-postgres doesn't decode arrays of custom enum types (fleet[]) on
 // its own - see db/serialize.js's parsePgArray - so fleets needs parsing
 // on every response, not just rowToCamel's key-casing.
 function serialize(row) {
   const t = rowToCamel(row);
-  return { ...t, fleets: parsePgArray(t.fleets) };
+  return { ...t, fleets: parsePgArray(t.fleets), staffRoles: parsePgArray(t.staffRoles) };
 }
 
 // Admin-managed catalog of competency types (Dangerous Goods, First Aid,
@@ -44,6 +49,9 @@ const createSchema = z.object({
   // appliesTo being null applies to every trainee type. Both can combine
   // (e.g. Fokker 100 AND pilot-only).
   fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
+  // Narrower still, and only meaningful alongside appliesTo: 'PILOT' - only
+  // pilots also linked to a staff account holding one of these roles.
+  staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -53,8 +61,12 @@ router.post('/', async (req, res) => {
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM competency_types');
   try {
     const { rows } = await pool.query(
-      'INSERT INTO competency_types (name, sort_order, applies_to, fleets) VALUES ($1, $2, $3, $4::fleet[]) RETURNING *',
-      [parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null, parsed.data.fleets?.length ? parsed.data.fleets : null],
+      'INSERT INTO competency_types (name, sort_order, applies_to, fleets, staff_roles) VALUES ($1, $2, $3, $4::fleet[], $5::user_role[]) RETURNING *',
+      [
+        parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null,
+        parsed.data.fleets?.length ? parsed.data.fleets : null,
+        parsed.data.staffRoles?.length ? parsed.data.staffRoles : null,
+      ],
     );
     await logAction({
       userId: req.user.id, action: 'CREATE', targetTable: 'competency_types', targetId: rows[0].id,
@@ -72,9 +84,10 @@ const updateSchema = z.object({
   archived: z.boolean().optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
+  staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
 });
-const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets' };
-const CAST_MAP = { fleets: '::fleet[]' };
+const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets', staffRoles: 'staff_roles' };
+const CAST_MAP = { fleets: '::fleet[]', staffRoles: '::user_role[]' };
 
 router.patch('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
@@ -84,7 +97,7 @@ router.patch('/:id', async (req, res) => {
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
   const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}${CAST_MAP[key] || ''}`);
-  const values = entries.map(([key, value]) => (key === 'fleets' && Array.isArray(value) && value.length === 0 ? null : value));
+  const values = entries.map(([key, value]) => ((key === 'fleets' || key === 'staffRoles') && Array.isArray(value) && value.length === 0 ? null : value));
   values.push(req.params.id);
 
   const { rows } = await pool.query(

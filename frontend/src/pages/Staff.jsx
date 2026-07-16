@@ -285,15 +285,26 @@ function StaffAccountsPanel() {
             </div>
           )}
           <div className="grid2">
-            <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
+            <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoComplete="off" required /></div>
             <div className="field">
               <label>Email</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required disabled={!!editingId} />
+              {/* autoComplete="off" alone doesn't stop Chrome offering the
+                  logged-in admin's own saved credentials here - this field
+                  looks like a login form's email/username field to the
+                  browser's autofill heuristics. A nonstandard name defeats
+                  that matching (same trick as the password field below). */}
+              <input type="email" name="new-staff-email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoComplete="off" required disabled={!!editingId} />
             </div>
           </div>
           <div className="grid2">
             {!editingId && (
-              <div className="field"><label>Temporary password</label><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} /></div>
+              <div className="field">
+                <label>Temporary password</label>
+                {/* autoComplete="new-password" is the standard way to stop a
+                    browser offering/autofilling the admin's own saved
+                    password into a "create a new account" password field. */}
+                <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} autoComplete="new-password" required minLength={8} />
+              </div>
             )}
             <div className="field">
               <label>Role</label>

@@ -3,7 +3,14 @@ const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const pool = require('../../db/pool');
 const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+
+// Only HOTC, HOFO and Flight Ops Admin can reset someone's PIN - the
+// "reset PIN" admin action noted as a future follow-up when PIN
+// signatures were first built (POST /set below 409s once a PIN already
+// exists, with no way back in otherwise if someone forgets theirs).
+const PIN_RESET_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -61,6 +68,24 @@ router.post('/set', async (req, res) => {
   await pool.query(`UPDATE ${table} SET pin_hash = $1 WHERE id = $2`, [pinHash, personId]);
   await logAction({ userId: req.user.id, action: 'SET_PIN', targetTable: table, targetId: personId });
   res.json({ verified: true, name: person.name });
+});
+
+// Clears the stored PIN entirely (does not set a new one) - the person
+// just goes through the normal "set your PIN" flow again next time they
+// try to sign something, same as if they'd never set one.
+router.post('/reset', requireRole(...PIN_RESET_ROLES), async (req, res) => {
+  const parsed = personSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { personType, personId } = parsed.data;
+
+  const person = await findPerson(personType, personId);
+  if (!person) return res.status(404).json({ error: 'Not found' });
+
+  const { table } = PERSON_TABLES[personType];
+  await pool.query(`UPDATE ${table} SET pin_hash = NULL WHERE id = $1`, [personId]);
+  ATTEMPTS.delete(attemptKey(personType, personId));
+  await logAction({ userId: req.user.id, action: 'RESET_PIN', targetTable: table, targetId: personId });
+  res.json({ reset: true, name: person.name });
 });
 
 // No persistent rate-limit storage exists elsewhere in this app - an

@@ -55,6 +55,9 @@ router.get('/planned-competencies', async (req, res) => {
      JOIN crew_members cm ON cm.id = cc.crew_member_id
      WHERE cc.planned_date IS NOT NULL AND cm.archived = false
        AND (ct.applies_to IS NULL OR ct.applies_to = cm.type)
+       AND (ct.staff_roles IS NULL OR EXISTS (
+         SELECT 1 FROM users u WHERE u.id = cm.user_id AND u.role = ANY(ct.staff_roles)
+       ))
      ORDER BY cc.planned_date ASC`,
   );
   res.json(rows.map((row) => {

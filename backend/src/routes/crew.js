@@ -238,7 +238,10 @@ async function activeCompetencies(crewMemberId, crewType, crewFleets) {
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
-       AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])`,
+       AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
+       AND (ct.staff_roles IS NULL OR EXISTS (
+         SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
+       ))`,
     [crewMemberId, crewType, crewFleets],
   );
   return rows;
@@ -732,6 +735,9 @@ router.get('/:id/competencies', async (req, res) => {
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
        AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
+       AND (ct.staff_roles IS NULL OR EXISTS (
+         SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
+       ))
      ORDER BY ct.sort_order ASC, ct.created_at ASC`,
     [member.id, member.type, member.fleets],
   );

@@ -629,7 +629,7 @@ export function CrewDetail() {
     // GET /:id/clearances) - hide the tab entirely rather than show one
     // that always errors for them.
     ...(isAdmin ? [{ key: 'clearance', label: 'Clearance Form' }] : []),
-    { key: 'currency', label: 'Dates' },
+    { key: 'currency', label: 'Check Forms' },
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
     ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),

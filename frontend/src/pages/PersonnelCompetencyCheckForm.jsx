@@ -6,7 +6,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
-import { CHECK_ROLES } from '../lib/roles';
+import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
@@ -77,7 +77,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
   const [openId, setOpenId] = useState(null);
   const [error, setError] = useState(null);
 
-  const canEdit = CHECK_ROLES.includes(user.role);
+  const canEdit = COMPETENCY_CHECK_ASSESSOR_ROLES.includes(user.role);
 
   useEffect(() => {
     api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY&includeArchived=true').then(setItems).catch(() => {});
@@ -176,7 +176,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
         const subsection = relevant.filter((i) => i.section === check.candidateSection);
         const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
         const allItemsAnswered = relevant.length > 0 && relevant.every((item) => check.items?.[item.id] !== undefined);
-        const eligibleAssessors = staff.filter((s) => CHECK_ROLES.includes(s.role));
+        const eligibleAssessors = staff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
 
         return (
           <div key={check.id} className="card" style={{ marginTop: 8 }}>
@@ -215,7 +215,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
                     <label>Date</label>
                     <input
                       type="date" disabled={locked}
-                      value={check.checkDate || ''}
+                      value={check.checkDate ? check.checkDate.slice(0, 10) : ''}
                       onChange={(e) => save(check.id, { checkDate: e.target.value })}
                     />
                   </div>

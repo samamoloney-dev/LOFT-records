@@ -26,6 +26,15 @@ export function Trainees() {
   const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+  // Sends an existing, already-qualified crew member back through LOFT for
+  // a new fleet (e.g. a Cabin Attendant converting from Dash 8 to Fokker
+  // 100) instead of only supporting brand-new hires - see backend
+  // trainees.js sourceCrewMemberId/promote-to-crew, which merges the new
+  // fleet into their existing crew record on completion rather than
+  // creating a duplicate one.
+  const [returningToLoft, setReturningToLoft] = useState(false);
+  const [eligibleCrew, setEligibleCrew] = useState([]);
+  const [sourceCrewMemberId, setSourceCrewMemberId] = useState('');
   const navigate = useNavigate();
 
   function load() {
@@ -34,13 +43,34 @@ export function Trainees() {
 
   useEffect(load, []);
 
+  // Only crew not already qualified on the fleet currently selected below -
+  // no point sending someone back to LOFT for a fleet they already hold.
+  useEffect(() => {
+    if (!returningToLoft) { setEligibleCrew([]); return; }
+    api.get(`/api/crew?type=${form.type}`)
+      .then((crew) => setEligibleCrew(crew.filter((c) => !c.fleets.includes(form.fleet))))
+      .catch(() => {});
+  }, [returningToLoft, form.type, form.fleet]);
+
+  function selectSourceCrewMember(id) {
+    setSourceCrewMemberId(id);
+    const member = eligibleCrew.find((c) => c.id === id);
+    if (member) setForm((f) => ({ ...f, firstName: member.firstName, lastName: member.lastName, role: member.role }));
+  }
+
+  function resetForm() {
+    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+    setReturningToLoft(false);
+    setSourceCrewMemberId('');
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post('/api/trainees', form);
+      await api.post('/api/trainees', { ...form, sourceCrewMemberId: sourceCrewMemberId || undefined });
       setShowForm(false);
-      setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+      resetForm();
       load();
     } catch (err) {
       setError(err.message);
@@ -51,11 +81,36 @@ export function Trainees() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Active trainees</div>
-        {isAdmin && <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Add trainee'}</button>}
+        {isAdmin && <button onClick={() => { setShowForm((v) => !v); resetForm(); }}>{showForm ? 'Cancel' : 'Add trainee'}</button>}
       </div>
 
       {showForm && isAdmin && (
         <form className="card" onSubmit={handleCreate}>
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={returningToLoft}
+                onChange={(e) => { setReturningToLoft(e.target.checked); setSourceCrewMemberId(''); }}
+                style={{ width: 'auto' }}
+              />
+              This is an existing crew member returning to LOFT for a new fleet (e.g. Dash 8 → Fokker 100)
+            </label>
+          </div>
+          {returningToLoft && (
+            <div className="field">
+              <label>Crew member</label>
+              <select value={sourceCrewMemberId} onChange={(e) => selectSourceCrewMember(e.target.value)} required>
+                <option value="">— Select —</option>
+                {eligibleCrew.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {eligibleCrew.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  No crew found who aren't already qualified on {formatFleet(form.fleet)}.
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid2">
             <div className="field"><label>First name</label><input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></div>
             <div className="field"><label>Last name</label><input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required /></div>
@@ -68,6 +123,7 @@ export function Trainees() {
                 onChange={(e) => {
                   const type = e.target.value;
                   setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8' });
+                  setSourceCrewMemberId('');
                 }}
               >
                 {TYPES.map((t) => <option key={t} value={t}>{formatTraineeRole(t)}</option>)}
@@ -82,7 +138,7 @@ export function Trainees() {
           </div>
           <div className="field">
             <label>Fleet</label>
-            <select value={form.fleet} onChange={(e) => setForm({ ...form, fleet: e.target.value })}>
+            <select value={form.fleet} onChange={(e) => { setForm({ ...form, fleet: e.target.value }); setSourceCrewMemberId(''); }}>
               {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
             </select>
           </div>

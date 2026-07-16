@@ -8,18 +8,9 @@ const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
+const { fleetOrderError } = require('../lib/fleetOrder');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
-
-// Cabin attendants start qualified on Dash 8 and can only add Fokker 100
-// once they hold Dash 8 (a real-world conversion-course requirement, not a
-// check type this app tracks) - pilots aren't constrained this way.
-function fleetOrderError(type, fleets) {
-  if (type === 'CABIN_ATTENDANT' && fleets.includes('CA_FOKKER_100') && !fleets.includes('CA_DASH_8')) {
-    return 'Cabin attendants must be qualified on Dash 8 before Fokker 100 can be added';
-  }
-  return null;
-}
 
 const router = express.Router();
 

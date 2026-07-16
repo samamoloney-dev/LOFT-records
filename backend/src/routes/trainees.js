@@ -5,6 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { fleetOrderError } = require('../lib/fleetOrder');
 
 const router = express.Router();
 
@@ -15,6 +16,12 @@ const createSchema = z.object({
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']),
   phase: z.number().int().min(1).optional(),
+  // Set when this trainee record represents an existing, already-qualified
+  // crew member sent back into LOFT for a new fleet (e.g. Dash 8 -> Fokker
+  // 100), rather than a brand-new hire - see /:id/promote-to-crew below,
+  // which merges the new fleet into that crew member's record on
+  // completion instead of creating a duplicate one.
+  sourceCrewMemberId: z.string().uuid().optional(),
 });
 
 async function withHours(trainee) {
@@ -69,16 +76,26 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { firstName, lastName, type, role, fleet, phase } = parsed.data;
+  const { firstName, lastName, type, role, fleet, phase, sourceCrewMemberId } = parsed.data;
+
+  if (sourceCrewMemberId) {
+    const { rows: crewRows } = await pool.query('SELECT type, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
+    if (crewRows.length === 0) return res.status(400).json({ error: 'Crew member not found' });
+    if (crewRows[0].archived) return res.status(400).json({ error: 'This crew member is archived' });
+    if (crewRows[0].type !== type) return res.status(400).json({ error: 'Crew member type does not match the selected trainee type' });
+  }
+
   const { rows } = await pool.query(
-    `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [firstName, lastName, type, role, fleet, phase || 1],
+    `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase, source_crew_member_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [firstName, lastName, type, role, fleet, phase || 1, sourceCrewMemberId || null],
   );
   const trainee = rowToCamel(rows[0]);
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'trainees', targetId: trainee.id,
-    description: `Added trainee ${trainee.firstName} ${trainee.lastName}`,
+    description: sourceCrewMemberId
+      ? `Sent ${trainee.firstName} ${trainee.lastName} back to LOFT for ${fleet}`
+      : `Added trainee ${trainee.firstName} ${trainee.lastName}`,
   });
   res.status(201).json(await withHours(trainee));
 });
@@ -139,22 +156,43 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     return res.status(400).json({ error: 'Check to Line must be completed before adding this trainee to the Crew roster' });
   }
 
+  // A trainee sent back to LOFT for a new fleet (source_crew_member_id set -
+  // see POST / above) already has a crew record - merge the new fleet into
+  // it instead of creating a duplicate. Falls through to the normal
+  // brand-new-hire path below if that record has since gone missing.
+  let sourceCrew = null;
+  if (trainee.sourceCrewMemberId) {
+    const { rows: sourceRows } = await pool.query('SELECT * FROM crew_members WHERE id = $1', [trainee.sourceCrewMemberId]);
+    if (sourceRows.length > 0) sourceCrew = rowToCamel(sourceRows[0]);
+  }
+
   const client = await pool.connect();
   let crewMember;
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
-      [
-        trainee.firstName,
-        trainee.lastName,
-        trainee.type,
-        trainee.role,
-        [trainee.fleet],
-        trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
-      ],
-    );
+    let rows;
+    if (sourceCrew) {
+      const mergedFleets = [...new Set([...parsePgArray(sourceCrew.fleets), trainee.fleet])];
+      const fleetError = fleetOrderError(sourceCrew.type, mergedFleets);
+      if (fleetError) throw Object.assign(new Error(fleetError), { status: 400 });
+      ({ rows } = await client.query(
+        'UPDATE crew_members SET fleets = $1::fleet[] WHERE id = $2 RETURNING *',
+        [mergedFleets, sourceCrew.id],
+      ));
+    } else {
+      ({ rows } = await client.query(
+        `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)
+         VALUES ($1, $2, $3, $4, $5::fleet[], $6) RETURNING *`,
+        [
+          trainee.firstName,
+          trainee.lastName,
+          trainee.type,
+          trainee.role,
+          [trainee.fleet],
+          trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
+        ],
+      ));
+    }
     // The trainee record becomes redundant once they're on the Crew roster -
     // archive it now rather than at Check to Line completion time, so the
     // trainee stays visible/active right up until this point.
@@ -163,15 +201,18 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     throw err;
   } finally {
     client.release();
   }
   await logAction({
     userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id,
-    description: `Promoted ${crewMember.firstName} ${crewMember.lastName} to the Crew roster`,
+    description: sourceCrew
+      ? `Added ${trainee.fleet} to ${crewMember.firstName} ${crewMember.lastName}'s crew record`
+      : `Promoted ${crewMember.firstName} ${crewMember.lastName} to the Crew roster`,
   });
-  res.status(201).json(crewMember);
+  res.status(sourceCrew ? 200 : 201).json(crewMember);
 });
 
 // A trainee who withdraws or otherwise stops training needs a way out of

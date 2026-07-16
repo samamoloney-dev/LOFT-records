@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatDate, formatUserRole, formatFleet } from '../lib/format';
+import { CompletedChecksAlert } from '../components/CompletedChecksAlert';
 
 const CARD_STYLES = {
   red: { background: '#fbe1e1', color: '#8f1d1d' },
@@ -189,6 +190,7 @@ export function Dashboard() {
 
   return (
     <div>
+      <CompletedChecksAlert />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 600 }}>Welcome back, {user.name}</div>

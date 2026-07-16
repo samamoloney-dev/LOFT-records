@@ -335,60 +335,75 @@ function StaffAccountsPanel() {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {users.map((u) => (
-        <div key={u.id} className="card">
-          <div className="row" style={{ cursor: 'default' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500 }}>{u.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
-                  ? 'Fleets: all'
-                  : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                {ADMIN_ROLES.includes(u.role)
-                  ? 'Check access: all'
-                  : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
-              </div>
-              {u.groundInstructorCheck && (
-                <div style={{ marginTop: 6 }}>
-                  <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
+      {users.map((u) => {
+        const showGic = isGroundInstructorCheckEligible(u);
+        const showPac = PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role);
+        return (
+          <div key={u.id} className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 240px' }}>
+                <div style={{ fontWeight: 500 }}>{u.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
+                    ? 'Fleets: all'
+                    : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
                 </div>
-              )}
-              {u.personnelAirCompetency && (
-                <div style={{ marginTop: 6 }}>
-                  <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  {ADMIN_ROLES.includes(u.role)
+                    ? 'Check access: all'
+                    : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
                 </div>
-              )}
+                {u.groundInstructorCheck && (
+                  <div style={{ marginTop: 6 }}>
+                    <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
+                  </div>
+                )}
+                {u.personnelAirCompetency && (
+                  <div style={{ marginTop: 6 }}>
+                    <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => openEditForm(u)}>Edit</button>
+                <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {isGroundInstructorCheckEligible(u) && (
-                <button onClick={() => setExpandedGicId((id) => (id === u.id ? null : u.id))}>
-                  {expandedGicId === u.id ? 'Close' : 'Ground Instructor Check'}
-                </button>
-              )}
-              {PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role) && (
-                <button onClick={() => setExpandedPacId((id) => (id === u.id ? null : u.id))}>
-                  {expandedPacId === u.id ? 'Close' : 'Personnel Competency Check'}
-                </button>
-              )}
-              <button onClick={() => openEditForm(u)}>Edit</button>
-              <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
-            </div>
+
+            {(showGic || showPac) && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
+                {showGic && (
+                  <button
+                    className={expandedGicId === u.id ? 'primary' : ''}
+                    onClick={() => setExpandedGicId((id) => (id === u.id ? null : u.id))}
+                  >
+                    {expandedGicId === u.id ? 'Close Ground Instructor Check' : 'Ground Instructor Check'}
+                  </button>
+                )}
+                {showPac && (
+                  <button
+                    className={expandedPacId === u.id ? 'primary' : ''}
+                    onClick={() => setExpandedPacId((id) => (id === u.id ? null : u.id))}
+                  >
+                    {expandedPacId === u.id ? 'Close Personnel Competency Check' : 'Personnel Competency Check'}
+                  </button>
+                )}
+              </div>
+            )}
+            {expandedGicId === u.id && (
+              <div style={{ marginTop: 10 }}>
+                <GroundInstructorCheckForm userId={u.id} userName={u.name} />
+              </div>
+            )}
+            {expandedPacId === u.id && (
+              <div style={{ marginTop: 10 }}>
+                <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />
+              </div>
+            )}
           </div>
-          {expandedGicId === u.id && (
-            <div style={{ marginTop: 10 }}>
-              <GroundInstructorCheckForm userId={u.id} userName={u.name} />
-            </div>
-          )}
-          {expandedPacId === u.id && (
-            <div style={{ marginTop: 10 }}>
-              <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

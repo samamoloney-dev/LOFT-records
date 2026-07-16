@@ -10,6 +10,13 @@ import { CHECK_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
+// A Simulator Only Examiner never trains/checks on the line - their own
+// SA_518 is only ever earned in the simulator, so the Training/Check Type
+// options are IPC/PC instead of the line-training types above (see
+// backend/src/middleware/roles.js PERSONNEL_AIR_COMPETENCY_SECTION -
+// SIMULATOR_ONLY is always CHECK_PILOT, but so is CC/Check Captain, so the
+// role itself (not just the section) has to be checked here).
+const SIMULATOR_TRAINING_CHECK_TYPES = ['IPC', 'PC'];
 
 const SECTION_LABELS = {
   TRAINING_PILOT: '2a — Training Pilot',
@@ -76,6 +83,9 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
     api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY&includeArchived=true').then(setItems).catch(() => {});
     api.get('/api/users/roster').then(setStaff).catch(() => {});
   }, []);
+
+  const candidate = staff.find((s) => s.id === userId);
+  const trainingCheckTypes = candidate?.role === 'SIMULATOR_ONLY' ? SIMULATOR_TRAINING_CHECK_TYPES : TRAINING_CHECK_TYPES;
 
   function load() {
     api.get(`/api/personnel-checks?userId=${userId}`).then(setChecks).catch((e) => setError(e.message));
@@ -198,7 +208,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
                       onChange={(e) => save(check.id, { trainingCheckType: e.target.value || null })}
                     >
                       <option value="">—</option>
-                      {TRAINING_CHECK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      {trainingCheckTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div className="field">

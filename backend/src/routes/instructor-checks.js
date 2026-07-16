@@ -157,7 +157,13 @@ router.patch('/:id', async (req, res) => {
      WHERE id = $21 RETURNING *`,
     [
       d.courseTitle ?? null,
-      d.dateOfObservation ?? null,
+      // date_of_observation/assessor_signed_date/instructor_signed_date are
+      // real DATE columns - an empty string (what a date input sends if
+      // it's cleared, or momentarily while a manually-typed date is
+      // incomplete) isn't valid input for them and made this PATCH fail
+      // outright, same class of bug meeting-minutes.js/trainees.js already
+      // guard against for their own date fields.
+      d.dateOfObservation || null,
       hasAssessorId,
       d.assessorId ?? null,
       assessor.assignedToName,
@@ -165,11 +171,11 @@ router.patch('/:id', async (req, res) => {
       hasAssessorSignature,
       d.assessorSignature ?? null,
       d.assessorPrintedName ?? null,
-      d.assessorSignedDate ?? null,
+      d.assessorSignedDate || null,
       hasInstructorSignature,
       d.instructorSignature ?? null,
       d.instructorPrintedName ?? null,
-      d.instructorSignedDate ?? null,
+      d.instructorSignedDate || null,
       hasAssignedTo,
       d.assignedTo ?? null,
       assignee.assignedToName,

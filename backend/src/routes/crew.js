@@ -6,7 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
-const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus } = require('../lib/currency');
+const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError } = require('../lib/fleetOrder');
 
@@ -51,7 +51,7 @@ function forbiddenForCaManager(req, member) {
 // simulator form applied to them - see crew_members.fleets, set directly
 // on this profile regardless of any staff link.
 const CREW_SELECT = `
-  SELECT crew_members.*, u.name AS linked_user_name
+  SELECT crew_members.*, u.name AS linked_user_name, u.role AS linked_user_role
   FROM crew_members
   LEFT JOIN users u ON u.id = crew_members.user_id
 `;
@@ -59,12 +59,17 @@ const CREW_SELECT = `
 function serializeCrewMember(row) {
   const m = rowToCamel(row);
   const isLinked = !!m.userId;
-  const { linkedUserName, ...rest } = m;
+  const { linkedUserName, linkedUserRole, ...rest } = m;
   return {
     ...rest,
     fleets: parsePgArray(rest.fleets),
     name: isLinked ? linkedUserName : `${rest.firstName} ${rest.lastName}`,
     isLinked,
+    // The staff role this crew member is already linked to, if any - lets
+    // callers (e.g. UpgradePicker.jsx) exclude candidates already senior to
+    // a given upgrade tier (a Check Captain doesn't need a Training Captain
+    // Upgrade form, etc).
+    linkedRole: isLinked ? linkedUserRole : null,
   };
 }
 
@@ -253,6 +258,19 @@ function isUrgent(status) {
 // and allItemsFor (Currency Overview's "show me everyone" view) - both
 // agree on the same underlying item list, just with a different filter
 // applied afterwards.
+// Refresher Training isn't required until a pilot's first Line Check (365
+// days after their Check to Line/line_check_anchor_date) - a freshly
+// promoted pilot with no Refresher Training date set yet shouldn't show as
+// already needing it. Mirrors pilotLineCheckDue's own anchor logic; only
+// kicks in when nothing has actually been entered against it yet (a real
+// completed/due date always wins).
+function withRefresherDefaultDue(member, name, dueDate) {
+  if (name === 'Refresher Training' && !dueDate && member.type === 'PILOT' && member.lineCheckAnchorDate) {
+    return addDays(new Date(member.lineCheckAnchorDate), 365);
+  }
+  return dueDate;
+}
+
 async function itemsFor(member, currency) {
   const fromCurrency = Object.entries(currency)
     .filter(([, info]) => !!info)
@@ -267,13 +285,16 @@ async function itemsFor(member, currency) {
   const competencies = await activeCompetencies(member.id, member.type, member.fleets);
   const fromCompetencies = competencies
     .filter((c) => !c.na)
-    .map((c) => ({
-      label: c.name,
-      status: competencyStatus(c.due_date),
-      dueDate: c.due_date,
-      completedDate: c.completed_date,
-      plannedDate: c.planned_date,
-    }));
+    .map((c) => {
+      const dueDate = withRefresherDefaultDue(member, c.name, c.due_date);
+      return {
+        label: c.name,
+        status: competencyStatus(dueDate),
+        dueDate,
+        completedDate: c.completed_date,
+        plannedDate: c.planned_date,
+      };
+    });
 
   return [...fromCurrency, ...fromCompetencies];
 }
@@ -732,7 +753,7 @@ router.get('/:id/competencies', async (req, res) => {
      ORDER BY ct.sort_order ASC, ct.created_at ASC`,
     [member.id, member.type, member.fleets],
   );
-  res.json(rows.map(rowToCamel));
+  res.json(rows.map(rowToCamel).map((c) => ({ ...c, dueDate: withRefresherDefaultDue(member, c.name, c.dueDate) })));
 });
 
 const competencyDatesSchema = z.object({

@@ -36,6 +36,13 @@ const CHECK_ACCESS_OPTIONS = [
 
 const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });
 
+// The last space-separated word of a staff member's name, used to sort the
+// staff list by surname (see sortedUsers below).
+function staffSurname(name) {
+  const parts = (name || '').trim().split(/\s+/);
+  return parts[parts.length - 1] || '';
+}
+
 // Real per-aircraft FSTD facts (which simulator, its number/type) - set
 // once here by an admin, reused by the "Autofill FSTD" button on the
 // IPC/PC check form instead of being hardcoded or retyped every time.
@@ -273,6 +280,10 @@ function StaffAccountsPanel() {
   const isAdminRole = ADMIN_ROLES.includes(form.role);
   const isMultiFleetRole = MULTI_FLEET_ROLES.includes(form.role);
   const isCaOnlyRole = CA_ONLY_ROLES.includes(form.role);
+  // Staff accounts only have one free-text "name" field, unlike crew/
+  // trainees' separate first/last name columns (see Crew.jsx's own
+  // surname sort) - the last space-separated word stands in for a surname.
+  const sortedUsers = [...users].sort((a, b) => staffSurname(a.name).localeCompare(staffSurname(b.name)) || a.name.localeCompare(b.name));
 
   return (
     <div>
@@ -367,7 +378,7 @@ function StaffAccountsPanel() {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {users.map((u) => {
+      {sortedUsers.map((u) => {
         const showGic = isGroundInstructorCheckEligible(u);
         const showPac = PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role);
         return (

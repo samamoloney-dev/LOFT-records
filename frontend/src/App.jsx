@@ -42,13 +42,16 @@ const SYLLABUS_ADMIN_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
 // A red count badge on the Checks nav tab - "an IPC/PC/EP/Line Check/Check
 // to Line just finished, go update the crew's records" (see checks.js
 // GET /alerts/count and Checks.jsx's own "Mark reviewed" banner, which
-// clears it).
+// clears it). Deliberately narrower than CHECK_ROLES above (which governs
+// who can even see the Checks tab) - completed-check notifications go to
+// HOTC, HOFO and Flight Ops Admin only, per the operator's explicit request.
+const CHECK_NOTIFICATION_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 function ChecksAlertBadge() {
   const { user } = useAuth();
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (!CHECK_ROLES.includes(user.role)) return;
+    if (!CHECK_NOTIFICATION_ROLES.includes(user.role)) return;
     api.get('/api/checks/alerts/count').then((d) => setCount(d.count)).catch(() => {});
   }, [user.role]);
 

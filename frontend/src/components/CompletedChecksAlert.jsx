@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+// Deliberately narrower than the usual HOTC/HOFO/Flight Ops Admin/Alternate
+// admin quartet - completed-check notifications go to HOTC, HOFO and
+// Flight Ops Admin only, per the operator's explicit request (Alternate
+// does not get these).
+const NOTIFICATION_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // Tells an admin an IPC/PC/EP/Line Check/Check to Line just finished, so
 // they know to go update the crew member's records elsewhere (this app
@@ -13,14 +17,15 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // log in, not just after clicking into Checks.
 export function CompletedChecksAlert() {
   const { user } = useAuth();
-  const isAdmin = ADMIN_ROLES.includes(user.role);
+  const canSee = NOTIFICATION_ROLES.includes(user.role);
   const [count, setCount] = useState(0);
   const [error, setError] = useState(null);
 
   function load() {
+    if (!canSee) return;
     api.get('/api/checks/alerts/count').then((d) => setCount(d.count)).catch(() => {});
   }
-  useEffect(load, []);
+  useEffect(load, [canSee]);
 
   async function markReviewed() {
     setError(null);
@@ -28,14 +33,14 @@ export function CompletedChecksAlert() {
     catch (err) { setError(err.message); }
   }
 
-  if (count === 0) return null;
+  if (!canSee || count === 0) return null;
   return (
     <div className="card row" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', marginBottom: '1rem' }}>
       <div style={{ flex: 1, fontSize: 13 }}>
         {count} check{count === 1 ? '' : 's'} recently completed - go update the crew's records.
         {error && <div className="error-text">{error}</div>}
       </div>
-      {isAdmin && <button onClick={markReviewed}>Mark reviewed</button>}
+      <button onClick={markReviewed}>Mark reviewed</button>
     </div>
   );
 }

@@ -7,6 +7,20 @@ import { formatFleet, formatTraineeRole } from '../lib/format';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
+// A candidate already linked to a staff role at or above the tier a variant
+// upgrades to doesn't need that form - HOTC/HOFO/a current Check Captain
+// don't need a Training Captain Upgrade, and likewise on the cabin side, a
+// current CA Checker/CA Manager don't need a Training Cabin Attendant
+// Upgrade. Deliberately per-variant rather than one blanket list, since a
+// Training Captain is still very much a valid candidate for the Check
+// Captain Upgrade (that's the whole point of the progression).
+const SENIOR_EXCLUDED_ROLES = {
+  TRAINING_CAPTAIN: ['HOTC', 'HOFO', 'CC'],
+  CHECK_CAPTAIN: ['HOTC', 'HOFO', 'CC'],
+  TRAINING_CABIN_ATTENDANT: ['HOTC', 'HOFO', 'CA_CHECKER', 'CA_MANAGER'],
+  CHECK_CABIN_ATTENDANT: ['HOTC', 'HOFO', 'CA_MANAGER'],
+};
+
 // Candidate picker in front of UpgradeRecordForm - a line Captain/Cabin
 // Attendant being upgraded to Training/Check Captain or Training/Check
 // Cabin Attendant. Scoped to the logged-in checker's own fleet(s) ("for
@@ -28,8 +42,10 @@ export function UpgradePicker({ variant }) {
   // Training/Check Captain upgrades only apply to Captains, not First
   // Officers - a Captain must be held first (crew.role is the only signal
   // for this, since CABIN_ATTENDANT has just the one role either way).
+  const seniorExcluded = SENIOR_EXCLUDED_ROLES[variant] || [];
   const eligible = crew
     .filter((c) => variantConfig.crewType !== 'PILOT' || c.role === 'CAPTAIN')
+    .filter((c) => !c.linkedRole || !seniorExcluded.includes(c.linkedRole))
     .filter((c) => isAdmin || (c.fleets || []).some((f) => (user.fleets || []).includes(f)));
   const selected = eligible.find((c) => c.id === selectedId);
 

@@ -5,9 +5,22 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
+import { TabBar } from '../components/TabBar';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES } from '../lib/roles';
+
+// One tab per "page" of the paper upgrade package, same idea as the LOFT
+// package's own tab bar - Briefing, then the three sector-log stages
+// (Observation/Training/Check), with the final recommendation and
+// signatures living on the Check tab since that's the paper form's last
+// page too.
+const UPGRADE_SUB_TABS = [
+  { key: 'BRIEFING', label: 'Briefing' },
+  { key: 'OBSERVATION', label: 'Observation' },
+  { key: 'TRAINING', label: 'Training' },
+  { key: 'CHECK', label: 'Check' },
+];
 
 // HOTC/HOFO/Alternate are always eligible to assess an upgrade regardless
 // of fleet, same as everywhere else in the app - Flight Ops Admin is
@@ -172,10 +185,14 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
   const canCreate = isAdmin || UPGRADE_CHECKER_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [subTab, setSubTab] = useState(UPGRADE_SUB_TABS[0].key);
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState({ date: '', assignedTo: '' });
   const [error, setError] = useState(null);
   const [applyNotice, setApplyNotice] = useState(null);
+
+  // Always land back on Briefing when opening a (possibly different) record.
+  useEffect(() => { setSubTab(UPGRADE_SUB_TABS[0].key); }, [selectedId]);
 
   const variantConfig = UPGRADE_VARIANTS[variant];
   const label = variantConfig.label;
@@ -331,18 +348,23 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           <UpgradeAssessorPicker value={selected.assignedTo} fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
-        <div className="card">
-          <div style={{ fontWeight: 500, marginBottom: 8 }}>Briefing</div>
-          {briefingItems.map((desc) => (
-            <BriefingItemRow key={desc} description={desc} value={items[desc]} disabled={locked} onChange={(v) => setBriefingItem(selected, desc, v)} />
-          ))}
-          <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
-        </div>
+        <TabBar tabs={UPGRADE_SUB_TABS} active={subTab} onSelect={setSubTab} />
 
-        {SECTOR_STAGES.map((stage) => {
+        {subTab === 'BRIEFING' && (
+          <div className="card">
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>Briefing</div>
+            {briefingItems.map((desc) => (
+              <BriefingItemRow key={desc} description={desc} value={items[desc]} disabled={locked} onChange={(v) => setBriefingItem(selected, desc, v)} />
+            ))}
+            <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
+          </div>
+        )}
+
+        {['OBSERVATION', 'TRAINING', 'CHECK'].includes(subTab) && (() => {
+          const stage = SECTOR_STAGES.find((s) => s.key === subTab);
           const rows = sectors.filter((s) => s.stage === stage.key);
           return (
-            <div key={stage.key} className="card">
+            <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontWeight: 500 }}>{stage.label} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 12 }}>({rows.length}/{stage.min} min)</span></div>
                 {!locked && <button type="button" onClick={() => addSector(selected, stage.key)}>+ Add sector</button>}
@@ -353,73 +375,77 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
               ))}
             </div>
           );
-        })}
+        })()}
 
-        <div className="card">
-          <div className="field"><label>Assessor comments</label><textarea defaultValue={d.assessorComments} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorComments: e.target.value })} style={{ minHeight: 70 }} /></div>
-          <div className="grid2">
-            {selected.assignedTo ? (
-              <PinSignature
-                label="Assessor signature" personType="user" personId={selected.assignedTo}
-                signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={locked}
-                onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
-              />
-            ) : (
-              <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
-            )}
-            <PinSignature
-              label="Candidate signature" personType="crewMember" personId={crewMemberId}
-              signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={locked}
-              onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
-            />
-          </div>
-        </div>
-
-        {!locked && (
-          <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
-            DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
-          </div>
-        )}
-        {!locked && !allBriefingAnswered && (
-          <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Every briefing item above must be answered before the final recommendation can be set.
-          </div>
-        )}
-        <div className="card">
-          <div className="field">
-            <label>Final Recommendation</label>
-            <select disabled={locked || !allBriefingAnswered} value={d.recommendation || ''} onChange={(e) => setRecommendation(selected, e.target.value || '')}>
-              <option value="">—</option>
-              {RECOMMENDATIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {selected.completedAt && (
-          <div className="card">
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>Staff record</div>
-            {d.staffRecordUpdatedAt ? (
-              <div style={{ fontSize: 13, color: 'var(--text-success)' }}>
-                Staff record updated {formatDate(d.staffRecordUpdatedAt)} — {crewMemberName} is now {formatUserRole(variantConfig.targetRole)}.
+        {subTab === 'CHECK' && (
+          <>
+            <div className="card">
+              <div className="field"><label>Assessor comments</label><textarea defaultValue={d.assessorComments} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorComments: e.target.value })} style={{ minHeight: 70 }} /></div>
+              <div className="grid2">
+                {selected.assignedTo ? (
+                  <PinSignature
+                    label="Assessor signature" personType="user" personId={selected.assignedTo}
+                    signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={locked}
+                    onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
+                  />
+                ) : (
+                  <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
+                )}
+                <PinSignature
+                  label="Candidate signature" personType="crewMember" personId={crewMemberId}
+                  signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={locked}
+                  onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
+                />
               </div>
-            ) : canApply ? (
-              crewIsLinked ? (
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                    Passing this record means {crewMemberName} should now be {formatUserRole(variantConfig.targetRole)}, with their Personnel (Air) Competency Check current for 24 months from today.
-                  </div>
-                  <button className="primary" onClick={() => applyUpgrade(selected)}>Update Staff Role to {formatUserRole(variantConfig.targetRole)}</button>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-warning)' }}>
-                  {crewMemberName} doesn't have a staff account yet - add them via the Staff tab (tick "This is an existing crew member"), then come back here to update their role and Personnel Competency date.
-                </div>
-              )
-            ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Only applies once the final recommendation is "{RECOMMENDATIONS[0]}".</div>
+            </div>
+
+            {!locked && (
+              <div className="card" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', fontSize: 12 }}>
+                DO NOT SELECT UNTIL ALL THE FORM HAS BEEN COMPLETED. SELECTING THIS WILL LOCK THE FORM.
+              </div>
             )}
-            {applyNotice && <div style={{ fontSize: 12, color: 'var(--text-success)', marginTop: 6 }}>{applyNotice}</div>}
-          </div>
+            {!locked && !allBriefingAnswered && (
+              <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                Every briefing item on the Briefing tab must be answered before the final recommendation can be set.
+              </div>
+            )}
+            <div className="card">
+              <div className="field">
+                <label>Final Recommendation</label>
+                <select disabled={locked || !allBriefingAnswered} value={d.recommendation || ''} onChange={(e) => setRecommendation(selected, e.target.value || '')}>
+                  <option value="">—</option>
+                  {RECOMMENDATIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {selected.completedAt && (
+              <div className="card">
+                <div style={{ fontWeight: 500, marginBottom: 8 }}>Staff record</div>
+                {d.staffRecordUpdatedAt ? (
+                  <div style={{ fontSize: 13, color: 'var(--text-success)' }}>
+                    Staff record updated {formatDate(d.staffRecordUpdatedAt)} — {crewMemberName} is now {formatUserRole(variantConfig.targetRole)}.
+                  </div>
+                ) : canApply ? (
+                  crewIsLinked ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        Passing this record means {crewMemberName} should now be {formatUserRole(variantConfig.targetRole)}, with their Personnel (Air) Competency Check current for 24 months from today.
+                      </div>
+                      <button className="primary" onClick={() => applyUpgrade(selected)}>Update Staff Role to {formatUserRole(variantConfig.targetRole)}</button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--text-warning)' }}>
+                      {crewMemberName} doesn't have a staff account yet - add them via the Staff tab (tick "This is an existing crew member"), then come back here to update their role and Personnel Competency date.
+                    </div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Only applies once the final recommendation is "{RECOMMENDATIONS[0]}".</div>
+                )}
+                {applyNotice && <div style={{ fontSize: 12, color: 'var(--text-success)', marginTop: 6 }}>{applyNotice}</div>}
+              </div>
+            )}
+          </>
         )}
         {error && <div className="error-text">{error}</div>}
       </div>

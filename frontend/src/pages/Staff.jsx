@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { formatUserRole, formatFleet } from '../lib/format';
 import { TabBar } from '../components/TabBar';
 import { DueBadge } from '../components/DueBadge';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
-import { isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
+import { UpgradePicker } from './UpgradePicker';
+import { isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 
 // TRAINEE isn't offered here - trainee self-login accounts aren't created
 // through this Staff form (see users.js, which still accepts the role for
@@ -155,13 +157,32 @@ const STAFF_TABS = [
   { key: 'fstd', label: 'FSTD' },
 ];
 
+const UPGRADE_TABS = Object.entries(UPGRADE_VARIANTS).map(([key, cfg]) => ({ key, label: cfg.label.replace(' Upgrade', '') }));
+
+// All checkers and examiners have access to this, for their relevant fleet
+// (see UpgradePicker's own fleet-scoping) - per the operator's explicit
+// request, not just admins.
+function UpgradesPanel() {
+  const [variant, setVariant] = useState(UPGRADE_TABS[0].key);
+  return (
+    <div>
+      <TabBar tabs={UPGRADE_TABS} active={variant} onSelect={setVariant} />
+      <UpgradePicker variant={variant} />
+    </div>
+  );
+}
+
 export function Staff() {
+  const { user } = useAuth();
+  const canSeeUpgrades = ADMIN_ROLES.includes(user.role) || UPGRADE_CHECKER_ROLES.includes(user.role);
+  const tabs = canSeeUpgrades ? [...STAFF_TABS, { key: 'upgrades', label: 'Upgrades' }] : STAFF_TABS;
   const [tab, setTab] = useState('staff');
   return (
     <div>
-      <TabBar tabs={STAFF_TABS} active={tab} onSelect={setTab} />
+      <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       {tab === 'staff' && <StaffAccountsPanel />}
       {tab === 'fstd' && <FstdPresetsPanel />}
+      {tab === 'upgrades' && canSeeUpgrades && <UpgradesPanel />}
     </div>
   );
 }

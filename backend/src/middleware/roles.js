@@ -75,6 +75,24 @@ const PERSONNEL_AIR_COMPETENCY_SECTION = {
   SIMULATOR_ONLY: 'CHECK_PILOT',
 };
 
+// Upgrade Records (SA 507/510/522/523 - Training Captain, Check Captain,
+// Training Cabin Attendant, Check Cabin Attendant) - only checkers and
+// examiners administer these, per the operator's explicit request. Fleet
+// scoping (each checker only sees candidates on their own fleet(s)) is
+// handled by the candidate picker (see checks.js's UPGRADE_RECORD branch
+// of canAccessCheckType for general access, and UpgradePicker.jsx on the
+// frontend for the fleet-scoped candidate list).
+const UPGRADE_CHECKER_ROLES = ['CC', 'EXAMINER', 'CA_CHECKER', 'CA_MANAGER'];
+// The staff role a candidate is upgraded to once their record is completed
+// and passed (see checks.js POST /:id/apply-upgrade), and which crew type
+// (PILOT/CABIN_ATTENDANT) is eligible to be a candidate for each variant.
+const UPGRADE_VARIANTS = {
+  TRAINING_CAPTAIN: { targetRole: 'TRAINING_CAPTAIN', crewType: 'PILOT', label: 'Training Captain Upgrade' },
+  CHECK_CAPTAIN: { targetRole: 'CC', crewType: 'PILOT', label: 'Check Captain Upgrade' },
+  TRAINING_CABIN_ATTENDANT: { targetRole: 'CA_TRAINER', crewType: 'CABIN_ATTENDANT', label: 'Training Cabin Attendant Upgrade' },
+  CHECK_CABIN_ATTENDANT: { targetRole: 'CA_CHECKER', crewType: 'CABIN_ATTENDANT', label: 'Check Cabin Attendant Upgrade' },
+};
+
 // Continuous Improvement (post-IPC/PC candidate survey + trend analytics)
 // is deliberately narrower than the usual admin trio - Flight Ops Admin is
 // excluded, per the operator's explicit request. The survey itself can be
@@ -172,6 +190,8 @@ module.exports = {
   isGroundInstructorCheckEligible,
   PERSONNEL_AIR_COMPETENCY_ROLES,
   PERSONNEL_AIR_COMPETENCY_SECTION,
+  UPGRADE_CHECKER_ROLES,
+  UPGRADE_VARIANTS,
   CONTINUOUS_IMPROVEMENT_ROLES,
   SURVEY_FILL_ROLES,
   CHECK_ACCESS_TYPES,

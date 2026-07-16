@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessChecks, isAdmin } = require('../middleware/roles');
+const { canAccessChecks, isAdmin, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
@@ -36,6 +36,9 @@ function canAccessCheckType(user, checkType) {
     // assessor for one - mirrors AssessorPicker/isEligibleForCheck, which
     // already treats that tick as full EP authority.
     return canAccessChecks(user) || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  }
+  if (checkType === 'UPGRADE_RECORD') {
+    return isAdmin(user) || UPGRADE_CHECKER_ROLES.includes(user.role);
   }
   return canAccessChecks(user);
 }
@@ -83,6 +86,7 @@ const CHECK_TYPE_LABELS = {
   CABIN_ATTENDANT_LINE_CHECK: 'Cabin Attendant Line Check',
   PILOT_LINE_CHECK: 'Pilot Line Check',
   CAPTAIN_IN_TRAINING: 'Captain in Training Assessment',
+  UPGRADE_RECORD: 'Upgrade Record',
 };
 
 // checks.crew_member_name is snapshotted at creation (see createCheckRecord
@@ -161,7 +165,7 @@ router.get('/:id', async (req, res) => {
 const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
   crewMemberId: z.string().uuid().optional(),
-  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING']),
+  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
@@ -204,11 +208,19 @@ async function createCheckRecord(d) {
 // operator's explicit rule. Whoever it's then assigned to (an examiner,
 // CA Checker, etc. - still governed by canAccessCheckType/checkAccess
 // ticks) is who actually conducts and completes it.
+// Upgrade Records are the one deliberate exception - checkers and
+// examiners start these themselves ("select staff to upgrade"), not just
+// get assigned to one an admin already created, per the operator's
+// explicit request for this check type specifically.
 router.post('/', async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can add a check' });
-
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const canCreate = parsed.data.checkType === 'UPGRADE_RECORD'
+    ? isAdmin(req.user) || UPGRADE_CHECKER_ROLES.includes(req.user.role)
+    : isAdmin(req.user);
+  if (!canCreate) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can add a check' });
+
   if (parsed.data.crewMemberId && await isCrewMemberArchived(parsed.data.crewMemberId)) {
     return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
   }
@@ -339,7 +351,12 @@ router.patch('/:id', async (req, res) => {
   if (d.result && updated.crewMemberId) {
     const params = [updated.checkType, updated.crewMemberId, updated.id];
     let variantClause = '';
-    if (updated.checkType === 'RECURRENT_SIMULATOR') {
+    // RECURRENT_SIMULATOR shares one checkType across PC/IPC, and
+    // UPGRADE_RECORD shares one checkType across all four upgrade variants -
+    // both need the variant match too, or completing e.g. a Check Captain
+    // Upgrade would wrongly archive that same crew member's already-completed
+    // (and unrelated) Training Captain Upgrade record.
+    if (updated.checkType === 'RECURRENT_SIMULATOR' || updated.checkType === 'UPGRADE_RECORD') {
       params.push(updated.details?.variant || null);
       variantClause = `AND details->>'variant' = $${params.length}`;
     }
@@ -386,6 +403,69 @@ router.patch('/:id/licence-photo', async (req, res) => {
     await pool.query('UPDATE crew_members SET licence_photo = $1 WHERE id = $2', [parsed.data.photo, existing.crewMemberId]);
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
+  res.json(rowToCamel(rows[0]));
+});
+
+// Once an Upgrade Record is completed and passed, this updates the
+// candidate's staff role (Training Captain/Check Captain/Training or Check
+// Cabin Attendant) and seeds their Personnel (Air) Competency Check date to
+// 24 months from completion, per the operator's explicit request - the SA
+// 518 currency in users.js's withPersonnelAirCompetency is always computed
+// from the most recent completed personnel_competency_checks row, so
+// inserting one backdated to the completion date is all "seeding" means.
+// Requires the candidate already be linked to a staff account (crew_members
+// .user_id) - creating a brand-new account needs an email/password only a
+// human can supply, so that stays a manual step via the Staff tab's
+// "existing crew member" flow rather than something this silently does.
+router.post('/:id/apply-upgrade', async (req, res) => {
+  const { rows: existingRows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const check = rowToCamel(existingRows[0]);
+  if (check.checkType !== 'UPGRADE_RECORD') return res.status(400).json({ error: 'Not an Upgrade Record' });
+  if (!canAccessCheckType(req.user, 'UPGRADE_RECORD')) return res.status(403).json({ error: 'Forbidden' });
+  if (check.result !== 'PASS' || !check.completedAt) {
+    return res.status(400).json({ error: 'This Upgrade Record must be completed with a PASS result first' });
+  }
+  if (check.details?.staffRecordUpdatedAt) {
+    return res.status(400).json({ error: 'The staff record has already been updated for this Upgrade Record' });
+  }
+
+  const variant = check.details?.variant;
+  const variantConfig = UPGRADE_VARIANTS[variant];
+  if (!variantConfig) return res.status(400).json({ error: 'Unknown upgrade variant' });
+
+  const { rows: crewRows } = await pool.query('SELECT id, user_id FROM crew_members WHERE id = $1', [check.crewMemberId]);
+  if (crewRows.length === 0) return res.status(400).json({ error: 'Candidate crew record not found' });
+  const crewUserId = crewRows[0].user_id;
+  if (!crewUserId) {
+    return res.status(400).json({ error: 'This candidate has no staff account yet - add them via the Staff tab (tick "This is an existing crew member"), then apply this upgrade again.' });
+  }
+
+  const { rows: updatedUserRows } = await pool.query(
+    'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, role',
+    [variantConfig.targetRole, crewUserId],
+  );
+  if (updatedUserRows.length === 0) return res.status(400).json({ error: 'Linked staff account not found' });
+
+  await pool.query(
+    `INSERT INTO personnel_competency_checks (user_id, candidate_section, check_date, completed_at, comments)
+     VALUES ($1, $2, $3, $3, $4)`,
+    [
+      crewUserId,
+      PERSONNEL_AIR_COMPETENCY_SECTION[variantConfig.targetRole],
+      check.completedAt,
+      `Seeded from ${variantConfig.label} completion`,
+    ],
+  );
+
+  const { rows } = await pool.query(
+    `UPDATE checks SET details = details || $1::jsonb WHERE id = $2 RETURNING *`,
+    [JSON.stringify({ staffRecordUpdatedAt: new Date().toISOString() }), req.params.id],
+  );
+  await logAction({
+    userId: req.user.id, action: 'APPLY_UPGRADE', targetTable: 'users', targetId: crewUserId,
+    description: `Updated ${updatedUserRows[0].name}'s staff role to ${variantConfig.targetRole} (${variantConfig.label})`,
+  });
   res.json(rowToCamel(rows[0]));
 });
 

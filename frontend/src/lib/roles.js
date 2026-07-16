@@ -64,3 +64,19 @@ export const COMPETENCY_CHECK_ASSESSOR_ROLES = [...CHECK_ROLES, 'CA_MANAGER'];
 // simulator, just not on the line. Mirrors backend/src/middleware/roles.js's
 // PERSONNEL_AIR_COMPETENCY_ROLES.
 export const PERSONNEL_AIR_COMPETENCY_ROLES = ['TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'SIMULATOR_ONLY'];
+
+// Upgrade Records (SA 507/510/522/523) - only checkers and examiners
+// administer these, per the operator's explicit request. Mirrors
+// backend/src/middleware/roles.js's UPGRADE_CHECKER_ROLES.
+export const UPGRADE_CHECKER_ROLES = ['CC', 'EXAMINER', 'CA_CHECKER', 'CA_MANAGER'];
+
+// The staff role a candidate is upgraded to once their record is completed
+// and passed, and which crew type (PILOT/CABIN_ATTENDANT) is eligible to be
+// a candidate for each variant. Mirrors backend/src/middleware/roles.js's
+// UPGRADE_VARIANTS.
+export const UPGRADE_VARIANTS = {
+  TRAINING_CAPTAIN: { targetRole: 'TRAINING_CAPTAIN', crewType: 'PILOT', label: 'Training Captain Upgrade' },
+  CHECK_CAPTAIN: { targetRole: 'CC', crewType: 'PILOT', label: 'Check Captain Upgrade' },
+  TRAINING_CABIN_ATTENDANT: { targetRole: 'CA_TRAINER', crewType: 'CABIN_ATTENDANT', label: 'Training Cabin Attendant Upgrade' },
+  CHECK_CABIN_ATTENDANT: { targetRole: 'CA_CHECKER', crewType: 'CABIN_ATTENDANT', label: 'Check Cabin Attendant Upgrade' },
+};

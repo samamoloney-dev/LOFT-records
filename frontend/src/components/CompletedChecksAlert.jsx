@@ -19,25 +19,27 @@ export function CompletedChecksAlert() {
   const { user } = useAuth();
   const canSee = NOTIFICATION_ROLES.includes(user.role);
   const [count, setCount] = useState(0);
+  const [breakdown, setBreakdown] = useState([]);
   const [error, setError] = useState(null);
 
   function load() {
     if (!canSee) return;
-    api.get('/api/checks/alerts/count').then((d) => setCount(d.count)).catch(() => {});
+    api.get('/api/checks/alerts/count').then((d) => { setCount(d.count); setBreakdown(d.breakdown || []); }).catch(() => {});
   }
   useEffect(load, [canSee]);
 
   async function markReviewed() {
     setError(null);
-    try { await api.post('/api/checks/alerts/mark-reviewed'); setCount(0); }
+    try { await api.post('/api/checks/alerts/mark-reviewed'); setCount(0); setBreakdown([]); }
     catch (err) { setError(err.message); }
   }
 
   if (!canSee || count === 0) return null;
+  const summary = breakdown.map((b) => `${b.count} ${b.label}`).join(', ');
   return (
     <div className="card row" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)', marginBottom: '1rem' }}>
       <div style={{ flex: 1, fontSize: 13 }}>
-        {count} check{count === 1 ? '' : 's'} recently completed - go update the crew's records.
+        {summary || `${count} check${count === 1 ? '' : 's'}`} recently completed - go update the crew's records.
         {error && <div className="error-text">{error}</div>}
       </div>
       <button onClick={markReviewed}>Mark reviewed</button>

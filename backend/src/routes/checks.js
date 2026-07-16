@@ -125,22 +125,43 @@ router.get('/', async (req, res) => {
   res.json(checks.filter((c) => canAccessCheckType(req.user, c.checkType)));
 });
 
+// IPC/PC share one checkType (RECURRENT_SIMULATOR) distinguished only by
+// details.variant (see ProficiencyChecks.jsx) - every other alert-eligible
+// checkType maps to one label directly.
+function alertLabelFor(checkType, details) {
+  if (checkType === 'RECURRENT_SIMULATOR') return details?.variant === 'IPC_PC' ? 'IPC' : 'PC';
+  return CHECK_TYPE_LABELS[checkType] || checkType;
+}
+
 // Recently-completed IPC/PC/EP/Line Check/Check to Line checks that haven't
 // been marked reviewed yet - drives the red alert on the Checks nav tab
 // telling an admin there's a completed check whose crew record needs
 // updating. Spans both the checks table (IPC/PC/EP/Line Check) and
 // check_to_line_forms (a separate table, see ctl.js) since both represent
-// the same kind of "just finished, go act on it" event.
+// the same kind of "just finished, go act on it" event. Returns a
+// breakdown by check type too, so the alert can say e.g. "2 IPC, 1
+// Emergency Procedures" instead of just a bare count.
 router.get('/alerts/count', async (req, res) => {
   const { rows: checkRows } = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM checks
+    `SELECT check_type, details FROM checks
      WHERE completed_at IS NOT NULL AND reviewed_at IS NULL AND archived = false
        AND check_type IN ('EMERGENCY_PROCEDURES', 'RECURRENT_SIMULATOR', 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK')`,
   );
   const { rows: ctlRows } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM check_to_line_forms WHERE completed_at IS NOT NULL AND reviewed_at IS NULL AND archived = false`,
   );
-  res.json({ count: checkRows[0].n + ctlRows[0].n });
+
+  const counts = new Map();
+  for (const row of checkRows) {
+    const label = alertLabelFor(row.check_type, row.details);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  if (ctlRows[0].n > 0) counts.set('Check to Line', ctlRows[0].n);
+
+  res.json({
+    count: checkRows.length + ctlRows[0].n,
+    breakdown: [...counts.entries()].map(([label, n]) => ({ label, count: n })),
+  });
 });
 
 router.post('/alerts/mark-reviewed', async (req, res) => {

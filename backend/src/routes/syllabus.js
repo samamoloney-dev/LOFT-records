@@ -224,9 +224,23 @@ router.get('/flight/:flightId', async (req, res) => {
   res.json(annotated);
 });
 
+// signedOffBy lets whoever's filling the form in (often an admin catching
+// up several trainees' records at once) record which trainer actually
+// conducted that specific item - a different one per item/flight is the
+// whole point (per the operator's explicit request), not just whoever's
+// logged in. Falls back to the logged-in user when omitted. The name is
+// always resolved server-side from that staff record, never trusted from
+// the client.
+async function resolveSignedOffBy(req, signedOffBy) {
+  if (!signedOffBy) return { id: req.user.id, name: req.user.name };
+  const { rows } = await pool.query('SELECT id, name FROM users WHERE id = $1', [signedOffBy]);
+  if (!rows[0]) return null;
+  return { id: rows[0].id, name: rows[0].name };
+}
+
 const flightCompleteSchema = z.object({
   syllabusItemId: z.string().uuid(),
-  signedOffByName: z.string().min(1),
+  signedOffBy: z.string().uuid().optional(),
 });
 
 router.post('/flight/:flightId/complete', async (req, res) => {
@@ -242,13 +256,16 @@ router.post('/flight/:flightId/complete', async (req, res) => {
   const { rows: itemRows } = await pool.query('SELECT description FROM syllabus_items WHERE id = $1', [parsed.data.syllabusItemId]);
   if (itemRows.length === 0) return res.status(404).json({ error: 'Syllabus item not found' });
 
+  const signer = await resolveSignedOffBy(req, parsed.data.signedOffBy);
+  if (!signer) return res.status(400).json({ error: 'Unknown trainer' });
+
   const { rows } = await pool.query(
     `INSERT INTO flight_syllabus_progress (flight_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
      VALUES ($1, $2, now(), $3, $4)
      ON CONFLICT (flight_id, syllabus_item_id)
      DO UPDATE SET completed_at = now(), signed_off_by = $3, signed_off_by_name = $4
      RETURNING *`,
-    [flight.id, parsed.data.syllabusItemId, req.user.id, parsed.data.signedOffByName],
+    [flight.id, parsed.data.syllabusItemId, signer.id, signer.name],
   );
 
   const progress = rowToCamel(rows[0]);
@@ -297,7 +314,7 @@ router.get('/trainee/:traineeId', async (req, res) => {
 
 const completeSchema = z.object({
   syllabusItemId: z.string().uuid(),
-  signedOffByName: z.string().min(1),
+  signedOffBy: z.string().uuid().optional(),
 });
 
 router.post('/trainee/:traineeId/complete', async (req, res) => {
@@ -311,13 +328,16 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
   const { rows: itemRows } = await pool.query('SELECT description FROM syllabus_items WHERE id = $1', [parsed.data.syllabusItemId]);
   if (itemRows.length === 0) return res.status(404).json({ error: 'Syllabus item not found' });
 
+  const signer = await resolveSignedOffBy(req, parsed.data.signedOffBy);
+  if (!signer) return res.status(400).json({ error: 'Unknown trainer' });
+
   const { rows } = await pool.query(
     `INSERT INTO syllabus_progress (trainee_id, syllabus_item_id, completed_at, signed_off_by, signed_off_by_name)
      VALUES ($1, $2, now(), $3, $4)
      ON CONFLICT (trainee_id, syllabus_item_id)
      DO UPDATE SET completed_at = now(), signed_off_by = $3, signed_off_by_name = $4
      RETURNING *`,
-    [trainee.id, parsed.data.syllabusItemId, req.user.id, parsed.data.signedOffByName],
+    [trainee.id, parsed.data.syllabusItemId, signer.id, signer.name],
   );
 
   const progress = rowToCamel(rows[0]);

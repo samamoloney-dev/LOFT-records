@@ -14,6 +14,11 @@ const FORM_KEYS = [
   'EMERGENCY_PROCEDURES', 'PROFICIENCY_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
   'CHECK_TO_LINE', 'GROUND_INSTRUCTOR_COMPETENCY', 'PILOT_LINE_CHECK',
   'PERSONNEL_AIR_COMPETENCY',
+  // Upgrade Record briefing checklists (SA 507/510/522/523) - one form key
+  // per variant, same UPGRADE_RECORD variant keys used in checks.js/
+  // roles.js (see UpgradeRecordForm.jsx).
+  'UPGRADE_TRAINING_CAPTAIN', 'UPGRADE_CHECK_CAPTAIN',
+  'UPGRADE_TRAINING_CABIN_ATTENDANT', 'UPGRADE_CHECK_CABIN_ATTENDANT',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
 // answer (e.g. which aircraft system was discussed). score: a plain 1-5

@@ -64,6 +64,32 @@ router.post('/logout', requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+// Self-service - every staff member can change their own login password
+// (distinct from the signature PIN, see signatures.js) regardless of role,
+// since only HOTC/HOFO/Flight Ops Admin can even see the Staff tab where an
+// account is first created. Requires the current password, unlike the PIN
+// reset flow, since there's no "forgot it entirely" recovery path here.
+router.post('/change-password', requireAuth, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+  const valid = await bcrypt.compare(parsed.data.currentPassword, rows[0].password_hash);
+  if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, req.user.id]);
+  await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'users', targetId: req.user.id, description: 'Changed own password' });
+  res.status(204).end();
+});
+
 router.get('/me', requireAuth, async (req, res) => {
   res.json({ user: serializeUser(req.user) });
 });

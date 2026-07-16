@@ -17,6 +17,7 @@ import { Planning } from './pages/Planning';
 import { SyllabusAdmin, ContentApprovalAlert } from './pages/SyllabusAdmin';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
+import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from './lib/roles';
 
@@ -92,7 +93,10 @@ function Shell({ children }) {
       {user.role !== 'TRAINEE' && <ContentApprovalAlert />}
       {children}
       <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>
-        <button onClick={logout}>Sign out</button>
+        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <ChangePassword />
+          <button onClick={logout}>Sign out</button>
+        </div>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
-import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
+import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 import { formatFleet, formatUserRole } from '../lib/format';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -267,10 +267,13 @@ function SyllabusItemsSection() {
   useEffect(load, []);
 
   function openCreateForm() {
+    // Already open (and not mid-edit) acts as Cancel; opening fresh from an
+    // edit-in-progress or a closed state always lands on a blank form.
+    const closing = showForm && !editingId;
     setEditingId(null);
     setForm({ ...emptyForm(), fleets: [fleetOptions[0]] });
     setAddingCategory(false);
-    setShowForm((v) => !v);
+    setShowForm(!closing);
   }
 
   function openEditForm(item) {
@@ -287,6 +290,10 @@ function SyllabusItemsSection() {
     });
     setAddingCategory(false);
     setShowForm(true);
+    // The edit form renders inline next to the item itself (see
+    // renderItemForm below) rather than at the top of the page - make sure
+    // the fleet card it lives in is actually expanded so it's visible.
+    setExpandedFleet(item.fleet);
   }
 
   // Categories already used for any of the ticked fleets, for this section
@@ -350,112 +357,123 @@ function SyllabusItemsSection() {
     return acc;
   }, {});
 
+  // Shared by the top "Add" form (create) and the inline per-item form
+  // (edit) below - editing opens right where the item already is instead
+  // of forcing a scroll back up to a shared form at the top of the page.
+  function renderItemForm() {
+    return (
+      <form className="card" onSubmit={handleSubmit}>
+        <div className="field">
+          <label>Fleet{!editingId ? 's' : ''}</label>
+          {editingId ? (
+            <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
+              {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+            </select>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                {!isCaManager && <button type="button" onClick={() => setForm({ ...form, fleets: PILOT_FLEETS })}>All pilot fleets</button>}
+                <button type="button" onClick={() => setForm({ ...form, fleets: CA_FLEETS })}>All cabin crew fleets</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {fleetOptions.map((f) => (
+                  <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox" style={{ width: 'auto' }}
+                      checked={form.fleets.includes(f)}
+                      onChange={(e) => toggleFleet(f, e.target.checked)}
+                    />
+                    {formatFleet(f)}
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Creates this item for every fleet ticked - pilot and cabin attendant fleets can't be mixed in one item.
+              </div>
+            </>
+          )}
+        </div>
+        <div className="field">
+          <label>Section</label>
+          <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
+            {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'LOFT Package' : 'Line Training Discussion'}</option>)}
+          </select>
+        </div>
+        <div className="grid2">
+          <div className="field">
+            <label>Role scope</label>
+            <select value={form.roleScope} onChange={(e) => setForm({ ...form, roleScope: e.target.value })}>
+              {ROLE_SCOPES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Phase</label>
+            <input type="number" min="1" value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value })} required />
+          </div>
+        </div>
+        <div className="field">
+          <label>Category (section heading, e.g. "Pre-Departure" or "Fuel and Refuelling")</label>
+          {addingCategory ? (
+            <>
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="New category name" required />
+              {categoryOptions.length > 0 && (
+                <button type="button" onClick={() => { setAddingCategory(false); setForm({ ...form, category: categoryOptions[0] }); }} style={{ marginTop: 6 }}>
+                  Choose an existing category instead
+                </button>
+              )}
+            </>
+          ) : (
+            <select
+              value={form.category}
+              onChange={(e) => {
+                if (e.target.value === NEW_CATEGORY_VALUE) { setAddingCategory(true); setForm({ ...form, category: '' }); }
+                else setForm({ ...form, category: e.target.value });
+              }}
+              required
+            >
+              <option value="">— Select category —</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value={NEW_CATEGORY_VALUE}>+ Add new category</option>
+            </select>
+          )}
+        </div>
+        <div className="field">
+          <label>Description</label>
+          <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
+        </div>
+        <div className="field">
+          <label>Notes (optional)</label>
+          <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={form.required}
+              onChange={(e) => setForm({ ...form, required: e.target.checked })}
+              style={{ width: 'auto' }}
+            />
+            Required to complete phase
+          </label>
+        </div>
+        {error && <div className="error-text">{error}</div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
+          <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>LOFT Package curriculum, by fleet, section and phase</div>
-        <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add LOFT Package item'}</button>
+        <button onClick={openCreateForm}>{showForm && !editingId ? 'Cancel' : 'Add LOFT Package item'}</button>
       </div>
 
-      {showForm && (
-        <form className="card" onSubmit={handleSubmit}>
-          <div className="field">
-            <label>Fleet{!editingId ? 's' : ''}</label>
-            {editingId ? (
-              <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
-                {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
-              </select>
-            ) : (
-              <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  {!isCaManager && <button type="button" onClick={() => setForm({ ...form, fleets: PILOT_FLEETS })}>All pilot fleets</button>}
-                  <button type="button" onClick={() => setForm({ ...form, fleets: CA_FLEETS })}>All cabin crew fleets</button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {fleetOptions.map((f) => (
-                    <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox" style={{ width: 'auto' }}
-                        checked={form.fleets.includes(f)}
-                        onChange={(e) => toggleFleet(f, e.target.checked)}
-                      />
-                      {formatFleet(f)}
-                    </label>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  Creates this item for every fleet ticked - pilot and cabin attendant fleets can't be mixed in one item.
-                </div>
-              </>
-            )}
-          </div>
-          <div className="field">
-            <label>Section</label>
-            <select value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
-              {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'LOFT Package' : 'Line Training Discussion'}</option>)}
-            </select>
-          </div>
-          <div className="grid2">
-            <div className="field">
-              <label>Role scope</label>
-              <select value={form.roleScope} onChange={(e) => setForm({ ...form, roleScope: e.target.value })}>
-                {ROLE_SCOPES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Phase</label>
-              <input type="number" min="1" value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value })} required />
-            </div>
-          </div>
-          <div className="field">
-            <label>Category (section heading, e.g. "Pre-Departure" or "Fuel and Refuelling")</label>
-            {addingCategory ? (
-              <>
-                <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="New category name" required />
-                {categoryOptions.length > 0 && (
-                  <button type="button" onClick={() => { setAddingCategory(false); setForm({ ...form, category: categoryOptions[0] }); }} style={{ marginTop: 6 }}>
-                    Choose an existing category instead
-                  </button>
-                )}
-              </>
-            ) : (
-              <select
-                value={form.category}
-                onChange={(e) => {
-                  if (e.target.value === NEW_CATEGORY_VALUE) { setAddingCategory(true); setForm({ ...form, category: '' }); }
-                  else setForm({ ...form, category: e.target.value });
-                }}
-                required
-              >
-                <option value="">— Select category —</option>
-                {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                <option value={NEW_CATEGORY_VALUE}>+ Add new category</option>
-              </select>
-            )}
-          </div>
-          <div className="field">
-            <label>Description</label>
-            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
-          </div>
-          <div className="field">
-            <label>Notes (optional)</label>
-            <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          </div>
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={form.required}
-                onChange={(e) => setForm({ ...form, required: e.target.checked })}
-                style={{ width: 'auto' }}
-              />
-              Required to complete phase
-            </label>
-          </div>
-          <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
-        </form>
-      )}
-      {error && <div className="error-text">{error}</div>}
+      {showForm && !editingId && renderItemForm()}
+      {!(showForm && !editingId) && error && <div className="error-text">{error}</div>}
       {notice && <div className="card" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}>{notice}</div>}
 
       {Object.keys(byFleet).length === 0 && (
@@ -484,18 +502,22 @@ function SyllabusItemsSection() {
                   <div key={category} style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{category}</div>
                     {categoryItems.map((item) => (
-                      <div key={item.id} className="row" style={{ cursor: 'default' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13 }}>{item.description}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            Phase {item.phase} · {item.roleScope}{item.required ? ' · required' : ''}{item.notes ? ` · ${item.notes}` : ''}
+                      editingId === item.id ? (
+                        <div key={item.id} style={{ marginBottom: 8 }}>{renderItemForm()}</div>
+                      ) : (
+                        <div key={item.id} className="row" style={{ cursor: 'default' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13 }}>{item.description}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              Phase {item.phase} · {item.roleScope}{item.required ? ' · required' : ''}{item.notes ? ` · ${item.notes}` : ''}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => openEditForm(item)}>Edit</button>
+                            <button className="danger" onClick={() => remove(item)}>Remove</button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => openEditForm(item)}>Edit</button>
-                          <button className="danger" onClick={() => remove(item)}>Remove</button>
-                        </div>
-                      </div>
+                      )
                     ))}
                   </div>
                 ))}
@@ -624,7 +646,18 @@ const CHECK_FORM_TABS = [
   { key: 'CHECK_TO_LINE', label: 'Check to Line (Pilot)' },
   { key: 'GROUND_INSTRUCTOR_COMPETENCY', label: 'Ground Instructor Check' },
   { key: 'PERSONNEL_AIR_COMPETENCY', label: 'Personnel (Air) Competency Check' },
+  // Upgrade Record briefing checklists (SA 507/510/522/523) - see
+  // UpgradeRecordForm.jsx, which fetches these the same way as every other
+  // check form's item list instead of a hardcoded array.
+  ...Object.keys(UPGRADE_VARIANTS).map((variant) => ({
+    key: `UPGRADE_${variant}`, label: `${UPGRADE_VARIANTS[variant].label} - Briefing`,
+  })),
 ];
+
+// Item kind is always a plain tick and there's no MOS reference for any of
+// these form keys - they don't need the general item-type/MOS fields the
+// aviation check forms use.
+const NO_KIND_OR_MOS_FORMS = ['GROUND_INSTRUCTOR_COMPETENCY', 'PERSONNEL_AIR_COMPETENCY', ...Object.keys(UPGRADE_VARIANTS).map((v) => `UPGRADE_${v}`)];
 
 // Check to Line items vary per pilot fleet (the cabin attendant Check to
 // Line items are a fixed 6-item list, not admin-editable here).
@@ -778,7 +811,7 @@ function CheckFormItemsSection() {
           {isCtl && (
             <div className="field"><label>Notes (optional)</label><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           )}
-          {!isCtl && formKey !== 'GROUND_INSTRUCTOR_COMPETENCY' && formKey !== 'PERSONNEL_AIR_COMPETENCY' && (
+          {!isCtl && !NO_KIND_OR_MOS_FORMS.includes(formKey) && (
             <div className="field"><label>MOS reference (optional)</label><input value={form.mos} onChange={(e) => setForm({ ...form, mos: e.target.value })} /></div>
           )}
           {formKey === 'CABIN_ATTENDANT_LINE_CHECK' && (

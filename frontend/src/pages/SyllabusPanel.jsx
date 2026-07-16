@@ -5,6 +5,7 @@ import { formatDate } from '../lib/format';
 import { TRAINER_ROLES } from '../lib/roles';
 import { NoteInfoIcon } from '../components/NoteInfoIcon';
 import { AutoTextarea } from '../components/AutoTextarea';
+import { TrainerPicker } from '../components/TrainerPicker';
 
 function groupByCategory(items) {
   const groups = new Map();
@@ -57,17 +58,19 @@ function CategoryNoteField({ traineeId, category, section, initialNotes }) {
   );
 }
 
-function SyllabusItemRow({ item, onSignOff, showPhase }) {
+function SyllabusItemRow({ item, onSignOff, showPhase, fleet }) {
   const { user } = useAuth();
   const [signing, setSigning] = useState(false);
-  const [name, setName] = useState(item.signedOffByName || user.name);
+  // A different FS pilot may run each phase/item - defaults to whoever's
+  // already on the record, or the logged-in user, but is always changeable
+  // to whichever trainer actually conducted this one.
+  const [trainerId, setTrainerId] = useState(item.signedOffById || user.id);
   const [error, setError] = useState(null);
 
   async function confirm() {
-    if (!name.trim()) return;
     setError(null);
     try {
-      await onSignOff(item.id, name.trim());
+      await onSignOff(item.id, trainerId || null);
       setSigning(false);
     } catch (err) { setError(err.message); }
   }
@@ -101,13 +104,7 @@ function SyllabusItemRow({ item, onSignOff, showPhase }) {
       </div>
       {signing && (
         <div style={{ display: 'flex', gap: 8, marginTop: 6, marginLeft: 32, alignItems: 'center' }}>
-          <input
-            style={{ maxWidth: 220 }}
-            placeholder="Signed off by (name)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-          />
+          <TrainerPicker value={trainerId} fleet={fleet} onSelect={setTrainerId} />
           <button className="primary" onClick={confirm}>Sign off</button>
           <button onClick={() => setSigning(false)}>Cancel</button>
         </div>
@@ -130,8 +127,8 @@ export function SyllabusItemsList({ trainee, section }) {
     api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
   }, [trainee.id]);
 
-  async function signOff(itemId, signedOffByName) {
-    await api.post(`/api/syllabus/trainee/${trainee.id}/complete`, { syllabusItemId: itemId, signedOffByName });
+  async function signOff(itemId, signedOffBy) {
+    await api.post(`/api/syllabus/trainee/${trainee.id}/complete`, { syllabusItemId: itemId, signedOffBy });
     load();
   }
 
@@ -152,7 +149,7 @@ export function SyllabusItemsList({ trainee, section }) {
       <div key={keyPrefix} className="card">
         <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
         {categoryItems.map((item) => (
-          <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} />
+          <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} fleet={trainee.fleet} />
         ))}
         <CategoryNoteField traineeId={trainee.id} category={category} section={section} initialNotes={noteFor(category)} />
       </div>
@@ -211,8 +208,8 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
     api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
   }, [trainee.id]);
 
-  async function signOff(itemId, signedOffByName) {
-    await api.post(`/api/syllabus/flight/${flightId}/complete`, { syllabusItemId: itemId, signedOffByName });
+  async function signOff(itemId, signedOffBy) {
+    await api.post(`/api/syllabus/flight/${flightId}/complete`, { syllabusItemId: itemId, signedOffBy });
     load();
     onChange?.();
   }
@@ -244,7 +241,7 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
         <div key={category} className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>{category}</div>
           {categoryItems.map((item) => (
-            <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} />
+            <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} fleet={trainee.fleet} />
           ))}
           <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} />
         </div>

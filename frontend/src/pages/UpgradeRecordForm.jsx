@@ -9,6 +9,7 @@ import { TabBar } from '../components/TabBar';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES } from '../lib/roles';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 // One tab per "page" of the paper upgrade package, same idea as the LOFT
 // package's own tab bar - Briefing, then the three sector-log stages
@@ -61,40 +62,6 @@ function UpgradeAssessorPicker({ value, fleet, onAssign }) {
 // log instead of hardcoding page counts, so a candidate needing more or
 // fewer sectors than the paper form's default doesn't need extra "pages".
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
-
-const BRIEFING_ITEMS = {
-  TRAINING_CAPTAIN: [
-    'Human Factors and Non-Technical Skills for Supervisors',
-    'Assessment and grading of technical and non-technical skills',
-    'Role Training including: responsibilities and duties, teaching and training methods, assessment of standards, flight safety considerations, record keeping',
-    'Flight Standards Manual',
-  ],
-  CHECK_CAPTAIN: [
-    'A knowledge of relevant legislation and advisory and operational publications including the Flight Examiners Handbook',
-    'The application of the information contained in the Flight Standards Manual',
-    'Flight operations structure',
-    'The competencies making up technical skills',
-    'The conduct of training and check flights',
-    'Standardisation between check flight crew',
-    'Company training and checking administration, including: company forms, administrative processes, pass/fail criteria, repeat policy for exercises or sessions',
-  ],
-  TRAINING_CABIN_ATTENDANT: [
-    'Human Factors and Non-Technical Skills for Supervisors',
-    'Assessment and grading of technical and non-technical skills',
-    'Role Training including: responsibilities and duties, teaching and training methods, assessment of standards, flight and cabin safety considerations, record keeping, Cabin Crew Training Manual',
-  ],
-  CHECK_CABIN_ATTENDANT: [
-    'A knowledge of relevant legislation and advisory and operational publications including cabin crew requirements',
-    'The application of the information contained in the Flight Standards Manual',
-    'Responsibilities and duties of the cabin trainer',
-    'Teaching and Training methods',
-    'The conduct of check duties',
-    'Assessment of standards',
-    'Cabin safety considerations',
-    'Record keeping',
-    'Company training and checking administration, including: company forms, administrative processes, pass/fail criteria',
-  ],
-};
 
 // Minimum sector counts per stage, per the paper form - shown as guidance
 // (a running tally), not a hard gate, since real candidates sometimes need
@@ -196,7 +163,16 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
 
   const variantConfig = UPGRADE_VARIANTS[variant];
   const label = variantConfig.label;
-  const briefingItems = BRIEFING_ITEMS[variant];
+
+  // The briefing checklist is editable from the Syllabus tab (Check Forms)
+  // rather than fixed in source - see check-form-items.js's
+  // UPGRADE_TRAINING_CAPTAIN/UPGRADE_CHECK_CAPTAIN/UPGRADE_TRAINING_CABIN_ATTENDANT/
+  // UPGRADE_CHECK_CABIN_ATTENDANT form keys. Results are keyed by each
+  // item's id instead of its description text.
+  const [allBriefingItems, setAllBriefingItems] = useState([]);
+  useEffect(() => {
+    api.get(`/api/check-form-items?formKey=UPGRADE_${variant}&includeArchived=true`).then(setAllBriefingItems).catch(() => {});
+  }, [variant]);
 
   function load() {
     api.get(`/api/checks?checkType=UPGRADE_RECORD&archived=${archived}&crewMemberId=${crewMemberId}`)
@@ -295,10 +271,10 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     const d = check.details || {};
     const items = d.briefingItems || {};
     let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
-    body += section('Briefing', briefingItems.map((desc) => {
-      const v = items[desc] || {};
+    body += section('Briefing', visibleCheckFormItems(allBriefingItems, items).map((item) => {
+      const v = items[item.id] || {};
       const mark = v.tick === true ? 'Yes' : v.tick === false ? 'No' : '';
-      return [desc, `${mark}${v.comments ? ` — ${v.comments}` : ''}`];
+      return [item.description, `${mark}${v.comments ? ` — ${v.comments}` : ''}`];
     }));
     for (const stage of SECTOR_STAGES) {
       const rows = (d.sectors || []).filter((s) => s.stage === stage.key);
@@ -322,7 +298,8 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     const items = d.briefingItems || {};
     const sectors = d.sectors || [];
     const locked = !!selected.completedAt;
-    const allBriefingAnswered = briefingItems.every((desc) => items[desc]?.tick !== undefined);
+    const briefingItems = visibleCheckFormItems(allBriefingItems, items);
+    const allBriefingAnswered = briefingItems.length > 0 && briefingItems.every((item) => items[item.id]?.tick !== undefined);
     const canApply = selected.result === 'PASS' && selected.completedAt && !d.staffRecordUpdatedAt;
 
     return (
@@ -353,8 +330,8 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
         {subTab === 'BRIEFING' && (
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 8 }}>Briefing</div>
-            {briefingItems.map((desc) => (
-              <BriefingItemRow key={desc} description={desc} value={items[desc]} disabled={locked} onChange={(v) => setBriefingItem(selected, desc, v)} />
+            {briefingItems.map((item) => (
+              <BriefingItemRow key={item.id} description={item.description} value={items[item.id]} disabled={locked} onChange={(v) => setBriefingItem(selected, item.id, v)} />
             ))}
             <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
           </div>

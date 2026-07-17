@@ -115,6 +115,11 @@ function GroundSchoolAdminSection() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyGroundSchoolForm());
   const [expandedFleet, setExpandedFleet] = useState(null);
+  // Whether the Category field is showing a free-text box (for a brand new
+  // category, or the very first item in an empty fleet/syllabus bucket,
+  // which otherwise has no existing category to offer at all) rather than
+  // a dropdown of ones already in use - see categories below.
+  const [addingCategory, setAddingCategory] = useState(false);
   // Standard (viewSyllabusId null) shows every fleet's standard items
   // together, same as before named syllabi existed - picking a named one
   // (always single-fleet, see syllabi.js) narrows the whole section to
@@ -130,12 +135,14 @@ function GroundSchoolAdminSection() {
   function openCreateForm() {
     setEditingId(null);
     setForm({ ...emptyGroundSchoolForm(), fleets: [viewSyllabusId ? viewFleet : fleetOptions[0]] });
+    setAddingCategory(false);
     setShowForm((v) => !v);
   }
 
   function openEditForm(item) {
     setEditingId(item.id);
     setForm({ fleets: [item.fleet], category: item.category, description: item.description, notes: item.notes || '', required: item.required });
+    setAddingCategory(false);
     setShowForm(true);
   }
 
@@ -251,10 +258,29 @@ function GroundSchoolAdminSection() {
           </div>
           <div className="field">
             <label>Category</label>
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} required>
-              <option value="">— Select category —</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {addingCategory || categories.length === 0 ? (
+              <>
+                <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="New category name" required />
+                {categories.length > 0 && (
+                  <button type="button" onClick={() => { setAddingCategory(false); setForm({ ...form, category: categories[0] }); }} style={{ marginTop: 6 }}>
+                    Choose an existing category instead
+                  </button>
+                )}
+              </>
+            ) : (
+              <select
+                value={form.category}
+                onChange={(e) => {
+                  if (e.target.value === NEW_CATEGORY_VALUE) { setAddingCategory(true); setForm({ ...form, category: '' }); }
+                  else setForm({ ...form, category: e.target.value });
+                }}
+                required
+              >
+                <option value="">— Select category —</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value={NEW_CATEGORY_VALUE}>+ Add new category</option>
+              </select>
+            )}
           </div>
           <div className="field">
             <label>Description</label>

@@ -31,10 +31,18 @@ function serialize(row) {
 router.use(requireAuth);
 router.use(requireRole(...ADMIN_ROLES));
 
+// syllabusId scopes the list to one named syllabus's own Competencies
+// bucket (see syllabi.js) - omitted/empty means the fleet's standard
+// bucket (syllabus_id IS NULL). Always required in practice (the frontend
+// always sends it, even as empty) since these types have no fleet column
+// of their own to scope by otherwise.
 router.get('/', async (req, res) => {
   const includeArchived = req.query.includeArchived === 'true';
+  const conditions = ['syllabus_id IS NOT DISTINCT FROM $1'];
+  if (!includeArchived) conditions.push('archived = false');
   const { rows } = await pool.query(
-    `SELECT * FROM competency_types ${includeArchived ? '' : 'WHERE archived = false'} ORDER BY sort_order ASC, created_at ASC`,
+    `SELECT * FROM competency_types WHERE ${conditions.join(' AND ')} ORDER BY sort_order ASC, created_at ASC`,
+    [req.query.syllabusId || null],
   );
   res.json(rows.map(serialize));
 });
@@ -52,6 +60,7 @@ const createSchema = z.object({
   // Narrower still, and only meaningful alongside appliesTo: 'PILOT' - only
   // pilots also linked to a staff account holding one of these roles.
   staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -61,11 +70,12 @@ router.post('/', async (req, res) => {
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM competency_types');
   try {
     const { rows } = await pool.query(
-      'INSERT INTO competency_types (name, sort_order, applies_to, fleets, staff_roles) VALUES ($1, $2, $3, $4::fleet[], $5::user_role[]) RETURNING *',
+      'INSERT INTO competency_types (name, sort_order, applies_to, fleets, staff_roles, syllabus_id) VALUES ($1, $2, $3, $4::fleet[], $5::user_role[], $6) RETURNING *',
       [
         parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null,
         parsed.data.fleets?.length ? parsed.data.fleets : null,
         parsed.data.staffRoles?.length ? parsed.data.staffRoles : null,
+        parsed.data.syllabusId || null,
       ],
     );
     await logAction({
@@ -85,8 +95,9 @@ const updateSchema = z.object({
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']).nullable().optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
   staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
-const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets', staffRoles: 'staff_roles' };
+const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets', staffRoles: 'staff_roles', syllabusId: 'syllabus_id' };
 const CAST_MAP = { fleets: '::fleet[]', staffRoles: '::user_role[]' };
 
 router.patch('/:id', async (req, res) => {

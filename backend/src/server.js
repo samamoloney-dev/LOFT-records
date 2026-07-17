@@ -25,6 +25,7 @@ const signatureRoutes = require('./routes/signatures');
 const dashboardRoutes = require('./routes/dashboard');
 const meetingMinutesRoutes = require('./routes/meeting-minutes');
 const contentChangeRoutes = require('./routes/content-changes');
+const syllabiRoutes = require('./routes/syllabi');
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/signatures', signatureRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/meeting-minutes', meetingMinutesRoutes);
 app.use('/api/content-changes', contentChangeRoutes);
+app.use('/api/syllabi', syllabiRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

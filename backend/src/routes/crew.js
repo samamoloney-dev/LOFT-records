@@ -124,7 +124,7 @@ async function hasIncompleteGroundSchool(traineeId) {
   if (!traineeId) return false;
   const { rows } = await pool.query(
     `SELECT gsi.id FROM trainees t
-     JOIN ground_school_items gsi ON gsi.fleet = t.fleet
+     JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.syllabus_id IS NOT DISTINCT FROM t.syllabus_id
      LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
      WHERE t.id = $1 AND gsi.required = true
        AND gsp.completed_at IS NULL AND COALESCE((gsp.details->>'na')::boolean, false) = false
@@ -237,7 +237,8 @@ async function activeCompetencies(crewMemberId, crewType, crewFleets) {
        AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
        AND (ct.staff_roles IS NULL OR EXISTS (
          SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
-       ))`,
+       ))
+       AND ct.syllabus_id IS NOT DISTINCT FROM (SELECT syllabus_id FROM crew_members WHERE id = $1)`,
     [crewMemberId, crewType, crewFleets],
   );
   return rows;
@@ -433,6 +434,10 @@ const quickAddSchema = z.object({
   // trainee) has no IPC on file yet to capture this from - lets it be set
   // straight away instead of waiting for their first IPC through this app.
   licencePhoto: z.string().nullable().optional(),
+  // Which named syllabus (see syllabi.js) this crew member's Competencies
+  // come from - null/omitted means the standard bucket. Scoped to their
+  // first ticked fleet, since a named syllabus is always single-fleet.
+  syllabusId: z.string().uuid().nullable().optional(),
 }).superRefine((d, ctx) => {
   if (d.type === 'PILOT' && !d.arn?.trim()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for pilots' });
@@ -450,8 +455,8 @@ router.post('/', blockCaManager, async (req, res) => {
   let rows;
   try {
     ({ rows } = await pool.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn, licence_photo)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn, licence_photo, syllabus_id)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
         d.firstName,
         d.lastName,
@@ -466,6 +471,7 @@ router.post('/', blockCaManager, async (req, res) => {
         d.userId || null,
         d.type === 'PILOT' ? d.arn : null,
         d.type === 'PILOT' ? (d.licencePhoto || null) : null,
+        d.syllabusId || null,
       ],
     ));
   } catch (err) {

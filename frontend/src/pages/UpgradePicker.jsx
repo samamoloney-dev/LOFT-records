@@ -21,6 +21,21 @@ const SENIOR_EXCLUDED_ROLES = {
   CHECK_CABIN_ATTENDANT: ['HOTC', 'HOFO', 'CA_MANAGER'],
 };
 
+// The Check tier normally requires already holding the Training tier first
+// (Training Captain -> Check Captain, Training Cabin Attendant -> Check
+// Cabin Attendant) - per the operator's explicit rule, a plain line
+// Captain/Cabin Attendant can't be upgraded straight to Check. The one
+// exception: someone who's already a trainer or checker on a different
+// fleet (already CC, or already CA Checker) has the experience to skip
+// straight to Check on this new fleet, so those roles qualify too. No
+// entry here (Training Captain/Training Cabin Attendant) means no gate -
+// those are the entry-level upgrade, open to any line Captain/Cabin
+// Attendant, same as before.
+const REQUIRED_PRIOR_ROLES = {
+  CHECK_CAPTAIN: ['TRAINING_CAPTAIN', 'CC'],
+  CHECK_CABIN_ATTENDANT: ['CA_TRAINER', 'CA_CHECKER'],
+};
+
 // Candidate picker in front of UpgradeRecordForm - a line Captain/Cabin
 // Attendant being upgraded to Training/Check Captain or Training/Check
 // Cabin Attendant. Scoped to the logged-in checker's own fleet(s) ("for
@@ -43,9 +58,11 @@ export function UpgradePicker({ variant }) {
   // Officers - a Captain must be held first (crew.role is the only signal
   // for this, since CABIN_ATTENDANT has just the one role either way).
   const seniorExcluded = SENIOR_EXCLUDED_ROLES[variant] || [];
+  const requiredPrior = REQUIRED_PRIOR_ROLES[variant];
   const eligible = crew
     .filter((c) => variantConfig.crewType !== 'PILOT' || c.role === 'CAPTAIN')
     .filter((c) => !c.linkedRole || !seniorExcluded.includes(c.linkedRole))
+    .filter((c) => !requiredPrior || requiredPrior.includes(c.linkedRole))
     .filter((c) => isAdmin || (c.fleets || []).some((f) => (user.fleets || []).includes(f)));
   const selected = eligible.find((c) => c.id === selectedId);
 
@@ -71,6 +88,7 @@ export function UpgradePicker({ variant }) {
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
         Select a {variantConfig.crewType === 'PILOT' ? 'line Captain' : 'Cabin Attendant'} to view or start their {variantConfig.label}.
+        {requiredPrior && ' Only candidates who already hold the Training tier (or are already a trainer/checker on another fleet) are shown.'}
       </div>
       {error && <div className="error-text">{error}</div>}
       {eligible.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No eligible crew found.</div>}

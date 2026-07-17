@@ -22,6 +22,10 @@ const createSchema = z.object({
   // which merges the new fleet into that crew member's record on
   // completion instead of creating a duplicate one.
   sourceCrewMemberId: z.string().uuid().optional(),
+  // Which named syllabus (see syllabi.js) this trainee's Ground School/
+  // LOFT Package come from - null/omitted means the fleet's standard one.
+  // Fixed at creation, same as fleet.
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 
 async function withHours(trainee) {
@@ -76,7 +80,7 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { firstName, lastName, type, role, fleet, phase, sourceCrewMemberId } = parsed.data;
+  const { firstName, lastName, type, role, fleet, phase, sourceCrewMemberId, syllabusId } = parsed.data;
 
   if (sourceCrewMemberId) {
     const { rows: crewRows } = await pool.query('SELECT type, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
@@ -86,9 +90,9 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase, source_crew_member_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [firstName, lastName, type, role, fleet, phase || 1, sourceCrewMemberId || null],
+    `INSERT INTO trainees (first_name, last_name, type, role, fleet, phase, source_crew_member_id, syllabus_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [firstName, lastName, type, role, fleet, phase || 1, sourceCrewMemberId || null, syllabusId || null],
   );
   const trainee = rowToCamel(rows[0]);
   await logAction({

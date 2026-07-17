@@ -7,6 +7,7 @@ import { formatFleet, formatTraineeRole } from '../lib/format';
 import { compressImage } from '../lib/imageCompress';
 import { useAuth } from '../context/AuthContext';
 import { crewLinkForItem } from '../lib/checkNav';
+import { SyllabusPicker } from '../components/SyllabusPicker';
 
 const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -20,7 +21,7 @@ const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
   fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
-  userId: '', arn: '', newHire: false, licencePhoto: null,
+  userId: '', arn: '', newHire: false, licencePhoto: null, syllabusId: null,
 });
 
 // Splits a staff account's full name into the first_name/last_name pair
@@ -181,11 +182,14 @@ function CrewRoster({ type }) {
           </div>
           <div className="field">
             <label>Fleet{type === 'CABIN_ATTENDANT' ? 's' : ''}</label>
-            <FleetPicker type={type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets })} />
+            <FleetPicker type={type} value={form.fleets} onChange={(fleets) => setForm({ ...form, fleets, syllabusId: null })} />
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
               This is their own personal fleet (what they fly and get checked on) - set it here even for HOTC/HOFO, otherwise the system won't know which simulator form to assign them.
             </div>
           </div>
+          {form.fleets.length > 0 && (
+            <SyllabusPicker fleet={form.fleets[0]} value={form.syllabusId} onChange={(syllabusId) => setForm({ ...form, syllabusId })} />
+          )}
 
           <div className="field">
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

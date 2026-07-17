@@ -6,8 +6,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { TabBar } from '../components/TabBar';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
-import { formatDate, formatUserRole } from '../lib/format';
+import { openPrintWindow, signatureBlock, resultBadge, formTitleRow, fieldGrid, tickTable, labeledRowGroup } from '../lib/print';
+import { formatDate, formatUserRole, formatFleet } from '../lib/format';
 import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 
@@ -286,42 +286,76 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     catch (err) { setError(err.message); }
   }
 
+  // A ruled Tick/Item table plus subsection headers, matching how the
+  // Simulator tab groups its own items by section (General Handling /
+  // Simulated Control Difficulty) - shared by the on-screen Briefing and
+  // Simulator sections' print output below.
+  function tickTableRows(allItems, savedItems) {
+    const rows = [];
+    let lastSection = null;
+    for (const item of visibleCheckFormItems(allItems, savedItems)) {
+      if (item.section && item.section !== lastSection) rows.push({ header: item.section });
+      lastSection = item.section || lastSection;
+      const tick = savedItems[item.id]?.tick;
+      rows.push({ description: item.description, tick: tick === true ? 'Yes' : tick === false ? 'No' : '' });
+    }
+    return rows;
+  }
+
+  // One bordered section per logged flight, close to the paper form's own
+  // per-flight boxes (Route/Aircraft/Airborne time fields, then
+  // Topic/Comments/Areas of improvement/Next sortie as free text below) -
+  // our digital log condenses what's several fixed pages on paper into one
+  // add-as-you-go entry per flight, so this reproduces that box style
+  // without trying to match page-for-page.
+  function flightSection(f, i, stage) {
+    let extra = '';
+    if (f.topic) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Topic:</b> ${f.topic}</div>`;
+    if (f.comments) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Comments:</b> ${f.comments}</div>`;
+    if (stage.key === 'TRAINING' && f.areasOfImprovement) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Areas of improvement:</b> ${f.areasOfImprovement}</div>`;
+    if (stage.key === 'TRAINING' && f.nextSortie) extra += `<div style="padding:6px 10px 6px;font-size:11px;"><b>Next sortie:</b> ${f.nextSortie}</div>`;
+    return `<div class="form-section">
+      <h2>Flight ${i + 1}${f.date ? ` — ${formatDate(f.date)}` : ''}</h2>
+      ${fieldGrid([['Route', f.route], ['Aircraft / SIM', f.aircraft], ['Airborne time', f.airborneTime]])}
+      ${extra}
+    </div>`;
+  }
+
   function printCheck(check) {
     const d = check.details || {};
     const items = d.briefingItems || {};
-    let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
-    body += section('Briefing', [
-      ...visibleCheckFormItems(allBriefingItems, items).map((item) => {
-        const v = items[item.id] || {};
-        const mark = v.tick === true ? 'Yes' : v.tick === false ? 'No' : '';
-        return [item.description, mark];
-      }),
-      ['Comments', d.briefingComments || ''],
+    let body = formTitleRow(label);
+    body += fieldGrid([
+      ['Candidate', crewMemberName],
+      ['Aircraft Type', fleet ? formatFleet(fleet) : ''],
+      ['Date', d.date ? formatDate(d.date) : ''],
+      ['Assessor', check.assignedToName ? `${check.assignedToRole ? formatUserRole(check.assignedToRole) : ''} ${check.assignedToName}`.trim() : ''],
     ]);
+    body += tickTable(tickTableRows(allBriefingItems, items));
+    if (d.briefingComments) body += `<div style="padding:6px 10px;font-size:11px;"><b>Comments:</b> ${d.briefingComments}</div>`;
+
     if (variant === 'TRAINING_CAPTAIN') {
       const simItems = d.simulatorItems || {};
-      body += section('Required Simulator Training', [
-        ...visibleCheckFormItems(allSimulatorItems, simItems).map((item) => {
-          const v = simItems[item.id] || {};
-          const mark = v.tick === true ? 'Yes' : v.tick === false ? 'No' : '';
-          return [item.description, mark];
-        }),
-        ['Optional simulator training', d.simulatorOtherTraining || ''],
-      ]);
+      body += `<div class="page-break"></div>`;
+      body += formTitleRow(`${label} (continued) — Simulator Training`);
+      body += tickTable(tickTableRows(allSimulatorItems, simItems));
+      if (d.simulatorOtherTraining) body += `<div style="padding:6px 10px;font-size:11px;"><b>Optional simulator training:</b> ${d.simulatorOtherTraining}</div>`;
     }
+
     for (const stage of FLIGHT_STAGES) {
       const rows = (d.flights || []).filter((f) => f.stage === stage.key);
       if (rows.length === 0) continue;
-      body += section(stage.label, rows.map((f, i) => [
-        `Flight ${i + 1} — ${f.date ? formatDate(f.date) : ''}`,
-        [f.route, f.aircraft, f.airborneTime, f.topic, f.comments, f.areasOfImprovement, f.nextSortie].filter(Boolean).join(' — '),
-      ]));
+      body += `<div class="page-break"></div>`;
+      body += formTitleRow(`${label} (continued) — ${stage.label}`);
+      body += rows.map((f, i) => flightSection(f, i, stage)).join('');
     }
-    body += section('Overall Assessment', [
-      ['Final Recommendation', d.recommendation || ''],
-      ['Assessor Comments', d.assessorComments || ''],
-      ['Overall assessment', resultBadge(check.result)],
+
+    body += `<div class="page-break"></div>`;
+    body += formTitleRow(`${label} (continued) — Recommendation`);
+    body += labeledRowGroup([
+      { label: 'Recommendation', cells: [{ label: 'Final Recommendation', value: d.recommendation || '' }, { label: 'Overall assessment', value: resultBadge(check.result) }] },
     ]);
+    if (d.assessorComments) body += `<div style="padding:6px 10px;font-size:11px;"><b>Assessor Comments:</b> ${d.assessorComments}</div>`;
     body += signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]]);
     openPrintWindow(`${label} - ${crewMemberName}`, body);
   }

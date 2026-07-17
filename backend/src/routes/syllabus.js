@@ -25,9 +25,13 @@ function roleScopeFor(traineeRole) {
 // Alternate, which nobody with this role is) every edit they make is queued
 // for HOTC review/approval rather than applying immediately - see
 // lib/approvals.js and content-changes.js.
+// syllabusId scopes the list to one named syllabus's own LOFT Package
+// bucket (see syllabi.js) - omitted/empty means the fleet's standard
+// bucket (syllabus_id IS NULL).
 router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT * FROM syllabus_items ORDER BY fleet ASC, section ASC, category ASC, phase ASC, description ASC',
+    'SELECT * FROM syllabus_items WHERE syllabus_id IS NOT DISTINCT FROM $1 ORDER BY fleet ASC, section ASC, category ASC, phase ASC, description ASC',
+    [req.query.syllabusId || null],
   );
   const items = rows.map(rowToCamel);
   res.json(isCaOnlyRole(req.user) ? items.filter((i) => CA_FLEETS.includes(i.fleet)) : items);
@@ -42,6 +46,7 @@ const createItemSchema = z.object({
   description: z.string().min(1),
   notes: z.string().optional(),
   required: z.boolean().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 
 function forbiddenFleetForCaManager(req, fleet) {
@@ -199,9 +204,9 @@ router.get('/flight/:flightId', async (req, res) => {
   const scope = roleScopeFor(trainee.role);
   const { rows: itemRows } = await pool.query(
     `SELECT * FROM syllabus_items
-     WHERE fleet = $1 AND section = 'SYLLABUS' AND (role_scope = 'BOTH' OR role_scope = $2)
+     WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2 AND section = 'SYLLABUS' AND (role_scope = 'BOTH' OR role_scope = $3)
      ORDER BY category ASC, description ASC`,
-    [trainee.fleet, scope],
+    [trainee.fleet, trainee.syllabusId, scope],
   );
 
   const { rows: progressRows } = await pool.query(
@@ -286,9 +291,9 @@ router.get('/trainee/:traineeId', async (req, res) => {
   const scope = roleScopeFor(trainee.role);
   const { rows: itemRows } = await pool.query(
     `SELECT * FROM syllabus_items
-     WHERE fleet = $1 AND (role_scope = 'BOTH' OR role_scope = $2)
+     WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2 AND (role_scope = 'BOTH' OR role_scope = $3)
      ORDER BY section ASC, category ASC, phase ASC, description ASC`,
-    [trainee.fleet, scope],
+    [trainee.fleet, trainee.syllabusId, scope],
   );
 
   const { rows: progressRows } = await pool.query(
@@ -430,9 +435,9 @@ router.post('/trainee/:traineeId/phase-completions/:phase/complete', requireRole
   const { rows: outstandingRows } = await pool.query(
     `SELECT si.id FROM syllabus_items si
      LEFT JOIN syllabus_progress sp ON sp.syllabus_item_id = si.id AND sp.trainee_id = $1
-     WHERE si.fleet = $2 AND (si.role_scope = 'BOTH' OR si.role_scope = $3)
-       AND si.phase = $4 AND si.required = true AND sp.completed_at IS NULL`,
-    [trainee.id, trainee.fleet, scope, phase],
+     WHERE si.fleet = $2 AND si.syllabus_id IS NOT DISTINCT FROM $3 AND (si.role_scope = 'BOTH' OR si.role_scope = $4)
+       AND si.phase = $5 AND si.required = true AND sp.completed_at IS NULL`,
+    [trainee.id, trainee.fleet, trainee.syllabusId, scope, phase],
   );
   if (outstandingRows.length > 0) {
     return res.status(400).json({ error: `${outstandingRows.length} required item(s) for this phase are not yet signed off` });

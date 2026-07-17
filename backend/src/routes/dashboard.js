@@ -99,14 +99,24 @@ router.get('/summary', async (req, res) => {
     // completed_at (not result) is the actual "is this check done" signal -
     // not every check type records a PASS/FAIL result (e.g. Emergency
     // Procedures uses a 1-5 score instead), so filtering on result IS NULL
-    // was counting already-completed checks as still in progress.
-    pool.query('SELECT COUNT(*)::int AS n FROM checks WHERE completed_at IS NULL AND archived = false'),
+    // was counting already-completed checks as still in progress. Scoped to
+    // the recurring currency check types only (same set as checks.js's own
+    // alerts/count) - Upgrade Records and Captain in Training are one-off
+    // process forms, not periodic "in training" currency checks, and
+    // counting them here badly inflated this card (e.g. an in-progress
+    // Upgrade Record for an already-qualified line Captain showed up as
+    // someone "in training", which they aren't).
+    pool.query(
+      `SELECT COUNT(*)::int AS n FROM checks
+       WHERE completed_at IS NULL AND archived = false
+         AND check_type IN ('EMERGENCY_PROCEDURES', 'RECURRENT_SIMULATOR', 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK')`,
+    ),
     // Required ground school items not yet completed (and not N/A) per
     // trainee - blocks them progressing to the simulator.
     pool.query(
       `SELECT t.id AS trainee_id, t.first_name, t.last_name, t.fleet, COUNT(*)::int AS outstanding
        FROM trainees t
-       JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.required = true
+       JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.syllabus_id IS NOT DISTINCT FROM t.syllabus_id AND gsi.required = true
        LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
        WHERE t.archived = false
          AND gsp.completed_at IS NULL AND COALESCE((gsp.details->>'na')::boolean, false) = false
@@ -146,7 +156,7 @@ router.get('/summary', async (req, res) => {
               COUNT(*) FILTER (WHERE gsp.completed_at IS NOT NULL OR COALESCE((gsp.details->>'na')::boolean, false))::int AS complete,
               COUNT(*)::int AS total
        FROM trainees t
-       JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.required = true
+       JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.syllabus_id IS NOT DISTINCT FROM t.syllabus_id AND gsi.required = true
        LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
        WHERE t.archived = false AND t.type = 'PILOT'
        GROUP BY t.id`,

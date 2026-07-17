@@ -44,9 +44,11 @@ const COLUMN_MAPS = {
   syllabus_items: {
     fleet: 'fleet', roleScope: 'role_scope', phase: 'phase', category: 'category',
     section: 'section', description: 'description', notes: 'notes', required: 'required',
+    syllabusId: 'syllabus_id',
   },
   ground_school_items: {
     fleet: 'fleet', category: 'category', description: 'description', notes: 'notes', required: 'required',
+    syllabusId: 'syllabus_id',
   },
 };
 

@@ -35,14 +35,17 @@ const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKE
 // Flight Ops Admin) - only managing the catalog itself is admin-only. See
 // EpChecks.jsx/ProficiencyChecks.jsx/CaChecks.jsx for how these are
 // rendered as the actual check forms.
+// syllabusId scopes to one named syllabus's own item list (see syllabi.js)
+// - omitted/empty (every existing caller today) means the standard bucket
+// (syllabus_id IS NULL), so this is fully backward-compatible.
 router.get('/', async (req, res) => {
   const { formKey, fleet } = req.query;
   if (formKey && !FORM_KEYS.includes(formKey)) return res.status(400).json({ error: 'Unknown form key' });
   if (fleet && !FLEET_VALUES.includes(fleet)) return res.status(400).json({ error: 'Unknown fleet' });
   const includeArchived = req.query.includeArchived === 'true';
 
-  const conditions = [];
-  const params = [];
+  const conditions = ['syllabus_id IS NOT DISTINCT FROM $1'];
+  const params = [req.query.syllabusId || null];
   if (formKey) { params.push(formKey); conditions.push(`form_key = $${params.length}`); }
   // OR fleet IS NULL so a form that mixes universal items with a handful
   // of fleet-specific ones (Pilot Line Check) gets both when filtered to
@@ -52,7 +55,7 @@ router.get('/', async (req, res) => {
   if (!includeArchived) conditions.push('archived = false');
 
   const { rows } = await pool.query(
-    `SELECT * FROM check_form_items ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY fleet ASC NULLS FIRST, sort_order ASC, created_at ASC`,
+    `SELECT * FROM check_form_items WHERE ${conditions.join(' AND ')} ORDER BY fleet ASC NULLS FIRST, sort_order ASC, created_at ASC`,
     params,
   );
   res.json(rows.map(rowToCamel));
@@ -67,6 +70,7 @@ const createSchema = z.object({
   notes: z.string().nullable().optional(),
   mos: z.string().nullable().optional(),
   ipcOnly: z.boolean().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 
 router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
@@ -79,9 +83,9 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
     [d.formKey, d.fleet || null],
   );
   const { rows } = await pool.query(
-    `INSERT INTO check_form_items (form_key, fleet, section, kind, description, notes, mos, ipc_only, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null, d.ipcOnly || false, maxRows[0].next],
+    `INSERT INTO check_form_items (form_key, fleet, section, kind, description, notes, mos, ipc_only, sort_order, syllabus_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null, d.ipcOnly || false, maxRows[0].next, d.syllabusId || null],
   );
   const item = rowToCamel(rows[0]);
   await logAction({
@@ -100,10 +104,12 @@ const updateSchema = z.object({
   mos: z.string().nullable().optional(),
   ipcOnly: z.boolean().optional(),
   archived: z.boolean().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 const COLUMN_MAP = {
   fleet: 'fleet', section: 'section', kind: 'kind', description: 'description',
   notes: 'notes', mos: 'mos', ipcOnly: 'ipc_only', archived: 'archived',
+  syllabusId: 'syllabus_id',
 };
 
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatFleet, formatTraineeRole } from '../lib/format';
+import { SyllabusPicker } from '../components/SyllabusPicker';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
@@ -25,7 +26,7 @@ export function Trainees() {
   // with the form already open, instead of requiring an extra click.
   const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null });
   // Sends an existing, already-qualified crew member back through LOFT for
   // a new fleet (e.g. a Cabin Attendant converting from Dash 8 to Fokker
   // 100) instead of only supporting brand-new hires - see backend
@@ -59,7 +60,7 @@ export function Trainees() {
   }
 
   function resetForm() {
-    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8' });
+    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null });
     setReturningToLoft(false);
     setSourceCrewMemberId('');
   }
@@ -122,7 +123,7 @@ export function Trainees() {
                 value={form.type}
                 onChange={(e) => {
                   const type = e.target.value;
-                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8' });
+                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8', syllabusId: null });
                   setSourceCrewMemberId('');
                 }}
               >
@@ -138,10 +139,11 @@ export function Trainees() {
           </div>
           <div className="field">
             <label>Fleet</label>
-            <select value={form.fleet} onChange={(e) => { setForm({ ...form, fleet: e.target.value }); setSourceCrewMemberId(''); }}>
+            <select value={form.fleet} onChange={(e) => { setForm({ ...form, fleet: e.target.value, syllabusId: null }); setSourceCrewMemberId(''); }}>
               {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
             </select>
           </div>
+          <SyllabusPicker fleet={form.fleet} value={form.syllabusId} onChange={(syllabusId) => setForm({ ...form, syllabusId })} />
           <button type="submit" className="primary">Create</button>
         </form>
       )}

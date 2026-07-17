@@ -16,15 +16,29 @@ const NAVY_MID = '#1A5276';
 const ROW_TINT = '#D6E4F0';
 const ROW_TINT_ALT = '#F0F0F0';
 
+// Top/bottom margins are sized to fit the repeating header/footer below,
+// not just page whitespace - a plain browser print has no native "repeat
+// this on every page" for arbitrary content, but a position:fixed element
+// IS re-drawn at the same physical spot on every printed sheet (unlike
+// normal-flow content, which only appears once wherever it happens to
+// land) - so the logo/letterhead and footer live there instead of in the
+// normal document flow, and both margins have to be tall enough to hold
+// them without the first/last line of real content overlapping.
+const PAGE_MARGIN_TOP_MM = 22;
+const PAGE_MARGIN_BOTTOM_MM = 16;
+const PAGE_MARGIN_SIDE_MM = 14;
+const PAGE_HEIGHT_MM = 297; // A4
+
 const PRINT_STYLES = `
-  @page { size: A4; margin: 16mm 14mm; }
+  @page { size: A4; margin: ${PAGE_MARGIN_TOP_MM}mm ${PAGE_MARGIN_SIDE_MM}mm ${PAGE_MARGIN_BOTTOM_MM}mm; }
   * { box-sizing: border-box; }
   body { font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 12px; margin: 0; padding: 0 2px; }
 
   .letterhead {
+    position: fixed; top: 0; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
     display: flex; justify-content: space-between; align-items: flex-start;
     font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.08em;
-    border-bottom: 3px double ${NAVY_DARK}; padding-bottom: 8px; margin-bottom: 4px;
+    border-bottom: 3px double ${NAVY_DARK}; padding: 4mm 0 6px; margin: 0;
   }
   .letterhead b { font-size: 12px; color: #111; letter-spacing: 0.04em; }
   .letterhead img { height: 30px; display: block; margin-left: auto; }
@@ -76,7 +90,19 @@ const PRINT_STYLES = `
   .fail { background: #fbe1e1; color: #8f1d1d; }
   .page-break { break-before: page; }
 
-  .print-footer { margin-top: 20px; padding-top: 6px; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 9.5px; color: #777; }
+  .print-footer {
+    position: fixed; bottom: 0; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
+    padding: 6px 0 4mm; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 9.5px; color: #777;
+  }
+  /* One of these is injected per estimated page (see paginate() in
+     openPrintWindow below) at the computed vertical offset for that
+     page's bottom margin band - a single position:fixed element can't
+     show different text on each printed page, so "Page X of Y" can't
+     live in .print-footer above; this is the workaround. Estimated from
+     total rendered content height, since nothing exposes real print
+     pagination to the DOM - close enough to be useful, not pixel-exact
+     on documents with a lot of break-avoided sections. */
+  .page-number { position: absolute; right: ${PAGE_MARGIN_SIDE_MM}mm; font-size: 9.5px; color: #777; }
 
   /* Below: a closer, plain black-ruled replica of the paper checklist
      forms (e.g. SA 489/492 Part 121 Proficiency Check/IPC) - title +
@@ -143,17 +169,50 @@ const PRINT_STYLES = `
   .compact .check-subhead { padding: 2px 5px; font-size: 9.5px; }
 `;
 
+// Estimates how many printed pages the content will span from its plain
+// (unpaginated) rendered height, then injects one "Page X of Y" label per
+// estimated page at the vertical offset where that page's bottom margin
+// band should fall - see the .page-number comment above for why this is
+// necessary instead of a single repeating element. Approximate (there's no
+// way to read real print pagination from the DOM), but close enough to be
+// useful, and always at least "Page 1 of 1" for a single-page form.
+function paginate(win) {
+  const content = win.document.getElementById('print-content');
+  const container = win.document.getElementById('page-numbers');
+  if (!content || !container) return;
+  const pxPerMm = 96 / 25.4;
+  // #print-content starts at document-flow y=0 (the letterhead before it
+  // is position:fixed, so it contributes no flow height) - flow-coordinate
+  // y therefore lines up directly with "how far into the content a given
+  // page's share starts", with no top-margin offset to account for.
+  const pageContentHeightPx = (PAGE_HEIGHT_MM - PAGE_MARGIN_TOP_MM - PAGE_MARGIN_BOTTOM_MM) * pxPerMm;
+  const totalPages = Math.max(1, Math.ceil(content.scrollHeight / pageContentHeightPx));
+  let html = '';
+  for (let i = 0; i < totalPages; i++) {
+    // A little above the boundary between this page's content and the
+    // next, so the label lands inside this page rather than spilling
+    // onto the next one.
+    const top = (i + 1) * pageContentHeightPx - 18;
+    html += `<div class="page-number" style="top:${top}px">Page ${i + 1} of ${totalPages}</div>`;
+  }
+  container.innerHTML = html;
+}
+
 export function openPrintWindow(title, bodyHtml) {
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return;
-  // Skippers logo top-right on every printed form, per the operator's
-  // request - sits above the "Printed {date}" line rather than replacing
-  // it, so both are visible in the corner.
+  // Skippers logo top-right on every printed page, per the operator's
+  // request - position:fixed (see PRINT_STYLES above) so it repeats on
+  // every physical sheet instead of appearing once wherever it lands in
+  // the document flow.
   const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;"><img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" /><span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
   const footer = `<div class="print-footer"><span>Flight Standards System</span><span>System-generated record</span></div>`;
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${letterhead}${bodyHtml}${footer}</body></html>`);
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${letterhead}<div id="print-content">${bodyHtml}</div>${footer}<div id="page-numbers"></div></body></html>`);
   win.document.close();
-  const doPrint = () => { try { win.focus(); win.print(); } catch { /* window may already be closed */ } };
+  const doPrint = () => {
+    try { paginate(win); } catch { /* a print without page numbers is still usable */ }
+    try { win.focus(); win.print(); } catch { /* window may already be closed */ }
+  };
   win.onload = doPrint;
   setTimeout(doPrint, 300);
 }
@@ -194,6 +253,21 @@ export function formTitleRow(title, arnValue) {
 export function fieldGrid(pairs) {
   const cells = pairs.map(([label, value]) => `<div><label>${label}</label>${value || ''}</div>`).join('');
   return `<div class="field-grid">${cells}</div>`;
+}
+
+// A ruled Item/Tick table - the Upgrade Record forms' (SA 507/510/522/523)
+// own "Tick | Item" briefing/simulator-training columns, rather than the
+// softer boxed .form-section table used elsewhere. `rows` is a list of
+// either { header: 'Subsection title' } or { description, tick } item rows
+// (tick already resolved to 'Yes'/'No'/'').
+export function tickTable(rows) {
+  const cols = '1fr 60px';
+  const head = `<div class="check-row check-head" style="grid-template-columns:${cols}"><div>Item</div><div>Tick</div></div>`;
+  const body = rows.map((r) => {
+    if (r.header) return `<div class="check-subhead">${r.header}</div>`;
+    return `<div class="check-row" style="grid-template-columns:${cols}"><div>${r.description}</div><div>${r.tick ?? ''}</div></div>`;
+  }).join('');
+  return `<div class="check-table">${head}${body}</div>`;
 }
 
 // A ruled Item No/Activities and Manoeuvres/MOS/Result checklist table,

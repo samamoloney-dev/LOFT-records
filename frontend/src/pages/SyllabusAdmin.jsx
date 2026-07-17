@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
+import { SyllabusPicker } from '../components/SyllabusPicker';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 import { formatFleet, formatUserRole } from '../lib/format';
 
@@ -34,6 +35,71 @@ const emptyForm = () => ({ fleets: ['DASH_8'], roleScope: 'BOTH', phase: 1, cate
 // row can only ever belong to one fleet.
 const emptyGroundSchoolForm = () => ({ fleets: ['DASH_8'], category: '', description: '', notes: '', required: true });
 
+// Named alternate syllabi (e.g. "Direct Entry Captain" on the Metro) - a
+// wholly separate Ground School/LOFT Package/Check Forms/Competencies set
+// for a specific entry pathway, distinct from the fleet's standard one
+// (which isn't a row here at all - see syllabi.js). Created here, then
+// picked from the Ground School/LOFT Package/Check Forms/Competencies
+// tabs' own syllabus selector when adding items, and from Trainees.jsx/
+// crew creation when assigning someone to it instead of the standard path.
+function SyllabiSection() {
+  const { user } = useAuth();
+  const isCaManager = user.role === 'CA_MANAGER';
+  const fleetOptions = isCaManager ? CA_FLEETS : FLEETS;
+  const [fleet, setFleet] = useState(fleetOptions[0]);
+  const [syllabi, setSyllabi] = useState([]);
+  const [name, setName] = useState('');
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get(`/api/syllabi?fleet=${fleet}&includeArchived=true`).then(setSyllabi).catch((e) => setError(e.message));
+  }
+  useEffect(load, [fleet]);
+
+  async function create(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    try {
+      await api.post('/api/syllabi', { name: name.trim(), fleet });
+      setName('');
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(s) {
+    setError(null);
+    try { await api.patch(`/api/syllabi/${s.id}`, { archived: !s.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        A named syllabus (e.g. "Direct Entry Captain") gets its own Ground School, LOFT Package, Check Forms and Competencies, separate from the fleet's standard curriculum - pick it from the syllabus selector on each of those tabs, and assign a trainee/crew member to it when creating them.
+      </div>
+      <div className="field">
+        <label>Fleet</label>
+        <select value={fleet} onChange={(e) => setFleet(e.target.value)}>
+          {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+        </select>
+      </div>
+      <form className="card" onSubmit={create}>
+        <div className="field"><label>New syllabus name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Direct Entry Captain" required /></div>
+        <button type="submit" className="primary">Create</button>
+      </form>
+      {error && <div className="error-text">{error}</div>}
+      {syllabi.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No named syllabi for {formatFleet(fleet)} yet - everyone on this fleet uses the standard curriculum.</div>}
+      {syllabi.map((s) => (
+        <div key={s.id} className="card row" style={{ cursor: 'default' }}>
+          <div style={{ flex: 1, opacity: s.archived ? 0.6 : 1 }}>{s.name}{s.archived ? ' (archived)' : ''}</div>
+          <button onClick={() => toggleArchive(s)}>{s.archived ? 'Unarchive' : 'Archive'}</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GroundSchoolAdminSection() {
   const { user } = useAuth();
   // Cabin Attendant Manager can edit ground school here too, but only cabin
@@ -49,15 +115,21 @@ function GroundSchoolAdminSection() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyGroundSchoolForm());
   const [expandedFleet, setExpandedFleet] = useState(null);
+  // Standard (viewSyllabusId null) shows every fleet's standard items
+  // together, same as before named syllabi existed - picking a named one
+  // (always single-fleet, see syllabi.js) narrows the whole section to
+  // just that syllabus's own Ground School bucket instead.
+  const [viewFleet, setViewFleet] = useState(fleetOptions[0]);
+  const [viewSyllabusId, setViewSyllabusId] = useState(null);
 
   function load() {
-    api.get('/api/ground-school/items').then(setItems).catch((e) => setError(e.message));
+    api.get(`/api/ground-school/items?syllabusId=${viewSyllabusId || ''}`).then(setItems).catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [viewSyllabusId]);
 
   function openCreateForm() {
     setEditingId(null);
-    setForm({ ...emptyGroundSchoolForm(), fleets: [fleetOptions[0]] });
+    setForm({ ...emptyGroundSchoolForm(), fleets: [viewSyllabusId ? viewFleet : fleetOptions[0]] });
     setShowForm((v) => !v);
   }
 
@@ -76,13 +148,15 @@ function GroundSchoolAdminSection() {
     try {
       let anyPending = false;
       if (editingId) {
-        const res = await api.patch(`/api/ground-school/items/${editingId}`, { ...rest, fleet: fleets[0] });
+        const res = await api.patch(`/api/ground-school/items/${editingId}`, { ...rest, fleet: fleets[0], syllabusId: viewSyllabusId });
         anyPending = !!res?.pending;
       } else {
         // One item per fleet ticked, so the same course/exam can be added
-        // for several fleets at once instead of repeating this form.
+        // for several fleets at once instead of repeating this form -
+        // only possible for Standard, since a named syllabus is always
+        // single-fleet (openCreateForm locks fleets to just viewFleet then).
         for (const fleet of fleets) {
-          const res = await api.post('/api/ground-school/items', { ...rest, fleet });
+          const res = await api.post('/api/ground-school/items', { ...rest, fleet, syllabusId: viewSyllabusId });
           if (res?.pending) anyPending = true;
         }
       }
@@ -130,17 +204,29 @@ function GroundSchoolAdminSection() {
 
   return (
     <div style={{ marginTop: '2rem' }}>
+      <div className="grid2">
+        <div className="field">
+          <label>Fleet (which syllabus list to browse)</label>
+          <select value={viewFleet} onChange={(e) => { setViewFleet(e.target.value); setViewSyllabusId(null); }}>
+            {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+          </select>
+        </div>
+        <SyllabusPicker fleet={viewFleet} value={viewSyllabusId} onChange={setViewSyllabusId} />
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ground School courses/exams, by fleet</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {viewSyllabusId ? `Ground School courses/exams for this syllabus (${formatFleet(viewFleet)})` : 'Ground School courses/exams, by fleet (standard)'}
+        </div>
         <button onClick={openCreateForm}>{showForm ? 'Cancel' : 'Add ground school item'}</button>
       </div>
 
       {showForm && (
         <form className="card" onSubmit={handleSubmit}>
           <div className="field">
-            <label>Fleet{!editingId ? 's' : ''}</label>
-            {editingId ? (
-              <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
+            <label>Fleet{!editingId && !viewSyllabusId ? 's' : ''}</label>
+            {editingId || viewSyllabusId ? (
+              <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })} disabled={!!viewSyllabusId}>
                 {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
               </select>
             ) : (
@@ -260,18 +346,24 @@ function SyllabusItemsSection() {
   // category) rather than a dropdown of ones already in use for this
   // fleet/section - see categoryOptions below.
   const [addingCategory, setAddingCategory] = useState(false);
+  // Standard (viewSyllabusId null) shows every fleet's standard curriculum
+  // together, same as before named syllabi existed - picking a named one
+  // (always single-fleet, see syllabi.js) narrows the whole section to
+  // just that syllabus's own LOFT Package bucket instead.
+  const [viewFleet, setViewFleet] = useState(fleetOptions[0]);
+  const [viewSyllabusId, setViewSyllabusId] = useState(null);
 
   function load() {
-    api.get('/api/syllabus/items').then(setItems).catch((e) => setError(e.message));
+    api.get(`/api/syllabus/items?syllabusId=${viewSyllabusId || ''}`).then(setItems).catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [viewSyllabusId]);
 
   function openCreateForm() {
     // Already open (and not mid-edit) acts as Cancel; opening fresh from an
     // edit-in-progress or a closed state always lands on a blank form.
     const closing = showForm && !editingId;
     setEditingId(null);
-    setForm({ ...emptyForm(), fleets: [fleetOptions[0]] });
+    setForm({ ...emptyForm(), fleets: [viewSyllabusId ? viewFleet : fleetOptions[0]] });
     setAddingCategory(false);
     setShowForm(!closing);
   }
@@ -320,14 +412,16 @@ function SyllabusItemsSection() {
     const { fleets, ...rest } = form;
     if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
-      const payload = { ...rest, phase: Number(form.phase) };
+      const payload = { ...rest, phase: Number(form.phase), syllabusId: viewSyllabusId };
       let anyPending = false;
       if (editingId) {
         const res = await api.patch(`/api/syllabus/items/${editingId}`, { ...payload, fleet: fleets[0] });
         anyPending = !!res?.pending;
       } else {
         // One item per fleet ticked, so the same syllabus item can be
-        // added for every pilot (or cabin crew) fleet in one go.
+        // added for every pilot (or cabin crew) fleet in one go - only
+        // possible for Standard, since a named syllabus is always
+        // single-fleet (openCreateForm locks fleets to just viewFleet then).
         for (const fleet of fleets) {
           const res = await api.post('/api/syllabus/items', { ...payload, fleet });
           if (res?.pending) anyPending = true;
@@ -364,9 +458,9 @@ function SyllabusItemsSection() {
     return (
       <form className="card" onSubmit={handleSubmit}>
         <div className="field">
-          <label>Fleet{!editingId ? 's' : ''}</label>
-          {editingId ? (
-            <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })}>
+          <label>Fleet{!editingId && !viewSyllabusId ? 's' : ''}</label>
+          {editingId || viewSyllabusId ? (
+            <select value={form.fleets[0]} onChange={(e) => setForm({ ...form, fleets: [e.target.value] })} disabled={!!viewSyllabusId}>
               {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
             </select>
           ) : (
@@ -467,8 +561,20 @@ function SyllabusItemsSection() {
 
   return (
     <div>
+      <div className="grid2">
+        <div className="field">
+          <label>Fleet (which syllabus curriculum to browse)</label>
+          <select value={viewFleet} onChange={(e) => { setViewFleet(e.target.value); setViewSyllabusId(null); }}>
+            {fleetOptions.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+          </select>
+        </div>
+        <SyllabusPicker fleet={viewFleet} value={viewSyllabusId} onChange={setViewSyllabusId} />
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>LOFT Package curriculum, by fleet, section and phase</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {viewSyllabusId ? `LOFT Package curriculum for this syllabus (${formatFleet(viewFleet)})` : 'LOFT Package curriculum, by fleet, section and phase (standard)'}
+        </div>
         <button onClick={openCreateForm}>{showForm && !editingId ? 'Cancel' : 'Add LOFT Package item'}</button>
       </div>
 
@@ -696,12 +802,20 @@ function CheckFormItemsSection() {
   // from a typo or slightly different wording, with a way to add a
   // genuinely new one when needed.
   const [addingSection, setAddingSection] = useState(false);
+  // Standard (viewSyllabusId null) is every check form's usual item list,
+  // same as before named syllabi existed - picking a named one narrows
+  // this tab's list to just that syllabus's own wholly separate item set
+  // (see syllabi.js). The fleet picker here is just for browsing which
+  // fleet's named syllabi to choose from, independent of this form key's
+  // own fleet scoping (e.g. Check to Line's ctlFleet tabs above).
+  const [viewFleet, setViewFleet] = useState('DASH_8');
+  const [viewSyllabusId, setViewSyllabusId] = useState(null);
 
   function load() {
     const fleetParam = isCtl ? `&fleet=${ctlFleet}` : '';
-    api.get(`/api/check-form-items?formKey=${formKey}${fleetParam}&includeArchived=true`).then(setItems).catch((e) => setError(e.message));
+    api.get(`/api/check-form-items?formKey=${formKey}${fleetParam}&includeArchived=true&syllabusId=${viewSyllabusId || ''}`).then(setItems).catch((e) => setError(e.message));
   }
-  useEffect(load, [formKey, ctlFleet]);
+  useEffect(load, [formKey, ctlFleet, viewSyllabusId]);
 
   const sectionOptions = [...new Set(items.map((i) => i.section).filter(Boolean))].sort();
 
@@ -726,6 +840,7 @@ function CheckFormItemsSection() {
       const payload = {
         fleet: form.fleet || null, section: form.section || null, kind: form.kind,
         description: form.description, notes: form.notes || null, mos: form.mos || null, ipcOnly: form.ipcOnly,
+        syllabusId: viewSyllabusId,
       };
       if (editingId) {
         await api.patch(`/api/check-form-items/${editingId}`, payload);
@@ -759,6 +874,15 @@ function CheckFormItemsSection() {
 
   return (
     <div>
+      <div className="grid2">
+        <div className="field">
+          <label>Fleet (which syllabus's item list to browse)</label>
+          <select value={viewFleet} onChange={(e) => { setViewFleet(e.target.value); setViewSyllabusId(null); }}>
+            {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+          </select>
+        </div>
+        <SyllabusPicker fleet={viewFleet} value={viewSyllabusId} onChange={setViewSyllabusId} />
+      </div>
       <TabBar
         tabs={CHECK_FORM_TABS}
         active={formKey}
@@ -952,11 +1076,19 @@ function CompetencyTypesSection() {
   const [editingFleets, setEditingFleets] = useState([]);
   const [editingStaffRoles, setEditingStaffRoles] = useState([]);
   const [error, setError] = useState(null);
+  // Standard (viewSyllabusId null) is every crew member's ongoing
+  // competency list, same as before named syllabi existed - picking a
+  // named one narrows this to just that syllabus's own wholly separate
+  // Competencies bucket (see syllabi.js). The fleet picker here is only
+  // for browsing which fleet's named syllabi to choose from - a
+  // competency type's own `fleets` scoping (below) is independent of it.
+  const [viewFleet, setViewFleet] = useState(FLEETS[0]);
+  const [viewSyllabusId, setViewSyllabusId] = useState(null);
 
   function load() {
-    api.get('/api/competency-types?includeArchived=true').then(setTypes).catch((e) => setError(e.message));
+    api.get(`/api/competency-types?includeArchived=true&syllabusId=${viewSyllabusId || ''}`).then(setTypes).catch((e) => setError(e.message));
   }
-  useEffect(load, []);
+  useEffect(load, [viewSyllabusId]);
 
   async function addType(e) {
     e.preventDefault();
@@ -966,6 +1098,7 @@ function CompetencyTypesSection() {
       await api.post('/api/competency-types', {
         name: name.trim(), appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null,
         staffRoles: appliesTo === 'PILOT' && staffRoles.length ? staffRoles : null,
+        syllabusId: viewSyllabusId,
       });
       setName('');
       setAppliesTo('');
@@ -1004,7 +1137,16 @@ function CompetencyTypesSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Every active competency here is required for every crew member (unless scoped to pilots/cabin attendants, specific fleets, and/or a specific pilot staff role) - archiving one removes it from crew profiles going forward without losing past dates.
+        Every active competency here is required for every crew member on this syllabus (unless scoped to pilots/cabin attendants, specific fleets, and/or a specific pilot staff role) - archiving one removes it from crew profiles going forward without losing past dates.
+      </div>
+      <div className="grid2">
+        <div className="field">
+          <label>Fleet (which syllabus's Competencies to browse)</label>
+          <select value={viewFleet} onChange={(e) => { setViewFleet(e.target.value); setViewSyllabusId(null); }}>
+            {FLEETS.map((f) => <option key={f} value={f}>{formatFleet(f)}</option>)}
+          </select>
+        </div>
+        <SyllabusPicker fleet={viewFleet} value={viewSyllabusId} onChange={setViewSyllabusId} />
       </div>
       <form className="card" onSubmit={addType}>
         <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
@@ -1187,10 +1329,12 @@ export function SyllabusAdmin() {
 
   const tabs = isCaManager
     ? [
+      { key: 'syllabi', label: 'Manage Syllabi' },
       { key: 'ground-school', label: 'Ground School' },
       { key: 'syllabus', label: 'LOFT Package' },
     ]
     : [
+      { key: 'syllabi', label: 'Manage Syllabi' },
       { key: 'ground-school', label: 'Ground School' },
       { key: 'syllabus', label: 'LOFT Package' },
       { key: 'check-forms', label: 'Check Forms' },
@@ -1202,6 +1346,7 @@ export function SyllabusAdmin() {
   return (
     <div>
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
+      {tab === 'syllabi' && <SyllabiSection />}
       {tab === 'syllabus' && <SyllabusItemsSection />}
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
       {tab === 'check-forms' && !isCaManager && <CheckFormItemsSection />}

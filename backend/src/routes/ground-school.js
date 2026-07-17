@@ -19,10 +19,13 @@ function forbiddenFleetForCaManager(req, fleet) {
 // Ground School curriculum management - same admin-only pattern as syllabus
 // items (/api/syllabus/items), plus Cabin Attendant Manager scoped to cabin
 // attendant fleet items, whose edits queue for HOTC approval instead of
-// applying immediately - see lib/approvals.js.
+// applying immediately - see lib/approvals.js. syllabusId scopes the list
+// to one named syllabus's own Ground School bucket (see syllabi.js) -
+// omitted/empty means the fleet's standard bucket (syllabus_id IS NULL).
 router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT * FROM ground_school_items ORDER BY fleet ASC, category ASC, description ASC',
+    'SELECT * FROM ground_school_items WHERE syllabus_id IS NOT DISTINCT FROM $1 ORDER BY fleet ASC, category ASC, description ASC',
+    [req.query.syllabusId || null],
   );
   const items = rows.map(rowToCamel);
   res.json(isCaOnlyRole(req.user) ? items.filter((i) => CA_FLEETS.includes(i.fleet)) : items);
@@ -34,6 +37,7 @@ const createItemSchema = z.object({
   description: z.string().min(1),
   notes: z.string().optional(),
   required: z.boolean().optional(),
+  syllabusId: z.string().uuid().nullable().optional(),
 });
 
 router.post('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
@@ -137,8 +141,8 @@ router.get('/trainee/:traineeId', async (req, res) => {
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows: itemRows } = await pool.query(
-    'SELECT * FROM ground_school_items WHERE fleet = $1 ORDER BY category ASC, description ASC',
-    [trainee.fleet],
+    'SELECT * FROM ground_school_items WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2 ORDER BY category ASC, description ASC',
+    [trainee.fleet, trainee.syllabusId],
   );
 
   const { rows: progressRows } = await pool.query(

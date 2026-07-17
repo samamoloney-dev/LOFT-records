@@ -89,6 +89,17 @@ const CHECK_TYPE_LABELS = {
   UPGRADE_RECORD: 'Upgrade Record',
 };
 
+// The Check tier requires already holding the Training tier (or already
+// being a trainer/checker on a different fleet) - mirrors
+// UpgradePicker.jsx's own REQUIRED_PRIOR_ROLES, enforced here too since
+// that's just client-side filtering. No entry for TRAINING_CAPTAIN/
+// TRAINING_CABIN_ATTENDANT - those are the entry-level upgrade, open to
+// any line Captain/Cabin Attendant.
+const REQUIRED_PRIOR_ROLES = {
+  CHECK_CAPTAIN: ['TRAINING_CAPTAIN', 'CC'],
+  CHECK_CABIN_ATTENDANT: ['CA_TRAINER', 'CA_CHECKER'],
+};
+
 // checks.crew_member_name is snapshotted at creation (see createCheckRecord
 // below), but there's no equivalent trainee-name column - falls back to a
 // quick lookup for the (rarer) trainee-scoped checks, e.g. Captain in
@@ -262,6 +273,25 @@ router.post('/', async (req, res) => {
     }
     if (!eligible) {
       return res.status(403).json({ error: 'This candidate has not been allocated to Captain in Training' });
+    }
+  }
+  // Check Captain/Check Cabin Attendant upgrades require the candidate
+  // already hold the Training tier first (or already be a trainer/checker
+  // on a different fleet, e.g. an existing Check Captain picking up a new
+  // type) - per the operator's explicit rule, a plain line Captain/Cabin
+  // Attendant can't be upgraded straight to Check. Mirrors
+  // UpgradePicker.jsx's REQUIRED_PRIOR_ROLES, enforced here too since the
+  // picker is just client-side filtering.
+  if (parsed.data.checkType === 'UPGRADE_RECORD' && parsed.data.crewMemberId) {
+    const requiredPrior = REQUIRED_PRIOR_ROLES[parsed.data.details?.variant];
+    if (requiredPrior) {
+      const { rows } = await pool.query(
+        `SELECT u.role FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1`,
+        [parsed.data.crewMemberId],
+      );
+      if (!requiredPrior.includes(rows[0]?.role)) {
+        return res.status(403).json({ error: 'This candidate must already hold the Training tier (or be a trainer/checker on another fleet) before this upgrade' });
+      }
     }
   }
 

@@ -207,7 +207,7 @@ export function Dashboard() {
         <SummaryCard label="Due Soon" value={summary.dueSoon} color="amber" onClick={() => navigate('/currency?filter=due_soon')} />
         <SummaryCard label="Not Yet Completed" value={summary.notCompleted} color="gray" onClick={() => navigate('/currency?filter=not_completed')} />
         <SummaryCard label="Active Trainees" value={summary.activeTrainees} color="blue" onClick={() => navigate('/trainees')} />
-        <SummaryCard label="In Training (checks)" value={summary.inTrainingChecks} color="blue" onClick={() => navigate('/checks')} />
+        <SummaryCard label="Checks In Progress" value={summary.inTrainingChecks} color="blue" onClick={() => navigate('/checks')} />
         <SummaryCard label="Crew Current" value={`${summary.crewCurrentPercent}%`} color="green" onClick={() => navigate('/currency?filter=ok')} />
       </div>
 

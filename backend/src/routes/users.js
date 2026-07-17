@@ -156,6 +156,32 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   res.json(serialize(rows[0]));
 });
 
+// Redundancy for a forgotten password - self-service change-password (see
+// auth.js) requires knowing the current one, so this is the actual
+// recovery path. Deliberately narrower than ADMIN_ROLES - only HOTC, HOFO
+// and Flight Ops Admin (not Alternate), same reset-role set used for the
+// signature PIN reset (see signatures.js PIN_RESET_ROLES).
+const PASSWORD_RESET_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+const resetPasswordSchema = z.object({ newPassword: z.string().min(8) });
+
+router.post('/:id/reset-password', requireRole(...PASSWORD_RESET_ROLES), async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  const { rows } = await pool.query(
+    'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id, name',
+    [passwordHash, req.params.id],
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'users', targetId: rows[0].id,
+    description: `Reset ${rows[0].name}'s password`,
+  });
+  res.json({ reset: true, name: rows[0].name });
+});
+
 router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   try {
     const { rowCount } = await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);

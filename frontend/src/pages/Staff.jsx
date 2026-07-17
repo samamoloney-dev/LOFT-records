@@ -36,6 +36,59 @@ const CHECK_ACCESS_OPTIONS = [
 
 const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });
 
+// Redundancy for a forgotten password - self-service change-password (see
+// ChangePassword.jsx) requires knowing the current one, so this admin-side
+// reset is the actual recovery path. Mirrors the roles allowed to reset a
+// signature PIN (see PinSignature.jsx).
+const PASSWORD_RESET_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+
+function ResetPasswordButton({ userId, userName }) {
+  const [open, setOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  function toggle() {
+    setOpen((v) => !v);
+    setNewPassword('');
+    setConfirmPassword('');
+    setError(null);
+    setNotice(null);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    if (newPassword !== confirmPassword) { setError('Passwords do not match'); return; }
+    try {
+      await api.post(`/api/users/${userId}/reset-password`, { newPassword });
+      setNotice(`Password reset for ${userName} - let them know their new password.`);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) { setError(err.message); }
+  }
+
+  if (!open) {
+    return <button onClick={toggle}>Reset password</button>;
+  }
+
+  return (
+    <form onSubmit={submit} className="card" style={{ marginTop: 8 }}>
+      <div className="grid2">
+        <div className="field"><label>New password</label><input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} /></div>
+        <div className="field"><label>Confirm new password</label><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} /></div>
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {notice && <div style={{ fontSize: 12, color: 'var(--text-success)' }}>{notice}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="submit" className="primary">Set new password</button>
+        <button type="button" onClick={toggle}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 // The last space-separated word of a staff member's name, used to sort the
 // staff list by surname (see sortedUsers below).
 function staffSurname(name) {
@@ -195,6 +248,8 @@ export function Staff() {
 }
 
 function StaffAccountsPanel() {
+  const { user: currentUser } = useAuth();
+  const canResetPasswords = PASSWORD_RESET_ROLES.includes(currentUser.role);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -413,6 +468,12 @@ function StaffAccountsPanel() {
                 <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
               </div>
             </div>
+
+            {canResetPasswords && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
+                <ResetPasswordButton userId={u.id} userName={u.name} />
+              </div>
+            )}
 
             {(showGic || showPac) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>

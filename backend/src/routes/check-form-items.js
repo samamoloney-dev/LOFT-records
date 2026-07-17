@@ -19,6 +19,9 @@ const FORM_KEYS = [
   // roles.js (see UpgradeRecordForm.jsx).
   'UPGRADE_TRAINING_CAPTAIN', 'UPGRADE_CHECK_CAPTAIN',
   'UPGRADE_TRAINING_CABIN_ATTENDANT', 'UPGRADE_CHECK_CABIN_ATTENDANT',
+  // SA 507's FSM E5.2.3 required simulator training (General Handling +
+  // Simulated Control Difficulty) - Training Captain upgrade only.
+  'UPGRADE_TRAINING_CAPTAIN_SIMULATOR',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
 // answer (e.g. which aircraft system was discussed). score: a plain 1-5

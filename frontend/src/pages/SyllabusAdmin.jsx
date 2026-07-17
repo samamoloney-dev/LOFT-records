@@ -652,12 +652,19 @@ const CHECK_FORM_TABS = [
   ...Object.keys(UPGRADE_VARIANTS).map((variant) => ({
     key: `UPGRADE_${variant}`, label: `${UPGRADE_VARIANTS[variant].label} - Briefing`,
   })),
+  // SA 507's FSM E5.2.3 required simulator training - Training Captain
+  // upgrade only, see UpgradeRecordForm.jsx's Simulator tab.
+  { key: 'UPGRADE_TRAINING_CAPTAIN_SIMULATOR', label: 'Training Captain Upgrade - Simulator Training' },
 ];
 
 // Item kind is always a plain tick and there's no MOS reference for any of
 // these form keys - they don't need the general item-type/MOS fields the
 // aviation check forms use.
-const NO_KIND_OR_MOS_FORMS = ['GROUND_INSTRUCTOR_COMPETENCY', 'PERSONNEL_AIR_COMPETENCY', ...Object.keys(UPGRADE_VARIANTS).map((v) => `UPGRADE_${v}`)];
+const NO_KIND_OR_MOS_FORMS = [
+  'GROUND_INSTRUCTOR_COMPETENCY', 'PERSONNEL_AIR_COMPETENCY',
+  ...Object.keys(UPGRADE_VARIANTS).map((v) => `UPGRADE_${v}`),
+  'UPGRADE_TRAINING_CAPTAIN_SIMULATOR',
+];
 
 // Check to Line items vary per pilot fleet (the cabin attendant Check to
 // Line items are a fixed 6-item list, not admin-editable here).

@@ -257,16 +257,16 @@ router.post('/:id/unarchive', async (req, res) => {
   res.json(await withHours(rowToCamel(rows[0])));
 });
 
-// Explicit HOTC/HOFO/Flight Ops Admin-only confirmation of the pre-LOFT
-// external milestone - "Type Rating Complete" for pilots (simulator
-// training and aircraft type endorsement conducted by a third-party
-// provider), "Ground School Complete" for cabin attendants. Ticking this
-// is what actually triggers that type's first Clearance Form alert (see
-// dashboard.js's clearanceAlerts) - per the operator's explicit request.
-// Deliberately narrower than the general ADMIN_ROLES gate (which also
-// includes Alternate) - Alternate is already barred from signing the
-// Clearance Form itself (see isClearanceSigner below), so it's excluded
-// from confirming the milestone that feeds into it too.
+// Explicit HOTC/HOFO/Flight Ops Admin-only "Ground School Complete"
+// confirmation for cabin attendant trainees - the pilot-side equivalent
+// (Aircraft Endorsement) lives as a Ground School tab item instead (see
+// migration 0086), since pilots already have that tab and cabin attendants
+// don't. Ticking this is what actually triggers a CA's first Clearance
+// Form alert (see dashboard.js's clearanceAlerts). Deliberately narrower
+// than the general ADMIN_ROLES gate (which also includes Alternate) -
+// Alternate is already barred from signing the Clearance Form itself (see
+// isClearanceSigner below), so it's excluded from confirming the milestone
+// that feeds into it too.
 const READY_FOR_LOFT_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 router.post('/:id/ready-for-loft', async (req, res) => {
   if (!READY_FOR_LOFT_ROLES.includes(req.user.role)) {
@@ -274,6 +274,9 @@ router.post('/:id/ready-for-loft', async (req, res) => {
   }
   const trainee = await findTrainee(req.params.id);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (trainee.type !== 'CABIN_ATTENDANT') {
+    return res.status(400).json({ error: 'Pilot trainees track this on the Ground School tab (Aircraft Endorsement) instead' });
+  }
   if (trainee.archived) return res.status(403).json({ error: 'This trainee is archived - unarchive them first to make changes' });
   if (trainee.readyForLoftAt) return res.status(400).json({ error: 'Already confirmed' });
 
@@ -284,7 +287,7 @@ router.post('/:id/ready-for-loft', async (req, res) => {
   const updated = rowToCamel(rows[0]);
   await logAction({
     userId: req.user.id, action: 'UPDATE', targetTable: 'trainees', targetId: updated.id,
-    description: `Confirmed ${updated.type === 'PILOT' ? 'Type Rating' : 'Ground School'} complete for ${updated.firstName} ${updated.lastName}`,
+    description: `Confirmed Ground School complete for ${updated.firstName} ${updated.lastName}`,
   });
   res.json(await withHours(updated));
 });

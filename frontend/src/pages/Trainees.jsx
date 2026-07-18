@@ -169,13 +169,13 @@ export function Trainees() {
       {readyError && <div className="error-text">{readyError}</div>}
       {trainees.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No trainees yet.</div>}
       {trainees.map((t) => {
-        // Same real-world milestone, different label per type - "Type
-        // Rating Complete" (pilots, the third-party simulator training and
-        // aircraft type endorsement) or "Ground School Complete" (cabin
-        // attendants) - see backend/src/routes/trainees.js POST
-        // /:id/ready-for-loft. Ticking this is what triggers that
-        // trainee's first Clearance Form alert on the Home Dashboard.
-        const readyLabel = t.type === 'PILOT' ? 'Type Rating Complete' : 'Ground School Complete';
+        // Cabin attendants only - pilots track the equivalent milestone
+        // (Aircraft Endorsement) as a Ground School tab item instead, since
+        // they already have that tab and cabin attendants don't. See
+        // backend/src/routes/trainees.js POST /:id/ready-for-loft. Ticking
+        // this is what triggers a CA's first Clearance Form alert on the
+        // Home Dashboard.
+        const isCabinAttendant = t.type === 'CABIN_ATTENDANT';
         return (
           <div key={t.id} className="card row" onClick={() => navigate(`/trainees/${t.id}`)}>
             <div style={{ flex: 1 }}>
@@ -184,16 +184,18 @@ export function Trainees() {
                 {formatFleet(t.fleet)} · {formatTraineeRole(t.role)}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
               </div>
             </div>
-            {t.readyForLoftAt ? (
-              <span style={{ fontSize: 11, color: 'var(--text-success)' }}>{readyLabel.replace('Complete', 'complete')}</span>
-            ) : canConfirmReadyForLoft && confirmingId === t.id ? (
-              <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                <button className="primary" onClick={() => confirmReadyForLoft(t.id)}>Confirm</button>
-                <button onClick={() => setConfirmingId(null)}>Cancel</button>
-              </div>
-            ) : canConfirmReadyForLoft ? (
-              <button onClick={(e) => { e.stopPropagation(); setConfirmingId(t.id); }}>{readyLabel}</button>
-            ) : null}
+            {isCabinAttendant && (
+              t.readyForLoftAt ? (
+                <span style={{ fontSize: 11, color: 'var(--text-success)' }}>Ground school complete</span>
+              ) : canConfirmReadyForLoft && confirmingId === t.id ? (
+                <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  <button className="primary" onClick={() => confirmReadyForLoft(t.id)}>Confirm</button>
+                  <button onClick={() => setConfirmingId(null)}>Cancel</button>
+                </div>
+              ) : canConfirmReadyForLoft ? (
+                <button onClick={(e) => { e.stopPropagation(); setConfirmingId(t.id); }}>Ground School Complete</button>
+              ) : null
+            )}
           </div>
         );
       })}

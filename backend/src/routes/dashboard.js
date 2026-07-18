@@ -283,19 +283,23 @@ router.get('/summary', async (req, res) => {
     clearanceRows.map((r) => `${r.trainee_id ? `trainee:${r.trainee_id}` : `crew:${r.crew_member_id}`}:${r.stage}`),
   );
   const ctlCompletedByTrainee = new Set(ctlCompletedRows.map((r) => r.trainee_id));
+  // Pilots: back to auto-detecting via Ground School completion (now
+  // including the "Aircraft Endorsement" item restored by migration 0086) -
+  // per the operator's request, this lives in the pilot's own Ground
+  // School tab alongside the rest of their pre-LOFT checklist, not a
+  // separate button. Cabin attendants have no Ground School tab to hang
+  // this off, so their trigger stays the explicit ready_for_loft_at button
+  // (see trainees.js POST /:id/ready-for-loft) below.
+  const gsCompleteByTrainee = new Set(
+    groundSchoolProgressRows.filter((r) => r.total > 0 && r.complete === r.total).map((r) => r.trainee_id),
+  );
 
   const clearanceAlerts = [];
   for (const t of traineeRows) {
-    // ready_for_loft_at is the explicit HOTC/HOFO/Flight Ops Admin-only
-    // "Type Rating Complete" (pilots) / "Ground School Complete" (cabin
-    // attendants) confirmation on the Trainees list (see trainees.js POST
-    // /:id/ready-for-loft) - per the operator's explicit request, this is
-    // what triggers the first Clearance Form milestone for both types, not
-    // an automatically-detected ground school percentage.
-    if (t.type === 'PILOT' && t.ready_for_loft_at && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
+    if (t.type === 'PILOT' && gsCompleteByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
       clearanceAlerts.push({
         key: `clearance:trainee:${t.id}:AIRCRAFT_CONVERSION`,
-        text: `${t.first_name} ${t.last_name} — type rating complete — needs Clearance Form`,
+        text: `${t.first_name} ${t.last_name} — aircraft endorsement complete — needs Clearance Form`,
         linkTo: `/trainees/${t.id}`,
       });
     }

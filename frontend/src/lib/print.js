@@ -34,8 +34,17 @@ const PRINT_STYLES = `
   * { box-sizing: border-box; }
   body { font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 12px; margin: 0; padding: 0 2px; }
 
+  /* top is pulled up by the full page top-margin, not 0 - Chrome positions
+     a fixed element's containing block at the page's MARGIN box (the same
+     origin normal-flow content like #print-content and h1 use), not the
+     physical paper edge. top:0 therefore lands exactly on top of the first
+     line of real content instead of above it in the blank margin band -
+     this is what caused the letterhead/h1 and logo/ARN-box overlap seen in
+     print output. Shifting up by the margin amount puts it back in the
+     blank gutter, where its own height (~18mm) comfortably fits within the
+     ${PAGE_MARGIN_TOP_MM}mm reserved for it. */
   .letterhead {
-    position: fixed; top: 0; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
+    position: fixed; top: -${PAGE_MARGIN_TOP_MM}mm; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
     display: flex; justify-content: space-between; align-items: flex-start;
     font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.08em;
     border-bottom: 3px double ${NAVY_DARK}; padding: 4mm 0 6px; margin: 0;
@@ -90,8 +99,11 @@ const PRINT_STYLES = `
   .fail { background: #fbe1e1; color: #8f1d1d; }
   .page-break { break-before: page; }
 
+  /* Same fix as .letterhead above, mirrored - bottom is pulled down by the
+     full bottom margin so the footer sits in the blank gutter below the
+     content box instead of on top of its last line. */
   .print-footer {
-    position: fixed; bottom: 0; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
+    position: fixed; bottom: -${PAGE_MARGIN_BOTTOM_MM}mm; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
     padding: 6px 0 4mm; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 9.5px; color: #777;
   }
   /* One of these is injected per estimated page (see paginate() in

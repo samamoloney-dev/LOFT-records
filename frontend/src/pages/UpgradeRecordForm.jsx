@@ -84,6 +84,14 @@ const FLIGHT_STAGES = [
   { key: 'CHECK', label: 'Check', min: 1 },
 ];
 
+// Verbatim wording from the operator's paper Training Captain upgrade
+// package - shown (and signed) once the 2nd Training-stage flight is
+// logged, per the operator's explicit request.
+const TRAINING_CAPTAIN_RECOMMENDATION_TEXT = [
+  'Following satisfactory completion of the required supervised line training sectors with a Check Captain, the candidate may be approved as a Training Captain. This approval is conditional and does not permit the conduct of LOFT or other training duties in an unsupervised capacity.',
+  "I certify that the above-named candidate has satisfactorily completed the required supervised line training sectors in accordance with company requirements. I further confirm that the candidate has demonstrated a satisfactory standard of knowledge, instructional technique, and operational competency appropriate to the role of Training Captain. I recommend the candidate for a Flight Examiner observation during LOFT sectors for the purpose of final assessment and authorisation to conduct LOFT and other training duties in an unsupervised capacity.",
+];
+
 const RECOMMENDATIONS = [
   'Candidate is recommended for upgrade',
   'Additional training required',
@@ -105,24 +113,79 @@ function emptyDetails(variant) {
 }
 
 function emptyFlight(stage) {
-  return { id: crypto.randomUUID(), stage, date: '', route: '', aircraft: '', airborneTime: '', topic: '', comments: '', areasOfImprovement: '', nextSortie: '' };
+  return { id: crypto.randomUUID(), stage, date: '', route: '', method: '', airborneTime: '', topic: '', comments: '', areasOfImprovement: '', nextSortie: '' };
 }
 
-function BriefingItemRow({ description, value, disabled, onChange }) {
+// Same "tick = signed off, and stays that way" pattern as the LOFT
+// Package's own SyllabusItemRow (see SyllabusPanel.jsx) - a single tick
+// (not a Yes/No pair) that, once set, records who signed it off and locks
+// permanently rather than staying freely toggleable. The record's one
+// Assessor (picked above the tab bar) is who signs, since a briefing
+// checklist review is one sitting with one assessor - unlike the LOFT
+// Package's per-item trainer picker, which exists because different
+// trainers cover different items across many separate flights.
+function BriefingItemRow({ description, value, disabled, assessorId, assessorName, onSignOff }) {
   const v = value || {};
+  const [confirming, setConfirming] = useState(false);
   return (
-    <div className="row" style={{ cursor: 'default' }}>
-      <div style={{ fontSize: 13, flex: 1 }}>{description}</div>
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-        <button type="button" className={`tick-btn ${v.tick === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange({ tick: true })}>Yes</button>
-        <button type="button" className={`tick-btn ${v.tick === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange({ tick: false })}>No</button>
+    <div className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <button
+          type="button"
+          className={`tick-btn ${v.tick ? 'active-pass' : ''}`}
+          disabled={disabled || v.tick || !assessorId}
+          onClick={() => setConfirming((c) => !c)}
+        >{v.tick ? '✓' : ''}</button>
+        <div style={{ fontSize: 13, flex: 1 }}>{description}</div>
       </div>
+      {v.tick && v.signedOffByName && (
+        <div style={{ fontSize: 11, color: 'var(--text-success)', marginLeft: 32 }}>
+          Signed off by {v.signedOffByName}{v.completedAt ? ` on ${formatDate(v.completedAt)}` : ''}
+        </div>
+      )}
+      {!v.tick && !disabled && !assessorId && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 32 }}>Assign an assessor above before signing off items.</div>
+      )}
+      {confirming && (
+        <div style={{ marginLeft: 32, marginTop: 4, display: 'flex', gap: 6 }}>
+          <button type="button" className="primary" onClick={() => { onSignOff(); setConfirming(false); }}>Sign off as {assessorName}</button>
+          <button type="button" onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
 
+// Aircraft vs Simulator as a tick, not a free-text field someone types
+// "Sim" or "Aircraft" into.
+const FLIGHT_METHODS = [
+  { key: 'AIRCRAFT', label: 'Aircraft' },
+  { key: 'SIMULATOR', label: 'Simulator' },
+];
+
+// Every field is buffered in local state and only sent to the server
+// onBlur, not on every keystroke. The previous version called onChange
+// (which round-trips through patchDetails -> api.patch -> setChecks from
+// the server response) on every keystroke while the input stayed
+// *controlled* off the (not-yet-updated) parent prop - fast typing outran
+// the round trip and a stale server response landing between keystrokes
+// would overwrite what had just been typed, which is what caused text to
+// visibly vanish while typing a route. Buffering locally and committing
+// on blur is the same pattern already used for the free-text boxes
+// elsewhere in this form (briefingComments, assessorComments, etc).
 function FlightRow({ flight, disabled, onChange, onRemove }) {
   const stageConfig = FLIGHT_STAGES.find((s) => s.key === flight.stage);
+  const [local, setLocal] = useState(flight);
+  useEffect(() => { setLocal(flight); }, [flight.id]);
+
+  function set(key, value) { setLocal((l) => ({ ...l, [key]: value })); }
+  function commit() { onChange(local); }
+  function setMethod(method) {
+    const updated = { ...local, method };
+    setLocal(updated);
+    onChange(updated);
+  }
+
   return (
     <div className="card" style={{ marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -130,19 +193,26 @@ function FlightRow({ flight, disabled, onChange, onRemove }) {
         {!disabled && <button type="button" className="danger" onClick={onRemove}>Remove</button>}
       </div>
       <div className="grid2">
-        <div className="field" style={{ margin: 0 }}><label>Date</label><input type="date" value={flight.date} disabled={disabled} onChange={(e) => onChange({ ...flight, date: e.target.value })} /></div>
-        <div className="field" style={{ margin: 0 }}><label>Route</label><input value={flight.route} disabled={disabled} onChange={(e) => onChange({ ...flight, route: e.target.value })} /></div>
+        <div className="field" style={{ margin: 0 }}><label>Date</label><input type="date" value={local.date} disabled={disabled} onChange={(e) => set('date', e.target.value)} onBlur={commit} /></div>
+        <div className="field" style={{ margin: 0 }}><label>Route</label><input value={local.route} disabled={disabled} onChange={(e) => set('route', e.target.value)} onBlur={commit} /></div>
       </div>
       <div className="grid2">
-        <div className="field" style={{ margin: 0 }}><label>Aircraft / SIM</label><input value={flight.aircraft} disabled={disabled} onChange={(e) => onChange({ ...flight, aircraft: e.target.value })} /></div>
-        <div className="field" style={{ margin: 0 }}><label>Airborne time</label><input value={flight.airborneTime} disabled={disabled} onChange={(e) => onChange({ ...flight, airborneTime: e.target.value })} /></div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Method</label>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {FLIGHT_METHODS.map((m) => (
+              <button key={m.key} type="button" className={`tick-btn ${local.method === m.key ? 'active-pass' : ''}`} disabled={disabled} onClick={() => setMethod(m.key)}>{m.label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="field" style={{ margin: 0 }}><label>Airborne time</label><input value={local.airborneTime} disabled={disabled} onChange={(e) => set('airborneTime', e.target.value)} onBlur={commit} /></div>
       </div>
-      <div className="field"><label>Topic</label><input value={flight.topic} disabled={disabled} onChange={(e) => onChange({ ...flight, topic: e.target.value })} /></div>
-      <div className="field"><label>Comments</label><input value={flight.comments} disabled={disabled} onChange={(e) => onChange({ ...flight, comments: e.target.value })} /></div>
+      <div className="field"><label>Topic</label><input value={local.topic} disabled={disabled} onChange={(e) => set('topic', e.target.value)} onBlur={commit} /></div>
+      <div className="field"><label>Comments</label><input value={local.comments} disabled={disabled} onChange={(e) => set('comments', e.target.value)} onBlur={commit} /></div>
       {flight.stage === 'TRAINING' && (
         <div className="grid2">
-          <div className="field" style={{ margin: 0 }}><label>Areas of improvement</label><input value={flight.areasOfImprovement} disabled={disabled} onChange={(e) => onChange({ ...flight, areasOfImprovement: e.target.value })} /></div>
-          <div className="field" style={{ margin: 0 }}><label>Next sortie</label><input value={flight.nextSortie} disabled={disabled} onChange={(e) => onChange({ ...flight, nextSortie: e.target.value })} /></div>
+          <div className="field" style={{ margin: 0 }}><label>Areas of improvement</label><input value={local.areasOfImprovement} disabled={disabled} onChange={(e) => set('areasOfImprovement', e.target.value)} onBlur={commit} /></div>
+          <div className="field" style={{ margin: 0 }}><label>Next sortie</label><input value={local.nextSortie} disabled={disabled} onChange={(e) => set('nextSortie', e.target.value)} onBlur={commit} /></div>
         </div>
       )}
     </div>
@@ -222,13 +292,12 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     } catch (err) { setError(err.message); }
   }
 
-  function setBriefingItem(check, key, value) {
-    patchDetails(check, { briefingItems: { ...(check.details?.briefingItems || {}), [key]: value } });
+  function signOffItem(check, listKey, itemId) {
+    const signed = { tick: true, signedOffById: check.assignedTo, signedOffByName: check.assignedToName, completedAt: new Date().toISOString() };
+    patchDetails(check, { [listKey]: { ...(check.details?.[listKey] || {}), [itemId]: signed } });
   }
-
-  function setSimulatorItem(check, key, value) {
-    patchDetails(check, { simulatorItems: { ...(check.details?.simulatorItems || {}), [key]: value } });
-  }
+  function setBriefingItem(check, key) { signOffItem(check, 'briefingItems', key); }
+  function setSimulatorItem(check, key) { signOffItem(check, 'simulatorItems', key); }
 
   function addFlight(check, stage) {
     patchDetails(check, { flights: [...(check.details?.flights || []), emptyFlight(stage)] });
@@ -296,8 +365,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     for (const item of visibleCheckFormItems(allItems, savedItems)) {
       if (item.section && item.section !== lastSection) rows.push({ header: item.section });
       lastSection = item.section || lastSection;
-      const tick = savedItems[item.id]?.tick;
-      rows.push({ description: item.description, tick: tick === true ? 'Yes' : tick === false ? 'No' : '' });
+      rows.push({ description: item.description, tick: savedItems[item.id]?.tick ? '✓' : '' });
     }
     return rows;
   }
@@ -316,7 +384,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     if (stage.key === 'TRAINING' && f.nextSortie) extra += `<div style="padding:6px 10px 6px;font-size:11px;"><b>Next sortie:</b> ${f.nextSortie}</div>`;
     return `<div class="form-section">
       <h2>Flight ${i + 1}${f.date ? ` — ${formatDate(f.date)}` : ''}</h2>
-      ${fieldGrid([['Route', f.route], ['Aircraft / SIM', f.aircraft], ['Airborne time', f.airborneTime]])}
+      ${fieldGrid([['Route', f.route], ['Method', f.method === 'AIRCRAFT' ? 'Aircraft' : f.method === 'SIMULATOR' ? 'Simulator' : ''], ['Airborne time', f.airborneTime]])}
       ${extra}
     </div>`;
   }
@@ -348,6 +416,11 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
       body += `<div class="page-break"></div>`;
       body += formTitleRow(`${label} (continued) — ${stage.label}`);
       body += rows.map((f, i) => flightSection(f, i, stage)).join('');
+      if (stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2) {
+        body += `<div class="disclaimer">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[0]}</div>`;
+        body += `<div style="padding:6px 10px;font-size:11px;">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[1]}</div>`;
+        body += signatureBlock([['Assessor signature (Training Captain recommendation)', d.trainingRecommendationSig]]);
+      }
     }
 
     body += `<div class="page-break"></div>`;
@@ -367,7 +440,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     const flights = d.flights || [];
     const locked = !!selected.completedAt;
     const briefingItems = visibleCheckFormItems(allBriefingItems, items);
-    const allBriefingAnswered = briefingItems.length > 0 && briefingItems.every((item) => items[item.id]?.tick !== undefined);
+    const allBriefingAnswered = briefingItems.length > 0 && briefingItems.every((item) => !!items[item.id]?.tick);
     const simulatorItems = visibleCheckFormItems(allSimulatorItems, simItems);
     const simulatorBySection = simulatorItems.reduce((acc, item) => {
       (acc[item.section || 'General Handling'] ||= []).push(item);
@@ -404,7 +477,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 8 }}>Briefing</div>
             {briefingItems.map((item) => (
-              <BriefingItemRow key={item.id} description={item.description} value={items[item.id]} disabled={locked} onChange={(v) => setBriefingItem(selected, item.id, v)} />
+              <BriefingItemRow key={item.id} description={item.description} value={items[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setBriefingItem(selected, item.id)} />
             ))}
             <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
           </div>
@@ -417,7 +490,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
               <div key={sectionName} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{sectionName}</div>
                 {sectionItems.map((item) => (
-                  <BriefingItemRow key={item.id} description={item.description} value={simItems[item.id]} disabled={locked} onChange={(v) => setSimulatorItem(selected, item.id, v)} />
+                  <BriefingItemRow key={item.id} description={item.description} value={simItems[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setSimulatorItem(selected, item.id)} />
                 ))}
               </div>
             ))}
@@ -435,16 +508,35 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           const stage = FLIGHT_STAGES.find((s) => s.key === subTab);
           const rows = flights.filter((f) => f.stage === stage.key);
           return (
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontWeight: 500 }}>{stage.label} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 12 }}>({rows.length}/{stage.min} min)</span></div>
-                {!locked && <button type="button" onClick={() => addFlight(selected, stage.key)}>+ Add flight</button>}
+            <>
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontWeight: 500 }}>{stage.label} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 12 }}>({rows.length}/{stage.min} min)</span></div>
+                  {!locked && <button type="button" onClick={() => addFlight(selected, stage.key)}>+ Add flight</button>}
+                </div>
+                {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No flights logged yet.</div>}
+                {rows.map((f) => (
+                  <FlightRow key={f.id} flight={f} disabled={locked} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
+                ))}
               </div>
-              {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No flights logged yet.</div>}
-              {rows.map((f) => (
-                <FlightRow key={f.id} flight={f} disabled={locked} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
-              ))}
-            </div>
+              {stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2 && (
+                <div className="card">
+                  <div style={{ fontWeight: 500, marginBottom: 8 }}>Training Captain Recommendation</div>
+                  {TRAINING_CAPTAIN_RECOMMENDATION_TEXT.map((p, i) => (
+                    <p key={i} style={{ fontSize: 12.5, lineHeight: 1.5, marginTop: i === 0 ? 0 : 10 }}>{p}</p>
+                  ))}
+                  {selected.assignedTo ? (
+                    <PinSignature
+                      label="Assessor signature" personType="user" personId={selected.assignedTo}
+                      signedName={d.trainingRecommendationSig} signedAt={d.trainingRecommendationSigAt} disabled={locked}
+                      onSigned={(name, at) => patchDetails(selected, { trainingRecommendationSig: name, trainingRecommendationSigAt: at })}
+                    />
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Assign an assessor above before signing.</div>
+                  )}
+                </div>
+              )}
+            </>
           );
         })()}
 

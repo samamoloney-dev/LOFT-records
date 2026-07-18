@@ -11,11 +11,32 @@ import { SyllabusPicker } from '../components/SyllabusPicker';
 
 const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
-// Active crew ordered alphabetically by surname, per the operator's explicit
-// instruction (supersedes the earlier fleet-then-rank ordering).
 function sortBySurname(members) {
   return [...members].sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
 }
+
+// Fleet order of preference: Fokker 100, then Dash 8, then Metro 23 (pilot
+// fleets), cabin attendant fleets after - then rank within that fleet
+// (Captain before First Officer; Cabin Attendant has no internal rank so
+// this is a no-op for that tab), then name as the final tie-break.
+const RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1, CABIN_ATTENDANT: 0 };
+function sortByFleetAndRank(members) {
+  return [...members].sort((a, b) => {
+    const fleetDiff = FLEETS.indexOf(a.fleets[0]) - FLEETS.indexOf(b.fleets[0]);
+    if (fleetDiff !== 0) return fleetDiff;
+    const rankDiff = (RANK_ORDER[a.role] ?? 99) - (RANK_ORDER[b.role] ?? 99);
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+// This tab's sort has flip-flopped between fleet+rank and alphabetical a
+// few times on request - a picker lets the operator choose either, instead
+// of the default needing to change again next time.
+const SORT_MODES = [
+  { key: 'fleet', label: 'Fleet & Rank' },
+  { key: 'surname', label: 'Surname' },
+];
 
 const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
@@ -95,6 +116,7 @@ function CrewRoster({ type }) {
   const canAddCrew = user.role !== 'CA_MANAGER';
   const [searchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
+  const [sortMode, setSortMode] = useState('fleet');
   const [staff, setStaff] = useState([]);
   // Lets the Home Dashboard's "Quick Add Crew Member" quick action
   // (?quickAdd=1) land here with the form already open.
@@ -104,9 +126,10 @@ function CrewRoster({ type }) {
   const navigate = useNavigate();
 
   function load() {
-    api.get(`/api/crew?type=${type}`).then((data) => setMembers(sortBySurname(data))).catch((e) => setError(e.message));
+    api.get(`/api/crew?type=${type}`).then(setMembers).catch((e) => setError(e.message));
   }
   useEffect(load, [type]);
+  const sortedMembers = sortMode === 'surname' ? sortBySurname(members) : sortByFleetAndRank(members);
   useEffect(() => { api.get('/api/users').then(setStaff).catch(() => {}); }, []);
 
   async function handleCreate(e) {
@@ -154,6 +177,22 @@ function CrewRoster({ type }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Active line crew</div>
         {canAddCrew && <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Cancel' : 'Quick add crew member'}</button>}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1rem' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Sort by</span>
+        {SORT_MODES.map((m) => (
+          <div
+            key={m.key}
+            onClick={() => setSortMode(m.key)}
+            style={{
+              padding: '5px 10px', border: '0.5px solid var(--border-strong)', borderRadius: 8,
+              cursor: 'pointer', fontSize: 12,
+              background: sortMode === m.key ? 'var(--bg-accent)' : 'var(--surface-2)',
+              color: sortMode === m.key ? 'var(--text-accent)' : 'inherit',
+            }}
+          >{m.label}</div>
+        ))}
       </div>
 
       {canAddCrew && showForm && (
@@ -234,8 +273,8 @@ function CrewRoster({ type }) {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {members.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No crew members yet.</div>}
-      {members.map((m) => (
+      {sortedMembers.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No crew members yet.</div>}
+      {sortedMembers.map((m) => (
         <div key={m.id} className="card row" onClick={() => navigate(`/crew/${m.id}`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{m.name}</div>

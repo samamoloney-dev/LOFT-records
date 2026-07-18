@@ -23,8 +23,11 @@ function forbiddenFleetForCaManager(req, fleet) {
 // to one named syllabus's own Ground School bucket (see syllabi.js) -
 // omitted/empty means the fleet's standard bucket (syllabus_id IS NULL).
 router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res) => {
+  // Aircraft Endorsement sorts last regardless of category name - see the
+  // matching ORDER BY on GET /trainee/:traineeId below.
   const { rows } = await pool.query(
-    'SELECT * FROM ground_school_items WHERE syllabus_id IS NOT DISTINCT FROM $1 ORDER BY fleet ASC, category ASC, description ASC',
+    `SELECT * FROM ground_school_items WHERE syllabus_id IS NOT DISTINCT FROM $1
+     ORDER BY fleet ASC, (category = 'Aircraft Endorsement') ASC, category ASC, description ASC`,
     [req.query.syllabusId || null],
   );
   const items = rows.map(rowToCamel);
@@ -140,8 +143,13 @@ router.get('/trainee/:traineeId', async (req, res) => {
   if (!trainee) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
+  // Aircraft Endorsement is the last thing that happens chronologically
+  // (after ground school and the simulator, right before LOFT), but "A"
+  // sorts first alphabetically - pinned to the bottom regardless of
+  // category name instead of alongside the up-front courses/exams.
   const { rows: itemRows } = await pool.query(
-    'SELECT * FROM ground_school_items WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2 ORDER BY category ASC, description ASC',
+    `SELECT * FROM ground_school_items WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2
+     ORDER BY (category = 'Aircraft Endorsement') ASC, category ASC, description ASC`,
     [trainee.fleet, trainee.syllabusId],
   );
 

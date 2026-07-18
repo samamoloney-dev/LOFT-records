@@ -457,6 +457,54 @@ router.patch('/:id/licence-photo', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
+// The Upgrade Record's Check tab uses the real Personnel (Air) Competency
+// Check form (SA518) - Preflight/[role section]/Debrief items, one overall
+// assessor signature - as its final assessment, instead of a separate
+// flight log, per the operator's explicit request. This creates that
+// linked record (candidate_section fixed from the upgrade variant's target
+// role, not the candidate's current role, since they don't hold it yet)
+// the first time the tab is opened, and is idempotent after that - opening
+// the tab again just returns the same row via details.personnelCheckId
+// rather than creating a duplicate.
+router.post('/:id/personnel-check', async (req, res) => {
+  const { rows: existingRows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
+  if (existingRows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const check = rowToCamel(existingRows[0]);
+  if (check.checkType !== 'UPGRADE_RECORD') return res.status(400).json({ error: 'Not an Upgrade Record' });
+  if (!canAccessCheckType(req.user, 'UPGRADE_RECORD')) return res.status(403).json({ error: 'Forbidden' });
+
+  if (check.details?.personnelCheckId) {
+    const { rows } = await pool.query('SELECT * FROM personnel_competency_checks WHERE id = $1', [check.details.personnelCheckId]);
+    if (rows.length > 0) return res.json(rowToCamel(rows[0]));
+  }
+
+  const variantConfig = UPGRADE_VARIANTS[check.details?.variant];
+  if (!variantConfig) return res.status(400).json({ error: 'Unknown upgrade variant' });
+
+  const { rows: crewRows } = await pool.query('SELECT user_id FROM crew_members WHERE id = $1', [check.crewMemberId]);
+  const candidateUserId = crewRows[0]?.user_id;
+  if (!candidateUserId) {
+    return res.status(400).json({ error: 'This candidate has no staff account yet - add them via the Staff tab (tick "This is an existing crew member") first.' });
+  }
+
+  const { rows } = await pool.query(
+    `INSERT INTO personnel_competency_checks (user_id, candidate_section)
+     VALUES ($1, $2) RETURNING *`,
+    [candidateUserId, PERSONNEL_AIR_COMPETENCY_SECTION[variantConfig.targetRole]],
+  );
+  const created = rowToCamel(rows[0]);
+
+  await pool.query(`UPDATE checks SET details = details || $1::jsonb WHERE id = $2`, [
+    JSON.stringify({ personnelCheckId: created.id }), req.params.id,
+  ]);
+
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'personnel_competency_checks', targetId: created.id,
+    description: `Started Personnel (Air) Competency Check for ${variantConfig.label}`,
+  });
+  res.status(201).json(created);
+});
+
 // Once an Upgrade Record is completed and passed, this updates the
 // candidate's staff role (Training Captain/Check Captain/Training or Check
 // Cabin Attendant) and seeds their Personnel (Air) Competency Check date to
@@ -498,16 +546,22 @@ router.post('/:id/apply-upgrade', async (req, res) => {
   );
   if (updatedUserRows.length === 0) return res.status(400).json({ error: 'Linked staff account not found' });
 
-  await pool.query(
-    `INSERT INTO personnel_competency_checks (user_id, candidate_section, check_date, completed_at, comments)
-     VALUES ($1, $2, $3, $3, $4)`,
-    [
-      crewUserId,
-      PERSONNEL_AIR_COMPETENCY_SECTION[variantConfig.targetRole],
-      check.completedAt,
-      `Seeded from ${variantConfig.label} completion`,
-    ],
-  );
+  // Only seed a placeholder personnel_competency_checks row when the Check
+  // tab's own SA518 assessment (POST /:id/personnel-check below) wasn't
+  // used - a completed real one already exists there and shouldn't be
+  // duplicated.
+  if (!check.details?.personnelCheckId) {
+    await pool.query(
+      `INSERT INTO personnel_competency_checks (user_id, candidate_section, check_date, completed_at, comments)
+       VALUES ($1, $2, $3, $3, $4)`,
+      [
+        crewUserId,
+        PERSONNEL_AIR_COMPETENCY_SECTION[variantConfig.targetRole],
+        check.completedAt,
+        `Seeded from ${variantConfig.label} completion`,
+      ],
+    );
+  }
 
   const { rows } = await pool.query(
     `UPDATE checks SET details = details || $1::jsonb WHERE id = $2 RETURNING *`,

@@ -18,7 +18,7 @@ const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
 // role itself (not just the section) has to be checked here).
 const SIMULATOR_TRAINING_CHECK_TYPES = ['IPC', 'PC'];
 
-const SECTION_LABELS = {
+export const SECTION_LABELS = {
   TRAINING_PILOT: '2a — Training Pilot',
   CHECK_PILOT: '2b — Check Pilot',
   TRAINING_CABIN_CREW: '3a — Training Cabin Crew',
@@ -69,6 +69,98 @@ function SectionItems({ title, items, check, disabled, onChange }) {
   );
 }
 
+// The editable body of a single Personnel (Air) Competency Check record -
+// Training/Check Type, Date, Assessor, item ticks, comments, signature.
+// Extracted so the Upgrade Record's Check tab (see UpgradeRecordForm.jsx)
+// can embed the exact same SA518 assessment the standalone Staff-profile
+// page below uses, driven purely by props/onPatch rather than owning its
+// own list of checks or save() plumbing.
+export function PersonnelCompetencyCheckEditor({ check, userName, candidateRole, assessors, disabled, onPatch }) {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    api.get('/api/check-form-items?formKey=PERSONNEL_AIR_COMPETENCY&includeArchived=true').then(setItems).catch(() => {});
+  }, []);
+
+  const trainingCheckTypes = candidateRole === 'SIMULATOR_ONLY' ? SIMULATOR_TRAINING_CHECK_TYPES : TRAINING_CHECK_TYPES;
+  const locked = disabled || !!check.completedAt;
+  const relevant = visibleCheckFormItems(relevantItems(items, check.candidateSection), check.items);
+  const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
+  const subsection = relevant.filter((i) => i.section === check.candidateSection);
+  const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
+  const allItemsAnswered = relevant.length > 0 && relevant.every((item) => check.items?.[item.id] !== undefined);
+
+  function toggleItem(item, value) {
+    const next = { ...check.items, [item.id]: check.items?.[item.id] === value ? undefined : value };
+    onPatch({ items: next });
+  }
+
+  return (
+    <div>
+      <div className="grid2">
+        <div className="field">
+          <label>Training / Check Type</label>
+          <select disabled={locked} value={check.trainingCheckType || ''} onChange={(e) => onPatch({ trainingCheckType: e.target.value || null })}>
+            <option value="">—</option>
+            {trainingCheckTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>Date</label>
+          <input type="date" disabled={locked} value={check.checkDate ? check.checkDate.slice(0, 10) : ''} onChange={(e) => onPatch({ checkDate: e.target.value })} />
+        </div>
+      </div>
+      <div className="grid2">
+        <div className="field">
+          <label>Assessor</label>
+          <select disabled={locked} value={check.assessorId || ''} onChange={(e) => onPatch({ assessorId: e.target.value || null })}>
+            <option value="">—</option>
+            {assessors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="field"><label>Candidate</label><input disabled value={userName} /></div>
+      </div>
+      <div className="field">
+        <label>Aircraft Type</label>
+        <input disabled={locked} defaultValue={check.aircraftType || ''} onBlur={(e) => onPatch({ aircraftType: e.target.value })} />
+      </div>
+
+      <SectionItems title="Section 1 — Preflight Examination" items={preflight} check={check} disabled={locked} onChange={toggleItem} />
+      <SectionItems title={SECTION_LABELS[check.candidateSection] || 'Section'} items={subsection} check={check} disabled={locked} onChange={toggleItem} />
+      <SectionItems title="Section 4 — Debrief" items={debrief} check={check} disabled={locked} onChange={toggleItem} />
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <label>Comments</label>
+        <textarea disabled={locked} rows={3} defaultValue={check.comments || ''} onBlur={(e) => onPatch({ comments: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Recommendations</label>
+        <textarea disabled={locked} rows={3} defaultValue={check.recommendations || ''} onBlur={(e) => onPatch({ recommendations: e.target.value })} />
+      </div>
+
+      {!check.completedAt && (
+        <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
+          I certify that the purpose of this assessment as specified in E.6.16 has been achieved.
+        </div>
+      )}
+      {check.assessorId ? (
+        <PinSignature
+          label="Assessor signature" personType="user" personId={check.assessorId}
+          signedName={check.certifiedSignature} signedAt={check.certifiedSignedAt}
+          disabled={locked || !allItemsAnswered}
+          onSigned={(name, at) => onPatch({ certifiedSignature: name, certifiedSignedAt: at, completedAt: name ? at : null })}
+        />
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Select an assessor above before signing.</div>
+      )}
+      {!check.completedAt && !allItemsAnswered && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+          Every item above must be ticked S or U before the check can be signed off.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PersonnelCompetencyCheckForm({ userId, userName }) {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
@@ -85,7 +177,6 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
   }, []);
 
   const candidate = staff.find((s) => s.id === userId);
-  const trainingCheckTypes = candidate?.role === 'SIMULATOR_ONLY' ? SIMULATOR_TRAINING_CHECK_TYPES : TRAINING_CHECK_TYPES;
 
   function load() {
     api.get(`/api/personnel-checks?userId=${userId}`).then(setChecks).catch((e) => setError(e.message));
@@ -111,11 +202,6 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
 
   function setLocal(id, patch) {
     setChecks((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  }
-
-  async function toggleItem(check, item, value) {
-    const next = { ...check.items, [item.id]: check.items?.[item.id] === value ? undefined : value };
-    await save(check.id, { items: next });
   }
 
   async function archiveCheck(check) {
@@ -169,13 +255,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
       )}
       {checks.map((check) => {
-        const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
-        const relevant = visibleCheckFormItems(relevantItems(items, check.candidateSection), check.items);
-        const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
-        const subsection = relevant.filter((i) => i.section === check.candidateSection);
-        const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
-        const allItemsAnswered = relevant.length > 0 && relevant.every((item) => check.items?.[item.id] !== undefined);
         const eligibleAssessors = staff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
 
         return (
@@ -199,96 +279,14 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
 
             {open && (
               <div style={{ marginTop: 8 }}>
-                <div className="grid2">
-                  <div className="field">
-                    <label>Training / Check Type</label>
-                    <select
-                      disabled={locked}
-                      value={check.trainingCheckType || ''}
-                      onChange={(e) => save(check.id, { trainingCheckType: e.target.value || null })}
-                    >
-                      <option value="">—</option>
-                      {trainingCheckTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Date</label>
-                    <input
-                      type="date" disabled={locked}
-                      value={check.checkDate ? check.checkDate.slice(0, 10) : ''}
-                      onChange={(e) => save(check.id, { checkDate: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="grid2">
-                  <div className="field">
-                    <label>Assessor</label>
-                    <select
-                      disabled={locked}
-                      value={check.assessorId || ''}
-                      onChange={(e) => save(check.id, { assessorId: e.target.value || null })}
-                    >
-                      <option value="">—</option>
-                      {eligibleAssessors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid2">
-                  <div className="field"><label>Candidate</label><input disabled value={userName} /></div>
-                  <div className="field">
-                    <label>Aircraft Type</label>
-                    <input
-                      disabled={locked}
-                      value={check.aircraftType || ''}
-                      onChange={(e) => setLocal(check.id, { aircraftType: e.target.value })}
-                      onBlur={() => save(check.id, { aircraftType: check.aircraftType })}
-                    />
-                  </div>
-                </div>
-
-                <SectionItems title="Section 1 — Preflight Examination" items={preflight} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
-                <SectionItems title={SECTION_LABELS[check.candidateSection] || 'Section'} items={subsection} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
-                <SectionItems title="Section 4 — Debrief" items={debrief} check={check} disabled={locked} onChange={(item, v) => toggleItem(check, item, v)} />
-
-                <div className="field" style={{ marginTop: 10 }}>
-                  <label>Comments</label>
-                  <textarea
-                    disabled={locked} rows={3}
-                    value={check.comments || ''}
-                    onChange={(e) => setLocal(check.id, { comments: e.target.value })}
-                    onBlur={() => save(check.id, { comments: check.comments })}
-                  />
-                </div>
-                <div className="field">
-                  <label>Recommendations</label>
-                  <textarea
-                    disabled={locked} rows={3}
-                    value={check.recommendations || ''}
-                    onChange={(e) => setLocal(check.id, { recommendations: e.target.value })}
-                    onBlur={() => save(check.id, { recommendations: check.recommendations })}
-                  />
-                </div>
-
-                {!check.completedAt && (
-                  <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
-                    I certify that the purpose of this assessment as specified in E.6.16 has been achieved.
-                  </div>
-                )}
-                {check.assessorId ? (
-                  <PinSignature
-                    label="Assessor signature" personType="user" personId={check.assessorId}
-                    signedName={check.certifiedSignature} signedAt={check.certifiedSignedAt}
-                    disabled={locked || !allItemsAnswered}
-                    onSigned={(name, at) => save(check.id, { certifiedSignature: name, certifiedSignedAt: at, completedAt: name ? at : null })}
-                  />
-                ) : (
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Select an assessor above before signing.</div>
-                )}
-                {!check.completedAt && !allItemsAnswered && (
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
-                    Every item above must be ticked S or U before the check can be signed off.
-                  </div>
-                )}
+                <PersonnelCompetencyCheckEditor
+                  check={check}
+                  userName={userName}
+                  candidateRole={candidate?.role}
+                  assessors={eligibleAssessors}
+                  disabled={!canEdit}
+                  onPatch={(patch) => save(check.id, patch)}
+                />
               </div>
             )}
           </div>

@@ -46,6 +46,19 @@ router.get('/', async (req, res) => {
   res.json(rows.map(rowToCamel));
 });
 
+// Fetch a single check by id - the Upgrade Record's Check tab only stores
+// the id (details.personnelCheckId) and needs to load that one record
+// directly, rather than the userId-scoped list GET / above.
+router.get('/:id', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM personnel_competency_checks WHERE id = $1', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  const check = rowToCamel(rows[0]);
+  if (!canAccessCompetencyChecks(req.user) && req.user.id !== check.userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json(check);
+});
+
 const createSchema = z.object({
   userId: z.string().uuid(),
 });

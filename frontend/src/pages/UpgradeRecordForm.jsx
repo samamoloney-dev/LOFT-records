@@ -8,8 +8,9 @@ import { PrintButton } from '../components/PrintButton';
 import { TabBar } from '../components/TabBar';
 import { openPrintWindow, signatureBlock, resultBadge, formTitleRow, fieldGrid, tickTable, labeledRowGroup } from '../lib/print';
 import { formatDate, formatUserRole, formatFleet } from '../lib/format';
-import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES } from '../lib/roles';
+import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES, COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { PersonnelCompetencyCheckEditor } from './PersonnelCompetencyCheckForm';
 
 // One tab per "page" of the paper upgrade package, same idea as the LOFT
 // package's own tab bar - Briefing, (Simulator, Training Captain only, see
@@ -78,10 +79,12 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // Minimum flight counts per stage, per the operator's explicit requirement
 // - shown as guidance (a running tally), not a hard gate, since real
 // candidates sometimes need more with a supervisor's sign-off.
+// The Check stage no longer logs a flight - its assessment is the real
+// Personnel (Air) Competency Check form instead (see the CHECK tab's own
+// render block further down), per the operator's explicit request.
 const FLIGHT_STAGES = [
   { key: 'OBSERVATION', label: 'Observation', min: 2 },
   { key: 'TRAINING', label: 'Training', min: 2 },
-  { key: 'CHECK', label: 'Check', min: 1 },
 ];
 
 // Verbatim wording from the operator's paper Training Captain upgrade
@@ -234,6 +237,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
   const [newForm, setNewForm] = useState({ date: '', assignedTo: '' });
   const [error, setError] = useState(null);
   const [applyNotice, setApplyNotice] = useState(null);
+  const [personnelCheck, setPersonnelCheck] = useState(null);
 
   // Always land back on Briefing when opening a (possibly different) record.
   useEffect(() => { setSubTab(UPGRADE_SUB_TABS[0].key); }, [selectedId]);
@@ -258,6 +262,13 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     if (variant !== 'TRAINING_CAPTAIN') { setAllSimulatorItems([]); return; }
     api.get('/api/check-form-items?formKey=UPGRADE_TRAINING_CAPTAIN_SIMULATOR&includeArchived=true').then(setAllSimulatorItems).catch(() => {});
   }, [variant]);
+
+  // Who's eligible to conduct the Check tab's Personnel (Air) Competency
+  // Check - a different, narrower list than UPGRADE_CHECKER_ROLES (the
+  // upgrade record's own assessor), matching the standalone SA518 form.
+  const [personnelCheckStaff, setPersonnelCheckStaff] = useState([]);
+  useEffect(() => { api.get('/api/users/roster').then(setPersonnelCheckStaff).catch(() => {}); }, []);
+  const personnelCheckAssessors = personnelCheckStaff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
 
   function load() {
     api.get(`/api/checks?checkType=UPGRADE_RECORD&archived=${archived}&crewMemberId=${crewMemberId}`)
@@ -336,6 +347,31 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     try {
       const updated = await api.patch(`/api/checks/${check.id}`, { assignedTo: staffMember?.id || null });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) { setError(err.message); }
+  }
+
+  // The Check tab's assessment is the real Personnel (Air) Competency Check
+  // form (SA518), not a flight log - loaded once the record has a linked
+  // details.personnelCheckId (see checks.js POST /:id/personnel-check).
+  useEffect(() => {
+    const personnelCheckId = selected?.details?.personnelCheckId;
+    if (!personnelCheckId) { setPersonnelCheck(null); return; }
+    api.get(`/api/personnel-checks/${personnelCheckId}`).then(setPersonnelCheck).catch(() => setPersonnelCheck(null));
+  }, [selected?.details?.personnelCheckId]);
+
+  async function startPersonnelCheck(check) {
+    setError(null);
+    try {
+      await api.post(`/api/checks/${check.id}/personnel-check`);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function savePersonnelCheck(patch) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/personnel-checks/${personnelCheck.id}`, patch);
+      setPersonnelCheck(updated);
     } catch (err) { setError(err.message); }
   }
 
@@ -423,6 +459,20 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
       }
     }
 
+    if (d.personnelCheckId && personnelCheck) {
+      body += `<div class="page-break"></div>`;
+      body += formTitleRow(`${label} (continued) — Personnel (Air) Competency Check`);
+      body += fieldGrid([
+        ['Training / Check Type', personnelCheck.trainingCheckType || ''],
+        ['Date', personnelCheck.checkDate ? formatDate(personnelCheck.checkDate) : ''],
+        ['Assessor', personnelCheck.assessorName || ''],
+        ['Status', personnelCheck.completedAt ? `Completed ${formatDate(personnelCheck.completedAt)}` : 'In progress'],
+      ]);
+      if (personnelCheck.comments) body += `<div style="padding:6px 10px;font-size:11px;"><b>Comments:</b> ${personnelCheck.comments}</div>`;
+      if (personnelCheck.recommendations) body += `<div style="padding:6px 10px;font-size:11px;"><b>Recommendations:</b> ${personnelCheck.recommendations}</div>`;
+      body += signatureBlock([['Personnel Competency Check assessor', personnelCheck.certifiedSignature]]);
+    }
+
     body += `<div class="page-break"></div>`;
     body += formTitleRow(`${label} (continued) — Recommendation`);
     body += labeledRowGroup([
@@ -441,6 +491,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     const locked = !!selected.completedAt;
     const briefingItems = visibleCheckFormItems(allBriefingItems, items);
     const allBriefingAnswered = briefingItems.length > 0 && briefingItems.every((item) => !!items[item.id]?.tick);
+    const personnelCheckComplete = !!personnelCheck?.completedAt;
     const simulatorItems = visibleCheckFormItems(allSimulatorItems, simItems);
     const simulatorBySection = simulatorItems.reduce((acc, item) => {
       (acc[item.section || 'General Handling'] ||= []).push(item);
@@ -504,7 +555,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           </div>
         )}
 
-        {['OBSERVATION', 'TRAINING', 'CHECK'].includes(subTab) && (() => {
+        {['OBSERVATION', 'TRAINING'].includes(subTab) && (() => {
           const stage = FLIGHT_STAGES.find((s) => s.key === subTab);
           const rows = flights.filter((f) => f.stage === stage.key);
           return (
@@ -543,6 +594,30 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
         {subTab === 'CHECK' && (
           <>
             <div className="card">
+              <div style={{ fontWeight: 500, marginBottom: 8 }}>Flight Standards Personnel (Air) Competency Check</div>
+              {!d.personnelCheckId ? (
+                crewIsLinked ? (
+                  !locked && <button type="button" onClick={() => startPersonnelCheck(selected)}>Start Personnel (Air) Competency Check</button>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--text-warning)' }}>
+                    {crewMemberName} doesn't have a staff account yet - add them via the Staff tab (tick "This is an existing crew member") first.
+                  </div>
+                )
+              ) : personnelCheck ? (
+                <PersonnelCompetencyCheckEditor
+                  check={personnelCheck}
+                  userName={crewMemberName}
+                  candidateRole={variantConfig.targetRole}
+                  assessors={personnelCheckAssessors}
+                  disabled={locked}
+                  onPatch={savePersonnelCheck}
+                />
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>
+              )}
+            </div>
+
+            <div className="card">
               <div className="field"><label>Assessor comments</label><textarea defaultValue={d.assessorComments} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorComments: e.target.value })} style={{ minHeight: 70 }} /></div>
               <div className="grid2">
                 {selected.assignedTo ? (
@@ -572,10 +647,15 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
                 Every briefing item on the Briefing tab must be answered before the final recommendation can be set.
               </div>
             )}
+            {!locked && allBriefingAnswered && !personnelCheckComplete && (
+              <div className="card" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                The Personnel (Air) Competency Check above must be completed and signed before the final recommendation can be set.
+              </div>
+            )}
             <div className="card">
               <div className="field">
                 <label>Final Recommendation</label>
-                <select disabled={locked || !allBriefingAnswered} value={d.recommendation || ''} onChange={(e) => setRecommendation(selected, e.target.value || '')}>
+                <select disabled={locked || !allBriefingAnswered || !personnelCheckComplete} value={d.recommendation || ''} onChange={(e) => setRecommendation(selected, e.target.value || '')}>
                   <option value="">—</option>
                   {RECOMMENDATIONS.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>

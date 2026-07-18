@@ -16,16 +16,11 @@ const NAVY_MID = '#1A5276';
 const ROW_TINT = '#D6E4F0';
 const ROW_TINT_ALT = '#F0F0F0';
 
-// Top/bottom margins are sized to fit the repeating header/footer below,
-// not just page whitespace - a plain browser print has no native "repeat
-// this on every page" for arbitrary content, but a position:fixed element
-// IS re-drawn at the same physical spot on every printed sheet (unlike
-// normal-flow content, which only appears once wherever it happens to
-// land) - so the logo/letterhead and footer live there instead of in the
-// normal document flow, and both margins have to be tall enough to hold
-// them without the first/last line of real content overlapping.
-const PAGE_MARGIN_TOP_MM = 22;
-const PAGE_MARGIN_BOTTOM_MM = 16;
+// @page margin is now just generic page-edge whitespace - the letterhead
+// and footer no longer need extra room reserved for them here (see the
+// <table>/<thead>/<tfoot> comment on openPrintWindow below for why).
+const PAGE_MARGIN_TOP_MM = 10;
+const PAGE_MARGIN_BOTTOM_MM = 10;
 const PAGE_MARGIN_SIDE_MM = 14;
 const PAGE_HEIGHT_MM = 297; // A4
 
@@ -34,20 +29,23 @@ const PRINT_STYLES = `
   * { box-sizing: border-box; }
   body { font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; color: #1a1a1a; font-size: 12px; margin: 0; padding: 0 2px; }
 
-  /* top is pulled up by the full page top-margin, not 0 - Chrome positions
-     a fixed element's containing block at the page's MARGIN box (the same
-     origin normal-flow content like #print-content and h1 use), not the
-     physical paper edge. top:0 therefore lands exactly on top of the first
-     line of real content instead of above it in the blank margin band -
-     this is what caused the letterhead/h1 and logo/ARN-box overlap seen in
-     print output. Shifting up by the margin amount puts it back in the
-     blank gutter, where its own height (~18mm) comfortably fits within the
-     ${PAGE_MARGIN_TOP_MM}mm reserved for it. */
+  /* .print-shell's <thead>/<tfoot> are what actually repeat the letterhead
+     and footer on every printed page - the browser's own native "repeat
+     table header/footer rows on each page" behaviour, not position:fixed.
+     An earlier version tried position:fixed with a computed top/bottom
+     offset to sit the letterhead/footer inside the page margin, but Chrome's
+     print engine got that pagination wrong in practice (the letterhead
+     ended up at the bottom of page 1 and the footer at the top of page 2
+     instead of repeating correctly) - thead/tfoot repeat is the standard,
+     reliable mechanism for this exact problem, so the layout uses that
+     instead of fighting fixed-position pagination quirks further. */
+  table.print-shell { width: 100%; border-collapse: collapse; }
+  .print-shell > thead > tr > td, .print-shell > tbody > tr > td, .print-shell > tfoot > tr > td { padding: 0; border: none; background: none; }
+
   .letterhead {
-    position: fixed; top: -${PAGE_MARGIN_TOP_MM}mm; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
     display: flex; justify-content: space-between; align-items: flex-start;
     font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.08em;
-    border-bottom: 3px double ${NAVY_DARK}; padding: 4mm 0 6px; margin: 0;
+    border-bottom: 3px double ${NAVY_DARK}; padding: 0 0 6px; margin: 0 0 6mm;
   }
   .letterhead b { font-size: 12px; color: #111; letter-spacing: 0.04em; }
   .letterhead img { height: 30px; display: block; margin-left: auto; }
@@ -99,21 +97,18 @@ const PRINT_STYLES = `
   .fail { background: #fbe1e1; color: #8f1d1d; }
   .page-break { break-before: page; }
 
-  /* Same fix as .letterhead above, mirrored - bottom is pulled down by the
-     full bottom margin so the footer sits in the blank gutter below the
-     content box instead of on top of its last line. */
   .print-footer {
-    position: fixed; bottom: -${PAGE_MARGIN_BOTTOM_MM}mm; left: ${PAGE_MARGIN_SIDE_MM}mm; right: ${PAGE_MARGIN_SIDE_MM}mm;
-    padding: 6px 0 4mm; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 9.5px; color: #777;
+    padding: 6px 0 0; border-top: 1px solid #ccc; margin-top: 6mm; display: flex; justify-content: space-between; font-size: 9.5px; color: #777;
   }
   /* One of these is injected per estimated page (see paginate() in
      openPrintWindow below) at the computed vertical offset for that
-     page's bottom margin band - a single position:fixed element can't
-     show different text on each printed page, so "Page X of Y" can't
-     live in .print-footer above; this is the workaround. Estimated from
-     total rendered content height, since nothing exposes real print
-     pagination to the DOM - close enough to be useful, not pixel-exact
-     on documents with a lot of break-avoided sections. */
+     page's bottom margin band - .print-footer repeats identical text on
+     every page (that's the point of putting it in <tfoot>), so "Page X of
+     Y" (which differs per page) can't live there; this absolutely
+     positioned overlay is the workaround. Estimated from total rendered
+     content height plus the measured header/footer height, since nothing
+     exposes real print pagination to the DOM - close enough to be useful,
+     not pixel-exact on documents with a lot of break-avoided sections. */
   .page-number { position: absolute; right: ${PAGE_MARGIN_SIDE_MM}mm; font-size: 9.5px; color: #777; }
 
   /* Below: a closer, plain black-ruled replica of the paper checklist
@@ -191,20 +186,27 @@ const PRINT_STYLES = `
 function paginate(win) {
   const content = win.document.getElementById('print-content');
   const container = win.document.getElementById('page-numbers');
+  const thead = win.document.querySelector('.print-shell thead');
+  const tfoot = win.document.querySelector('.print-shell tfoot');
   if (!content || !container) return;
   const pxPerMm = 96 / 25.4;
-  // #print-content starts at document-flow y=0 (the letterhead before it
-  // is position:fixed, so it contributes no flow height) - flow-coordinate
-  // y therefore lines up directly with "how far into the content a given
-  // page's share starts", with no top-margin offset to account for.
-  const pageContentHeightPx = (PAGE_HEIGHT_MM - PAGE_MARGIN_TOP_MM - PAGE_MARGIN_BOTTOM_MM) * pxPerMm;
+  const theadPx = thead?.offsetHeight || 0;
+  const tfootPx = tfoot?.offsetHeight || 0;
+  // thead/tfoot repeat on every physical printed page (see the .print-shell
+  // comment above), so their height comes out of every page's usable
+  // budget, not just the first/last - and #print-content's own flow
+  // position starts theadPx below the top of the (single, on-screen)
+  // continuous layout, since thead only renders once in the DOM/flow that
+  // JS can measure (the print engine duplicates it visually per page only
+  // during the print itself, invisible to script).
+  const pageContentHeightPx = (PAGE_HEIGHT_MM - PAGE_MARGIN_TOP_MM - PAGE_MARGIN_BOTTOM_MM) * pxPerMm - theadPx - tfootPx;
   const totalPages = Math.max(1, Math.ceil(content.scrollHeight / pageContentHeightPx));
   let html = '';
   for (let i = 0; i < totalPages; i++) {
     // A little above the boundary between this page's content and the
     // next, so the label lands inside this page rather than spilling
     // onto the next one.
-    const top = (i + 1) * pageContentHeightPx - 18;
+    const top = theadPx + (i + 1) * pageContentHeightPx - 18;
     html += `<div class="page-number" style="top:${top}px">Page ${i + 1} of ${totalPages}</div>`;
   }
   container.innerHTML = html;
@@ -214,12 +216,13 @@ export function openPrintWindow(title, bodyHtml) {
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return;
   // Skippers logo top-right on every printed page, per the operator's
-  // request - position:fixed (see PRINT_STYLES above) so it repeats on
-  // every physical sheet instead of appearing once wherever it lands in
-  // the document flow.
+  // request - a <thead>/<tfoot> row repeats natively on every physical
+  // sheet when a table spans multiple printed pages, which is what
+  // actually keeps the letterhead/footer in place (see the .print-shell
+  // comment in PRINT_STYLES for why this replaced position:fixed).
   const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;"><img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" /><span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
   const footer = `<div class="print-footer"><span>Flight Standards System</span><span>System-generated record</span></div>`;
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${letterhead}<div id="print-content">${bodyHtml}</div>${footer}<div id="page-numbers"></div></body></html>`);
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body><table class="print-shell"><thead><tr><td>${letterhead}</td></tr></thead><tfoot><tr><td>${footer}</td></tr></tfoot><tbody><tr><td id="print-content">${bodyHtml}</td></tr></tbody></table><div id="page-numbers"></div></body></html>`);
   win.document.close();
   const doPrint = () => {
     try { paginate(win); } catch { /* a print without page numbers is still usable */ }

@@ -72,32 +72,34 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   return (
     <div className="app-shell">
-      <div className="top-bar">
-        <span className="brand">Flight Standards System</span>
-        <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
-      </div>
-      <nav className="top-nav">
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
-        <NavLink to="/trainees">LOFT Trainees</NavLink>
-        {CREW_VISIBLE_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
-        {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks<ChecksAlertBadge /></NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
-        {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
-        {SYLLABUS_ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
-        {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
-        {user.role !== 'TRAINEE' && <NavLink to="/meeting-minutes">Meeting Minutes</NavLink>}
-      </nav>
-      {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
-      {user.role !== 'TRAINEE' && <ContentApprovalAlert />}
-      {children}
-      <div style={{ textAlign: 'center', marginTop: '2rem', paddingTop: '1rem', borderTop: '0.5px solid var(--border)' }}>
-        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <aside className="sidebar">
+        <div className="top-bar">
+          <span className="brand">Flight Standards System</span>
+          <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
+        </div>
+        <nav className="top-nav">
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
+          <NavLink to="/trainees">LOFT Trainees</NavLink>
+          {CREW_VISIBLE_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
+          {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks<ChecksAlertBadge /></NavLink>}
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
+          {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
+          {SYLLABUS_ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
+          {user.role !== 'TRAINEE' && <NavLink to="/meeting-minutes">Meeting Minutes</NavLink>}
+        </nav>
+        <div className="sidebar-footer">
           <ChangePassword />
           <button onClick={logout}>Sign out</button>
         </div>
-      </div>
+      </aside>
+      <main className="main-content">
+        {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
+        {user.role !== 'TRAINEE' && <ContentApprovalAlert />}
+        {children}
+      </main>
     </div>
   );
 }

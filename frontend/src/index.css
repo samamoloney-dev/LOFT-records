@@ -49,39 +49,40 @@ input, select, textarea {
   width: 100%;
 }
 
-.app-shell { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
-
-/* Brand + signed-in user, always on their own row so the nav links below
-   never have to compete with them for space (that competition was what
-   caused uneven wrapping - some links ending up on the brand's row, others
-   dropping to a second row). */
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding-bottom: 0.75rem;
+/* Left-hand sidebar (brand/user, main nav, sign-out) + a centred main
+   content column - the main nav used to run across the top as a row of
+   tabs; per the operator's explicit request it's now a vertical list down
+   the left side instead. Sub-tab bars within a page (.tab-bar below) are
+   unaffected - only this top-level nav moved. */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 220px; flex-shrink: 0; padding: 1.5rem 1rem;
+  border-right: 0.5px solid var(--border); display: flex; flex-direction: column;
 }
-.top-bar .brand { font-weight: 600; font-size: 21px; }
+.main-content { flex: 1; max-width: 960px; margin: 0 auto; padding: 1.5rem; min-width: 0; }
+
+.top-bar { display: flex; flex-direction: column; gap: 2px; padding-bottom: 1.25rem; }
+.top-bar .brand { font-weight: 600; font-size: 18px; line-height: 1.3; }
 .top-bar .user-label { font-size: 12px; color: var(--text-secondary); }
 
 .top-nav {
   display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 0.5px solid var(--border);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
 }
 .top-nav a {
   font-size: 13px;
   color: var(--text-secondary);
   text-decoration: none;
-  padding: 9px 14px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -0.5px;
+  padding: 9px 12px;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
 }
-.top-nav a.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
+.top-nav a.active { color: var(--text-primary); font-weight: 500; border-left-color: var(--text-primary); background: var(--bg-accent); }
 .top-nav a:hover { color: var(--text-primary); }
+
+.sidebar-footer { padding-top: 1rem; margin-top: 1rem; border-top: 0.5px solid var(--border); display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 
 /* Every sub-tab bar in the app (Checks, Crew, Crew Detail, Archive, Trainee
    Detail) shares this look, matching the top nav exactly. */

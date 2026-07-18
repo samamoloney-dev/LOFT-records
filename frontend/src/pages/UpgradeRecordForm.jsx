@@ -201,7 +201,7 @@ function FlightRow({ flight, disabled, onChange, onRemove }) {
           <label>Method</label>
           <div style={{ display: 'flex', gap: 4 }}>
             {FLIGHT_METHODS.map((m) => (
-              <button key={m.key} type="button" className={`tick-btn ${local.method === m.key ? 'active-pass' : ''}`} disabled={disabled} onClick={() => setMethod(m.key)}>{m.label}</button>
+              <button key={m.key} type="button" className={`tick-btn ${local.method === m.key ? 'active-pass' : ''}`} style={{ width: 'auto', padding: '0 12px' }} disabled={disabled} onClick={() => setMethod(m.key)}>{m.label}</button>
             ))}
           </div>
         </div>

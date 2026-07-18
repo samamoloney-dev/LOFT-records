@@ -234,10 +234,10 @@ export function GroundSchoolPanel({ trainee }) {
         {items.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No ground school items for this fleet yet.</div>
         ) : outstanding.length === 0 ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>All courses and exams complete.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>All courses, exams and endorsements complete.</div>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--text-warning)' }}>
-            {outstanding.length} course(s)/exam(s) outstanding before the simulator.
+            {outstanding.length} course(s)/exam(s)/endorsement(s) outstanding before LOFT can commence.
           </div>
         )}
       </div>

@@ -143,10 +143,19 @@ export function CurrencyOverview() {
 
   if (error) return <div className="error-text">{error}</div>;
 
+  // "Not Yet Rostered" only ever means something for items that actually
+  // need action - current/in-training rows have no rostering concept, so
+  // they're excluded here even with no planned date, rather than
+  // cluttering this filter with things that don't need booking in.
+  const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'due_soon'];
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
     .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter))
-    .filter((r) => rosteredFilter === 'all' || (rosteredFilter === 'not_rostered' ? !r.plannedDate : !!r.plannedDate));
+    .filter((r) => {
+      if (rosteredFilter === 'all') return true;
+      if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate;
+      return !!r.plannedDate;
+    });
 
   return (
     <div>

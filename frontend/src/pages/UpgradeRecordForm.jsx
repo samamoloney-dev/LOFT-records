@@ -116,7 +116,7 @@ function emptyDetails(variant) {
 }
 
 function emptyFlight(stage) {
-  return { id: crypto.randomUUID(), stage, date: '', route: '', method: '', airborneTime: '', topic: '', comments: '', areasOfImprovement: '', nextSortie: '' };
+  return { id: crypto.randomUUID(), stage, trainerId: '', trainerName: '', date: '', route: '', method: '', airborneTime: '', topic: '', comments: '', areasOfImprovement: '', nextSortie: '' };
 }
 
 // Same "tick = signed off, and stays that way" pattern as the LOFT
@@ -176,7 +176,13 @@ const FLIGHT_METHODS = [
 // visibly vanish while typing a route. Buffering locally and committing
 // on blur is the same pattern already used for the free-text boxes
 // elsewhere in this form (briefingComments, assessorComments, etc).
-function FlightRow({ flight, disabled, onChange, onRemove }) {
+// trainerOptions lets each individual flight record who actually conducted
+// it, independent of the record's one overall Assessor (who administers
+// the paperwork and signs the final recommendation) - per the operator's
+// explicit request, more than one person can do the training across a
+// single candidate's flights, so this isn't locked to the record-level
+// assignee.
+function FlightRow({ flight, disabled, trainerOptions, onChange, onRemove }) {
   const stageConfig = FLIGHT_STAGES.find((s) => s.key === flight.stage);
   const [local, setLocal] = useState(flight);
   useEffect(() => { setLocal(flight); }, [flight.id]);
@@ -188,12 +194,25 @@ function FlightRow({ flight, disabled, onChange, onRemove }) {
     setLocal(updated);
     onChange(updated);
   }
+  function setTrainer(trainerId) {
+    const trainer = trainerOptions.find((s) => s.id === trainerId);
+    const updated = { ...local, trainerId: trainer?.id || '', trainerName: trainer?.name || '' };
+    setLocal(updated);
+    onChange(updated);
+  }
 
   return (
     <div className="card" style={{ marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ fontWeight: 500, fontSize: 13 }}>{stageConfig?.label || flight.stage}</div>
         {!disabled && <button type="button" className="danger" onClick={onRemove}>Remove</button>}
+      </div>
+      <div className="field" style={{ margin: 0, marginBottom: 10 }}>
+        <label>Trainer</label>
+        <select value={local.trainerId} disabled={disabled} onChange={(e) => setTrainer(e.target.value)}>
+          <option value="">— Select —</option>
+          {trainerOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
       </div>
       <div className="grid2">
         <div className="field" style={{ margin: 0 }}><label>Date</label><input type="date" value={local.date} disabled={disabled} onChange={(e) => set('date', e.target.value)} onBlur={commit} /></div>
@@ -269,6 +288,10 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
   const [personnelCheckStaff, setPersonnelCheckStaff] = useState([]);
   useEffect(() => { api.get('/api/users/roster').then(setPersonnelCheckStaff).catch(() => {}); }, []);
   const personnelCheckAssessors = personnelCheckStaff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
+  // Same roster, reused for the per-flight Trainer picker - anyone eligible
+  // to be this record's overall Assessor is also eligible to have conducted
+  // an individual flight (same isEligibleUpgradeAssessor rule).
+  const flightTrainerOptions = personnelCheckStaff.filter((s) => isEligibleUpgradeAssessor(s, fleet));
 
   function load() {
     api.get(`/api/checks?checkType=UPGRADE_RECORD&archived=${archived}&crewMemberId=${crewMemberId}`)
@@ -420,7 +443,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     if (stage.key === 'TRAINING' && f.nextSortie) extra += `<div style="padding:6px 10px 6px;font-size:11px;"><b>Next sortie:</b> ${f.nextSortie}</div>`;
     return `<div class="form-section">
       <h2>Flight ${i + 1}${f.date ? ` — ${formatDate(f.date)}` : ''}</h2>
-      ${fieldGrid([['Route', f.route], ['Method', f.method === 'AIRCRAFT' ? 'Aircraft' : f.method === 'SIMULATOR' ? 'Simulator' : ''], ['Airborne time', f.airborneTime]])}
+      ${fieldGrid([['Trainer', f.trainerName || ''], ['Route', f.route], ['Method', f.method === 'AIRCRAFT' ? 'Aircraft' : f.method === 'SIMULATOR' ? 'Simulator' : ''], ['Airborne time', f.airborneTime]])}
       ${extra}
     </div>`;
   }
@@ -567,7 +590,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
                 </div>
                 {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No flights logged yet.</div>}
                 {rows.map((f) => (
-                  <FlightRow key={f.id} flight={f} disabled={locked} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
+                  <FlightRow key={f.id} flight={f} disabled={locked} trainerOptions={flightTrainerOptions} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
                 ))}
               </div>
               {stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2 && (
@@ -695,14 +718,22 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     );
   }
 
+  // Only one (non-archived) record is ever allowed per candidate for this
+  // variant - per the operator's explicit request, there's no "add
+  // another" once one already exists (that's what caused duplicate
+  // in-progress records for the same candidate). Archiving history doesn't
+  // reopen this - an archived record isn't reactivated by starting a new
+  // one, it just stays archived.
+  const canStartNew = !archived && canCreate && checks.length === 0;
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{archived ? `Archived ${label.toLowerCase()} records` : label}</div>
-        {!archived && canCreate && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Start upgrade record'}</button>}
+        {canStartNew && <button onClick={() => setCreating((v) => !v)}>{creating ? 'Cancel' : 'Start upgrade record'}</button>}
       </div>
 
-      {!archived && creating && (
+      {canStartNew && creating && (
         <form className="card" onSubmit={createCheck}>
           <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} /></div>
           <UpgradeAssessorPicker value={newForm.assignedTo} fleet={fleet} onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '' }))} />

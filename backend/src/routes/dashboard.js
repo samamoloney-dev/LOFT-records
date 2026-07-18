@@ -259,11 +259,14 @@ router.get('/summary', async (req, res) => {
   // item as plannedDate) - once something's booked in, it's in hand and
   // doesn't need a dashboard nudge.
   const attentionCurrencyItems = allItems.filter((i) => (
-    (i.status === 'overdue' || i.status === 'due_soon') && !i.plannedDate && !isActiveLoftTrainee(i.member)
+    (i.status === 'overdue' || i.status === 'due_soon' || i.status === 'not_completed') && !i.plannedDate && !isActiveLoftTrainee(i.member)
   ));
   const overdueAttention = attentionCurrencyItems
     .filter((i) => i.status === 'overdue')
     .sort((a, b) => (b.dueDate ? daysOverdue(b.dueDate) : Infinity) - (a.dueDate ? daysOverdue(a.dueDate) : Infinity));
+  const notCompletedAttention = attentionCurrencyItems
+    .filter((i) => i.status === 'not_completed')
+    .sort((a, b) => a.member.name.localeCompare(b.member.name));
   const dueSoonAttention = attentionCurrencyItems
     .filter((i) => i.status === 'due_soon')
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
@@ -283,7 +286,14 @@ router.get('/summary', async (req, res) => {
   // Ground school completion is only auto-detected for pilots - cabin
   // attendant trainees have no equivalent tracked syllabus stage (see
   // GroundSchoolPanel, pilot-only), so a CA's GROUND_SCHOOL clearance stays
-  // a manual add with no system nudge.
+  // a manual add with no system nudge. For pilots, "ground school complete"
+  // now includes the "Aircraft Endorsement" ground school item (see
+  // migration 0084) - the real trigger for this clearance stage is the
+  // candidate's aircraft type endorsement (simulator training and the
+  // endorsement itself, done by a third-party provider), not the in-house
+  // ground theory alone - LOFT can't commence until that's done, per the
+  // operator's correction. Ground school being 100% complete (which now
+  // requires that item too) is what actually means that's happened.
   const gsCompleteByTrainee = new Set(
     groundSchoolProgressRows.filter((r) => r.total > 0 && r.complete === r.total).map((r) => r.trainee_id),
   );
@@ -293,7 +303,7 @@ router.get('/summary', async (req, res) => {
     if (t.type === 'PILOT' && gsCompleteByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
       clearanceAlerts.push({
         key: `clearance:trainee:${t.id}:AIRCRAFT_CONVERSION`,
-        text: `${t.first_name} ${t.last_name} — ground school complete — needs Clearance Form`,
+        text: `${t.first_name} ${t.last_name} — aircraft endorsement complete — needs Clearance Form`,
         linkTo: `/trainees/${t.id}`,
       });
     }
@@ -348,6 +358,11 @@ router.get('/summary', async (req, res) => {
       text: i.dueDate
         ? `${i.member.name} — ${i.label} — overdue by ${daysOverdue(i.dueDate)} day${daysOverdue(i.dueDate) === 1 ? '' : 's'} — not yet rostered`
         : `${i.member.name} — ${i.label} — never completed — not yet rostered`,
+      linkTo: crewLinkForItem(i.member.id, i.label),
+    })),
+    ...notCompletedAttention.map((i) => ({
+      key: `currency:${i.member.id}:${i.label}`,
+      text: `${i.member.name} — ${i.label} — not yet completed — not yet rostered`,
       linkTo: crewLinkForItem(i.member.id, i.label),
     })),
     ...dueSoonAttention.map((i) => {

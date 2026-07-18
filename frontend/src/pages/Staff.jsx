@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
@@ -72,7 +73,13 @@ const UPGRADE_TABS = Object.entries(UPGRADE_VARIANTS).map(([key, cfg]) => ({ key
 // (see UpgradePicker's own fleet-scoping) - per the operator's explicit
 // request, not just admins.
 function UpgradesPanel() {
-  const [variant, setVariant] = useState(UPGRADE_TABS[0].key);
+  const [searchParams] = useSearchParams();
+  // Lets the Home Dashboard's "passed, ready to archive" alert (?variant=)
+  // land directly on the right variant tab instead of always Training Captain.
+  const requestedVariant = searchParams.get('variant');
+  const [variant, setVariant] = useState(
+    UPGRADE_TABS.some((t) => t.key === requestedVariant) ? requestedVariant : UPGRADE_TABS[0].key,
+  );
   return (
     <div>
       <TabBar tabs={UPGRADE_TABS} active={variant} onSelect={setVariant} />
@@ -87,9 +94,13 @@ function UpgradesPanel() {
 // dedicated nav slot.
 export function Staff() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const canSeeUpgrades = ADMIN_ROLES.includes(user.role) || UPGRADE_CHECKER_ROLES.includes(user.role);
   const tabs = canSeeUpgrades ? [...STAFF_TABS, { key: 'upgrades', label: 'Upgrades' }] : STAFF_TABS;
-  const [tab, setTab] = useState('fstd');
+  // Lets the Home Dashboard's "passed, ready to archive" alert (?tab=upgrades)
+  // land directly on the Upgrades tab.
+  const requestedTab = searchParams.get('tab');
+  const [tab, setTab] = useState(tabs.some((t) => t.key === requestedTab) ? requestedTab : 'fstd');
   return (
     <div>
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />

@@ -91,6 +91,7 @@ router.get('/summary', async (req, res) => {
     { rows: ctlCompletedRows },
     { rows: trainerCheckerCrewRows },
     { rows: clearanceRows },
+    { rows: passedUpgradeRows },
     recentActivity,
   ] = await Promise.all([
     // "Active" = not yet past Check to Line, i.e. still going through
@@ -221,6 +222,18 @@ router.get('/summary', async (req, res) => {
        WHERE cm.archived = false AND u.role IN ('TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER')`,
     ),
     pool.query('SELECT trainee_id, crew_member_id, stage FROM crew_clearances'),
+    // Upgrade Records completed with a PASS but not yet archived - the
+    // candidate has already been promoted (see checks.js POST
+    // /:id/apply-upgrade) and dropped out of the "In Training" count above
+    // (completed_at is set), but the record itself is still sitting open on
+    // the Upgrades tab until someone archives it. Surfaced here so that
+    // doesn't just get forgotten.
+    pool.query(
+      `SELECT c.id AS check_id, c.details, c.crew_member_id, cm.first_name, cm.last_name
+       FROM checks c
+       JOIN crew_members cm ON cm.id = c.crew_member_id
+       WHERE c.check_type = 'UPGRADE_RECORD' AND c.result = 'PASS' AND c.completed_at IS NOT NULL AND c.archived = false`,
+    ),
     getRecentActivity(15),
   ]);
 
@@ -312,8 +325,24 @@ router.get('/summary', async (req, res) => {
     }
   }
 
+  // "Passed, ready to archive" - an Upgrade Record that's already been
+  // completed with a PASS (and dropped out of the "In Training" count
+  // above, since that's gated on completed_at) but is still sitting open
+  // on the Upgrades tab. Links straight to that variant/candidate so
+  // archiving it (the existing ArchiveButton on UpgradeRecordForm) is one
+  // click away instead of having to hunt for it.
+  const upgradeReadyAlerts = passedUpgradeRows.map((r) => {
+    const variantConfig = UPGRADE_VARIANTS[r.details?.variant];
+    return {
+      key: `upgrade-ready:${r.check_id}`,
+      text: `${r.first_name} ${r.last_name} — passed ${variantConfig?.label || 'Upgrade Record'} — ready to archive`,
+      linkTo: `/staff?tab=upgrades&variant=${r.details?.variant}&crewMemberId=${r.crew_member_id}`,
+    };
+  });
+
   const needsAttention = [
     ...clearanceAlerts,
+    ...upgradeReadyAlerts,
     ...overdueAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: i.dueDate

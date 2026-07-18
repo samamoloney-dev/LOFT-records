@@ -69,7 +69,6 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1;
 }
 .top-nav a {
   font-size: 13px;

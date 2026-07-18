@@ -9,6 +9,7 @@ import { Phase4Form } from './Phase4Form';
 import { GroundSchoolPanel } from './GroundSchoolPanel';
 import { LandingAssessmentForm } from './LandingAssessmentForm';
 import { CaptainInTrainingForm } from './CaptainInTrainingForm';
+import { ClearanceTab } from './ClearanceTab';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
@@ -42,6 +43,7 @@ function pilotTabs(fleet, role) {
     { key: 'phase4', label: 'Phase 4' },
     { key: 'phase', label: 'Phase Completion' },
     { key: 'ctl', label: 'Check to Line' },
+    { key: 'clearance', label: 'Clearance' },
   ];
   if (LANDING_ASSESSMENT_FLEETS.includes(fleet)) {
     tabs.push({ key: 'landingAssessment', label: 'Landing Assessment' });
@@ -58,6 +60,7 @@ const CA_TABS = [
   { key: 'flights', label: 'Flights' },
   { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'ctl', label: 'Check to Line' },
+  { key: 'clearance', label: 'Clearance' },
 ];
 
 function approachTally(flights) {
@@ -328,6 +331,7 @@ export function TraineeDetail() {
       {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} fleet={trainee.fleet} onCompleted={load} />}
+      {tab === 'clearance' && <ClearanceTab member={{ id: trainee.id, type: trainee.type, archived: trainee.archived }} apiBase={`/api/trainees/${id}`} />}
       {tab === 'landingAssessment' && !isCabinAttendant && <LandingAssessmentForm traineeId={id} fleet={trainee.fleet} />}
       {tab === 'citPrelim' && !isCabinAttendant && trainee.role === 'CAPTAIN' && (
         <CaptainInTrainingForm variant="PRELIMINARY" traineeId={id} crewMemberName={`${trainee.firstName} ${trainee.lastName}`} fleet={trainee.fleet} crewArchived={trainee.archived} />

@@ -9,6 +9,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError } = require('../lib/fleetOrder');
+const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -843,21 +844,10 @@ router.get('/:id/clearances', blockCaManager, async (req, res) => {
   res.json(rows.map(rowToCamel));
 });
 
-const PILOT_CLEARANCE_STAGES = ['AIRCRAFT_CONVERSION', 'LINE_TRAINING', 'TRAINING_CAPTAIN', 'CHECK_CAPTAIN'];
-const CA_CLEARANCE_STAGES = ['GROUND_SCHOOL', 'LINE_TRAINING', 'CA_TRAINER', 'CA_CHECKER'];
-
 const clearanceSchema = z.object({
   stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
   details: z.record(z.any()).optional(),
 });
-
-// Signing off a clearance stage is restricted to HOTC/HOFO specifically -
-// tighter than the router-wide HOTC/HOFO/Flight Ops Admin gate above,
-// since this is the one thing on a crew profile that's meant to mirror an
-// actual FSM/HOFO signature on the paper form.
-function isClearanceSigner(user) {
-  return user.role === 'HOTC' || user.role === 'HOFO';
-}
 
 router.post('/:id/clearances', async (req, res) => {
   if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });

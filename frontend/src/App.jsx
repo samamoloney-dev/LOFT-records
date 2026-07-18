@@ -9,6 +9,7 @@ import { Trainees } from './pages/Trainees';
 import { TraineeDetail } from './pages/TraineeDetail';
 import { Archive } from './pages/Archive';
 import { Staff } from './pages/Staff';
+import { FsStaff } from './pages/FsStaff';
 import { Checks } from './pages/Checks';
 import { Crew } from './pages/Crew';
 import { CrewDetail } from './pages/CrewDetail';
@@ -84,6 +85,7 @@ function Shell({ children }) {
           {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
           {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
           {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks<ChecksAlertBadge /></NavLink>}
+          {ADMIN_ROLES.includes(user.role) && <NavLink to="/fs-staff">FS Staff</NavLink>}
           {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
           {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
           {SYLLABUS_ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
@@ -141,6 +143,7 @@ export default function App() {
                 <Route path="/syllabus" element={<ProtectedRoute roles={SYLLABUS_ADMIN_ROLES}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Staff /></ProtectedRoute>} />
+                <Route path="/fs-staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><FsStaff /></ProtectedRoute>} />
                 <Route path="/checks" element={<Checks />} />
                 <Route path="/crew" element={<ProtectedRoute roles={CREW_VISIBLE_ROLES}><Crew /></ProtectedRoute>} />
                 <Route path="/crew/:id" element={<ProtectedRoute roles={CREW_VISIBLE_ROLES}><CrewDetail /></ProtectedRoute>} />

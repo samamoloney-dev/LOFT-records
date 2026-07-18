@@ -111,21 +111,27 @@ function FleetSnapshotPanel({ data, navigate }) {
   );
 }
 
+// Onboarding LOFT trainees and candidates partway through an Upgrade
+// Record are both "in training" - unified into one list (see
+// backend/src/routes/dashboard.js traineeProgress) instead of the
+// onboarding-only list this used to be.
 function TraineeProgressPanel({ data, navigate }) {
   return (
     <div>
-      <h3 style={{ margin: '0 0 0.5rem' }}>Trainee Progress</h3>
+      <h3 style={{ margin: '0 0 0.5rem' }}>In Training</h3>
       {data.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No active trainees.</div>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nobody currently in training.</div>
       )}
       {data.map((t) => (
         <div key={t.id} className="card row" onClick={() => navigate(t.linkTo)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{t.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {formatFleet(t.fleet)} · {t.type === 'PILOT'
-                ? `Phase ${t.phase} · ${t.groundSchoolTotal ? `${t.groundSchoolComplete}/${t.groundSchoolTotal} ground school` : 'No ground school items'}`
-                : `${t.flightCount} flight${t.flightCount === 1 ? '' : 's'} · ${t.loftTotal ? `${t.loftComplete}/${t.loftTotal} LOFT sign-offs` : 'No sign-off items'}`}
+              {formatFleet(t.fleet)} · {t.isUpgrade
+                ? `${t.variantLabel} — in progress`
+                : t.type === 'PILOT'
+                  ? `Phase ${t.phase} · ${t.groundSchoolTotal ? `${t.groundSchoolComplete}/${t.groundSchoolTotal} ground school` : 'No ground school items'}`
+                  : `${t.flightCount} flight${t.flightCount === 1 ? '' : 's'} · ${t.loftTotal ? `${t.loftComplete}/${t.loftTotal} LOFT sign-offs` : 'No sign-off items'}`}
             </div>
           </div>
           {t.stalled && (
@@ -206,7 +212,8 @@ export function Dashboard() {
         <SummaryCard label="Overdue" value={summary.overdue} color="red" onClick={() => navigate('/currency?filter=overdue')} />
         <SummaryCard label="Due Soon" value={summary.dueSoon} color="amber" onClick={() => navigate('/currency?filter=due_soon')} />
         <SummaryCard label="Not Yet Completed" value={summary.notCompleted} color="gray" onClick={() => navigate('/currency?filter=not_completed')} />
-        <SummaryCard label="Active Trainees" value={summary.activeTrainees} color="blue" onClick={() => navigate('/trainees')} />
+        <SummaryCard label="Not Yet Rostered" value={summary.notYetRostered} color="gray" onClick={() => navigate('/currency?rostered=not_rostered')} />
+        <SummaryCard label="In Training" value={summary.inTraining} color="blue" onClick={() => navigate('/trainees')} />
         <SummaryCard label="Checks In Progress" value={summary.inTrainingChecks} color="blue" onClick={() => navigate('/checks')} />
         <SummaryCard label="Crew Current" value={`${summary.crewCurrentPercent}%`} color="green" onClick={() => navigate('/currency?filter=ok')} />
       </div>

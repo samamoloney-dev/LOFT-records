@@ -28,6 +28,19 @@ const STATUS_FILTERS = [
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const FLEET_FILTERS = [{ key: 'all', label: 'All fleets' }, ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) }))];
 
+// "Not yet rostered" used to just be text baked into the Home Dashboard's
+// Needs Attention rows - promoted to a real filter here so the whole
+// not-yet-booked-in backlog (not just the top few overdue/due-soon rows)
+// is browsable in one place. Only meaningful for items that actually need
+// action (overdue/due soon/not yet completed) - "Current"/"In training"
+// rows have no rostering concept, so they fall under "Rostered" by default
+// (no planned date needed) rather than cluttering "Not Yet Rostered".
+const ROSTERED_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'not_rostered', label: 'Not Yet Rostered' },
+  { key: 'rostered', label: 'Rostered' },
+];
+
 function FilterBar({ options, value, onChange }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem' }}>
@@ -109,6 +122,10 @@ export function CurrencyOverview() {
   const [fleetFilter, setFleetFilter] = useState(
     FLEET_FILTERS.some((f) => f.key === requestedFleet) ? requestedFleet : 'all',
   );
+  const requestedRostered = searchParams.get('rostered');
+  const [rosteredFilter, setRosteredFilter] = useState(
+    ROSTERED_FILTERS.some((f) => f.key === requestedRostered) ? requestedRostered : 'all',
+  );
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -128,7 +145,8 @@ export function CurrencyOverview() {
 
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
-    .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter));
+    .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter))
+    .filter((r) => rosteredFilter === 'all' || (rosteredFilter === 'not_rostered' ? !r.plannedDate : !!r.plannedDate));
 
   return (
     <div>
@@ -137,6 +155,7 @@ export function CurrencyOverview() {
       </div>
       <FilterBar options={FLEET_FILTERS} value={fleetFilter} onChange={setFleetFilter} />
       <FilterBar options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+      <FilterBar options={ROSTERED_FILTERS} value={rosteredFilter} onChange={setRosteredFilter} />
 
       {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing here.</div>}
       {filteredRows.map((r, i) => (

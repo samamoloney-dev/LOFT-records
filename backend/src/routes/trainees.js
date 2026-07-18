@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { fleetOrderError } = require('../lib/fleetOrder');
+const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const router = express.Router();
 
@@ -201,6 +202,14 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     // archive it now rather than at Check to Line completion time, so the
     // trainee stays visible/active right up until this point.
     await client.query('UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1', [trainee.id]);
+    // Any clearance stages signed while they were still a trainee (ground
+    // school/aircraft conversion, check to line) move over to the new crew
+    // record too, so its Clearance tab shows the full history rather than
+    // starting blank.
+    await client.query(
+      'UPDATE crew_clearances SET crew_member_id = $1, trainee_id = NULL WHERE trainee_id = $2',
+      [rows[0].id, trainee.id],
+    );
     await client.query('COMMIT');
     crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
   } catch (err) {
@@ -246,6 +255,65 @@ router.post('/:id/unarchive', async (req, res) => {
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'trainees', targetId: req.params.id });
   res.json(await withHours(rowToCamel(rows[0])));
+});
+
+// Clearance Form (SA 586 pilots / SA 539 cabin attendants) - a trainee
+// reaches the first stage or two of this (aircraft conversion/ground
+// school, then check to line) before they're even a crew member, so
+// entries attach to the trainee directly rather than waiting for the
+// separate "promote to crew" step. See crew.js's own /:id/clearances for
+// the crew-side equivalent, and promote-to-crew above for how ownership
+// transfers once a crew_members row exists.
+router.get('/:id/clearances', async (req, res) => {
+  const trainee = await findTrainee(req.params.id);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows } = await pool.query(
+    'SELECT * FROM crew_clearances WHERE trainee_id = $1 ORDER BY created_at ASC',
+    [trainee.id],
+  );
+  res.json(rows.map(rowToCamel));
+});
+
+const clearanceSchema = z.object({
+  stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
+  details: z.record(z.any()).optional(),
+});
+
+router.post('/:id/clearances', async (req, res) => {
+  if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
+  const trainee = await findTrainee(req.params.id);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (trainee.archived) return res.status(403).json({ error: 'This trainee is archived - unarchive them first to make changes' });
+
+  const parsed = clearanceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const allowedStages = trainee.type === 'PILOT' ? PILOT_CLEARANCE_STAGES : CA_CLEARANCE_STAGES;
+  if (!allowedStages.includes(parsed.data.stage)) return res.status(400).json({ error: 'Invalid stage for this trainee type' });
+
+  const { rows } = await pool.query(
+    `INSERT INTO crew_clearances (trainee_id, stage, details, signed_by_name, signed_by_user_id, signed_at)
+     VALUES ($1, $2, $3, $4, $5, now()) RETURNING *`,
+    [trainee.id, parsed.data.stage, JSON.stringify(parsed.data.details || {}), req.user.name, req.user.id],
+  );
+  await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_clearances', targetId: rows[0].id });
+  res.status(201).json(rowToCamel(rows[0]));
+});
+
+router.delete('/:id/clearances/:clearanceId', async (req, res) => {
+  if (!isClearanceSigner(req.user)) return res.status(403).json({ error: 'Only HOTC and HOFO can sign the clearance form' });
+  const trainee = await findTrainee(req.params.id);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (trainee.archived) return res.status(403).json({ error: 'This trainee is archived - unarchive them first to make changes' });
+  const { rows } = await pool.query(
+    'DELETE FROM crew_clearances WHERE id = $1 AND trainee_id = $2 RETURNING id',
+    [req.params.clearanceId, req.params.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'crew_clearances', targetId: req.params.clearanceId });
+  res.status(204).send();
 });
 
 module.exports = router;

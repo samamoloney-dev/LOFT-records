@@ -226,8 +226,14 @@ function ClearanceEntry({ isPilot, entry, onDelete, canSign }) {
   );
 }
 
-export function ClearanceTab({ member }) {
+// apiBase defaults to the crew-member endpoint (CrewDetail.jsx's usage) -
+// TraineeDetail.jsx passes `/api/trainees/{id}` instead, since a trainee
+// isn't a crew member yet but can still reach the first stage or two of
+// this (see backend/src/routes/trainees.js's own /:id/clearances, and
+// promote-to-crew for how ownership transfers once they are one).
+export function ClearanceTab({ member, apiBase }) {
   const { user } = useAuth();
+  const base = apiBase || `/api/crew/${member.id}`;
   // Archived crew records must be retained unaltered - no new clearance
   // stage can be signed or removed once archived.
   const canSign = canSignClearance(user) && !member.archived;
@@ -242,9 +248,9 @@ export function ClearanceTab({ member }) {
   const [details, setDetails] = useState(() => emptyDetailsFor(stages[0]));
 
   function load() {
-    api.get(`/api/crew/${member.id}/clearances`).then(setEntries).catch((e) => setError(e.message));
+    api.get(`${base}/clearances`).then(setEntries).catch((e) => setError(e.message));
   }
-  useEffect(load, [member.id]);
+  useEffect(load, [base]);
 
   function startAdding() {
     setStage(stages[0]);
@@ -261,7 +267,7 @@ export function ClearanceTab({ member }) {
     e.preventDefault();
     setError(null);
     try {
-      await api.post(`/api/crew/${member.id}/clearances`, { stage, details });
+      await api.post(`${base}/clearances`, { stage, details });
       setAdding(false);
       load();
     } catch (err) { setError(err.message); }
@@ -270,7 +276,7 @@ export function ClearanceTab({ member }) {
   async function remove(id) {
     setError(null);
     try {
-      await api.delete(`/api/crew/${member.id}/clearances/${id}`);
+      await api.delete(`${base}/clearances/${id}`);
       load();
     } catch (err) { setError(err.message); }
   }

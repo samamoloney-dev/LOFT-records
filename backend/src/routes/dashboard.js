@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../../db/pool');
 const { parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, UPGRADE_VARIANTS } = require('../middleware/roles');
 const { listCrewWithCurrency } = require('./crew');
 const { getRecentActivity } = require('../lib/activity');
 
@@ -87,6 +87,10 @@ router.get('/summary', async (req, res) => {
     { rows: groundSchoolProgressRows },
     { rows: caProgressRows },
     { rows: lastActivityRows },
+    { rows: upgradesInProgressRows },
+    { rows: ctlCompletedRows },
+    { rows: trainerCheckerCrewRows },
+    { rows: clearanceRows },
     recentActivity,
   ] = await Promise.all([
     // "Active" = not yet past Check to Line, i.e. still going through
@@ -193,6 +197,30 @@ router.get('/summary', async (req, res) => {
        ) AS last_activity
        FROM trainees t WHERE t.archived = false`,
     ),
+    // Candidates currently partway through an Upgrade Record (Training/
+    // Check Captain, Training/Check Cabin Attendant) are "in training" for
+    // their new role just as much as an onboarding LOFT trainee is for
+    // their first one - see the "In Training" unification below, which
+    // folds these into the same headline count and progress list instead
+    // of treating onboarding and upgrades as two unrelated things.
+    pool.query(
+      `SELECT c.id AS check_id, c.details, c.crew_member_id, cm.first_name, cm.last_name, cm.fleets, cm.type
+       FROM checks c
+       JOIN crew_members cm ON cm.id = c.crew_member_id
+       WHERE c.check_type = 'UPGRADE_RECORD' AND c.completed_at IS NULL AND c.archived = false AND cm.archived = false
+       ORDER BY cm.last_name ASC`,
+    ),
+    // The four "needs a Clearance Form" milestones below (ground school
+    // complete, checked to line, upgraded to trainer, upgraded to checker)
+    // each map 1:1 onto PILOT_CLEARANCE_STAGES/CA_CLEARANCE_STAGES - see
+    // the clearanceAlerts computation for how these three feed it.
+    pool.query('SELECT trainee_id, completed_at FROM check_to_line_forms WHERE completed_at IS NOT NULL'),
+    pool.query(
+      `SELECT cm.id, cm.first_name, cm.last_name, cm.type, u.role
+       FROM crew_members cm JOIN users u ON u.id = cm.user_id
+       WHERE cm.archived = false AND u.role IN ('TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER')`,
+    ),
+    pool.query('SELECT trainee_id, crew_member_id, stage FROM crew_clearances'),
     getRecentActivity(15),
   ]);
 
@@ -227,7 +255,65 @@ router.get('/summary', async (req, res) => {
     .filter((i) => i.status === 'due_soon')
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
+  // "Needs a Clearance Form" - the operator's four milestones (ground
+  // school complete, checked to line, upgraded to trainer, upgraded to
+  // checker) each map onto one of PILOT_CLEARANCE_STAGES/CA_CLEARANCE_STAGES
+  // (AIRCRAFT_CONVERSION/LINE_TRAINING/TRAINING_CAPTAIN or CA_TRAINER/
+  // CHECK_CAPTAIN or CA_CHECKER). An entry is only ever inserted already
+  // signed (see trainees.js/crew.js POST /:id/clearances), so its mere
+  // existence for a stage means "done" - no separate signed/unsigned check
+  // needed here.
+  const clearanceStageSigned = new Set(
+    clearanceRows.map((r) => `${r.trainee_id ? `trainee:${r.trainee_id}` : `crew:${r.crew_member_id}`}:${r.stage}`),
+  );
+  const ctlCompletedByTrainee = new Set(ctlCompletedRows.map((r) => r.trainee_id));
+  // Ground school completion is only auto-detected for pilots - cabin
+  // attendant trainees have no equivalent tracked syllabus stage (see
+  // GroundSchoolPanel, pilot-only), so a CA's GROUND_SCHOOL clearance stays
+  // a manual add with no system nudge.
+  const gsCompleteByTrainee = new Set(
+    groundSchoolProgressRows.filter((r) => r.total > 0 && r.complete === r.total).map((r) => r.trainee_id),
+  );
+
+  const clearanceAlerts = [];
+  for (const t of traineeRows) {
+    if (t.type === 'PILOT' && gsCompleteByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
+      clearanceAlerts.push({
+        key: `clearance:trainee:${t.id}:AIRCRAFT_CONVERSION`,
+        text: `${t.first_name} ${t.last_name} — ground school complete — needs Clearance Form`,
+        linkTo: `/trainees/${t.id}`,
+      });
+    }
+    if (ctlCompletedByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:LINE_TRAINING`)) {
+      clearanceAlerts.push({
+        key: `clearance:trainee:${t.id}:LINE_TRAINING`,
+        text: `${t.first_name} ${t.last_name} — checked to line — needs Clearance Form`,
+        linkTo: `/trainees/${t.id}`,
+      });
+    }
+  }
+  for (const cm of trainerCheckerCrewRows) {
+    const isPilot = cm.type === 'PILOT';
+    const trainerStage = isPilot ? 'TRAINING_CAPTAIN' : 'CA_TRAINER';
+    const checkerStage = isPilot ? 'CHECK_CAPTAIN' : 'CA_CHECKER';
+    if ((cm.role === 'TRAINING_CAPTAIN' || cm.role === 'CA_TRAINER') && !clearanceStageSigned.has(`crew:${cm.id}:${trainerStage}`)) {
+      clearanceAlerts.push({
+        key: `clearance:crew:${cm.id}:${trainerStage}`,
+        text: `${cm.first_name} ${cm.last_name} — upgraded to trainer — needs Clearance Form`,
+        linkTo: `/crew/${cm.id}?top=clearance`,
+      });
+    }
+    if ((cm.role === 'CC' || cm.role === 'CA_CHECKER') && !clearanceStageSigned.has(`crew:${cm.id}:${checkerStage}`)) {
+      clearanceAlerts.push({
+        key: `clearance:crew:${cm.id}:${checkerStage}`,
+        text: `${cm.first_name} ${cm.last_name} — upgraded to checker — needs Clearance Form`,
+        linkTo: `/crew/${cm.id}?top=clearance`,
+      });
+    }
+  }
+
   const needsAttention = [
+    ...clearanceAlerts,
     ...overdueAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: i.dueDate
@@ -310,12 +396,35 @@ router.get('/summary', async (req, res) => {
     };
   });
 
+  // Folded into the same "In Training" list as onboarding trainees above -
+  // a candidate partway through an Upgrade Record is just as much "in
+  // training" (for their new role) as a LOFT trainee is for their first
+  // one, and treating them as two unrelated things is exactly what the
+  // operator flagged as confusing about the old separate "Active Trainees"/
+  // "Checks In Progress" cards.
+  const upgradeProgress = upgradesInProgressRows.map((r) => ({
+    id: `upgrade:${r.check_id}`,
+    name: `${r.first_name} ${r.last_name}`,
+    fleet: parsePgArray(r.fleets)[0],
+    type: r.type,
+    isUpgrade: true,
+    variantLabel: UPGRADE_VARIANTS[r.details?.variant]?.label || 'Upgrade Record',
+    lastActivity: null,
+    stalled: false,
+    linkTo: '/staff',
+  }));
+
   res.json({
     summary: {
       overdue: overdueItems.length,
       dueSoon: dueSoonItems.length,
       notCompleted: notCompletedItems.length,
-      activeTrainees: activeTraineesRows[0].n,
+      notYetRostered: attentionCurrencyItems.length,
+      // Unifies onboarding trainees (not yet past Check to Line) with
+      // candidates partway through an Upgrade Record into one "In
+      // Training" headline count - see traineeProgress below for the
+      // matching combined list.
+      inTraining: activeTraineesRows[0].n + upgradesInProgressRows.length,
       inTrainingChecks: inTrainingChecksRows[0].n,
       crewCurrentPercent: allItems.length ? Math.round((currentCount / allItems.length) * 100) : 100,
     },
@@ -323,7 +432,7 @@ router.get('/summary', async (req, res) => {
     needsAttentionTotal: needsAttention.length,
     comingUp: comingUp.slice(0, 8),
     fleetSnapshot: fleetSnapshotFrom(members),
-    traineeProgress,
+    traineeProgress: [...traineeProgress, ...upgradeProgress],
     recentActivity,
   });
 });

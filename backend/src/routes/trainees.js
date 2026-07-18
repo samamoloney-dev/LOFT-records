@@ -257,6 +257,38 @@ router.post('/:id/unarchive', async (req, res) => {
   res.json(await withHours(rowToCamel(rows[0])));
 });
 
+// Explicit HOTC/HOFO/Flight Ops Admin-only confirmation of the pre-LOFT
+// external milestone - "Type Rating Complete" for pilots (simulator
+// training and aircraft type endorsement conducted by a third-party
+// provider), "Ground School Complete" for cabin attendants. Ticking this
+// is what actually triggers that type's first Clearance Form alert (see
+// dashboard.js's clearanceAlerts) - per the operator's explicit request.
+// Deliberately narrower than the general ADMIN_ROLES gate (which also
+// includes Alternate) - Alternate is already barred from signing the
+// Clearance Form itself (see isClearanceSigner below), so it's excluded
+// from confirming the milestone that feeds into it too.
+const READY_FOR_LOFT_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+router.post('/:id/ready-for-loft', async (req, res) => {
+  if (!READY_FOR_LOFT_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can confirm this' });
+  }
+  const trainee = await findTrainee(req.params.id);
+  if (!trainee) return res.status(404).json({ error: 'Not found' });
+  if (trainee.archived) return res.status(403).json({ error: 'This trainee is archived - unarchive them first to make changes' });
+  if (trainee.readyForLoftAt) return res.status(400).json({ error: 'Already confirmed' });
+
+  const { rows } = await pool.query(
+    `UPDATE trainees SET ready_for_loft_at = now(), ready_for_loft_by_name = $1 WHERE id = $2 RETURNING *`,
+    [req.user.name, req.params.id],
+  );
+  const updated = rowToCamel(rows[0]);
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'trainees', targetId: updated.id,
+    description: `Confirmed ${updated.type === 'PILOT' ? 'Type Rating' : 'Ground School'} complete for ${updated.firstName} ${updated.lastName}`,
+  });
+  res.json(await withHours(updated));
+});
+
 // Clearance Form (SA 586 pilots / SA 539 cabin attendants) - a trainee
 // reaches the first stage or two of this (aircraft conversion/ground
 // school, then check to line) before they're even a crew member, so

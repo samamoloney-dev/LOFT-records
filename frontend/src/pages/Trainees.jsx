@@ -16,12 +16,20 @@ const ROLES_BY_TYPE = { PILOT: ['CAPTAIN', 'FIRST_OFFICER'], CABIN_ATTENDANT: ['
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new trainee -
 // no other staff role. Mirrors backend/src/routes/trainees.js POST /.
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+// Narrower than ADMIN_ROLES - deliberately excludes Alternate, same as the
+// Clearance Form itself (see isClearanceSigner) - this confirmation is what
+// triggers that Clearance Form alert, so it's gated the same way. Mirrors
+// backend/src/routes/trainees.js's READY_FOR_LOFT_ROLES.
+const READY_FOR_LOFT_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 export function Trainees() {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
+  const canConfirmReadyForLoft = READY_FOR_LOFT_ROLES.includes(user.role);
   const [searchParams] = useSearchParams();
   const [trainees, setTrainees] = useState([]);
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [readyError, setReadyError] = useState(null);
   // Lets the Home Dashboard's "Add Trainee" quick action (?new=1) land here
   // with the form already open, instead of requiring an extra click.
   const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
@@ -63,6 +71,15 @@ export function Trainees() {
     setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null });
     setReturningToLoft(false);
     setSourceCrewMemberId('');
+  }
+
+  async function confirmReadyForLoft(traineeId) {
+    setReadyError(null);
+    try {
+      await api.post(`/api/trainees/${traineeId}/ready-for-loft`);
+      setConfirmingId(null);
+      load();
+    } catch (err) { setReadyError(err.message); }
   }
 
   async function handleCreate(e) {
@@ -149,17 +166,37 @@ export function Trainees() {
       )}
       {error && <div className="error-text">{error}</div>}
 
+      {readyError && <div className="error-text">{readyError}</div>}
       {trainees.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No trainees yet.</div>}
-      {trainees.map((t) => (
-        <div key={t.id} className="card row" onClick={() => navigate(`/trainees/${t.id}`)}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {formatFleet(t.fleet)} · {formatTraineeRole(t.role)}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
+      {trainees.map((t) => {
+        // Same real-world milestone, different label per type - "Type
+        // Rating Complete" (pilots, the third-party simulator training and
+        // aircraft type endorsement) or "Ground School Complete" (cabin
+        // attendants) - see backend/src/routes/trainees.js POST
+        // /:id/ready-for-loft. Ticking this is what triggers that
+        // trainee's first Clearance Form alert on the Home Dashboard.
+        const readyLabel = t.type === 'PILOT' ? 'Type Rating Complete' : 'Ground School Complete';
+        return (
+          <div key={t.id} className="card row" onClick={() => navigate(`/trainees/${t.id}`)}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 500 }}>{t.firstName} {t.lastName}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                {formatFleet(t.fleet)} · {formatTraineeRole(t.role)}{t.type !== 'CABIN_ATTENDANT' && ` · Phase ${t.phase} · ${t.totalHours}h total`}
+              </div>
             </div>
+            {t.readyForLoftAt ? (
+              <span style={{ fontSize: 11, color: 'var(--text-success)' }}>{readyLabel.replace('Complete', 'complete')}</span>
+            ) : canConfirmReadyForLoft && confirmingId === t.id ? (
+              <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                <button className="primary" onClick={() => confirmReadyForLoft(t.id)}>Confirm</button>
+                <button onClick={() => setConfirmingId(null)}>Cancel</button>
+              </div>
+            ) : canConfirmReadyForLoft ? (
+              <button onClick={(e) => { e.stopPropagation(); setConfirmingId(t.id); }}>{readyLabel}</button>
+            ) : null}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

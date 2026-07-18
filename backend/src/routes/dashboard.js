@@ -150,7 +150,7 @@ router.get('/summary', async (req, res) => {
        ORDER BY cc.planned_date ASC`,
     ),
     pool.query(
-      `SELECT id, first_name, last_name, type, role, fleet, phase FROM trainees
+      `SELECT id, first_name, last_name, type, role, fleet, phase, ready_for_loft_at FROM trainees
        WHERE archived = false ORDER BY last_name ASC`,
     ),
     // Ground school completion fraction (pilots) - an N/A item counts the
@@ -283,27 +283,26 @@ router.get('/summary', async (req, res) => {
     clearanceRows.map((r) => `${r.trainee_id ? `trainee:${r.trainee_id}` : `crew:${r.crew_member_id}`}:${r.stage}`),
   );
   const ctlCompletedByTrainee = new Set(ctlCompletedRows.map((r) => r.trainee_id));
-  // Ground school completion is only auto-detected for pilots - cabin
-  // attendant trainees have no equivalent tracked syllabus stage (see
-  // GroundSchoolPanel, pilot-only), so a CA's GROUND_SCHOOL clearance stays
-  // a manual add with no system nudge. For pilots, "ground school complete"
-  // now includes the "Aircraft Endorsement" ground school item (see
-  // migration 0084) - the real trigger for this clearance stage is the
-  // candidate's aircraft type endorsement (simulator training and the
-  // endorsement itself, done by a third-party provider), not the in-house
-  // ground theory alone - LOFT can't commence until that's done, per the
-  // operator's correction. Ground school being 100% complete (which now
-  // requires that item too) is what actually means that's happened.
-  const gsCompleteByTrainee = new Set(
-    groundSchoolProgressRows.filter((r) => r.total > 0 && r.complete === r.total).map((r) => r.trainee_id),
-  );
 
   const clearanceAlerts = [];
   for (const t of traineeRows) {
-    if (t.type === 'PILOT' && gsCompleteByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
+    // ready_for_loft_at is the explicit HOTC/HOFO/Flight Ops Admin-only
+    // "Type Rating Complete" (pilots) / "Ground School Complete" (cabin
+    // attendants) confirmation on the Trainees list (see trainees.js POST
+    // /:id/ready-for-loft) - per the operator's explicit request, this is
+    // what triggers the first Clearance Form milestone for both types, not
+    // an automatically-detected ground school percentage.
+    if (t.type === 'PILOT' && t.ready_for_loft_at && !clearanceStageSigned.has(`trainee:${t.id}:AIRCRAFT_CONVERSION`)) {
       clearanceAlerts.push({
         key: `clearance:trainee:${t.id}:AIRCRAFT_CONVERSION`,
-        text: `${t.first_name} ${t.last_name} — aircraft endorsement complete — needs Clearance Form`,
+        text: `${t.first_name} ${t.last_name} — type rating complete — needs Clearance Form`,
+        linkTo: `/trainees/${t.id}`,
+      });
+    }
+    if (t.type === 'CABIN_ATTENDANT' && t.ready_for_loft_at && !clearanceStageSigned.has(`trainee:${t.id}:GROUND_SCHOOL`)) {
+      clearanceAlerts.push({
+        key: `clearance:trainee:${t.id}:GROUND_SCHOOL`,
+        text: `${t.first_name} ${t.last_name} — ground school complete — needs Clearance Form`,
         linkTo: `/trainees/${t.id}`,
       });
     }

@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -29,11 +28,12 @@ const syllabiRoutes = require('./routes/syllabi');
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }));
+// Auth is a Bearer token in the Authorization header, not a cookie (see
+// middleware/auth.js) - credentials: true/cookie-parser aren't needed.
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // Default 100kb is too small for the IPC licence-photo capture (a
 // compressed base64 JPEG, see checks.js PATCH /:id/licence-photo).
 app.use(express.json({ limit: '8mb' }));
-app.use(cookieParser());
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

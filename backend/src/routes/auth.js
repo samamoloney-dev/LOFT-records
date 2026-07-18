@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
-const { requireAuth, setSessionCookie, clearSessionCookie } = require('../middleware/auth');
+const { requireAuth, issueToken } = require('../middleware/auth');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -53,13 +53,14 @@ router.post('/login', async (req, res) => {
     trainee: row.traineeId ? { id: row.traineeId } : null,
   };
 
-  setSessionCookie(res, user);
   await logAction({ userId: user.id, action: 'LOGIN', targetTable: 'users', targetId: user.id });
-  res.json({ user: serializeUser(user) });
+  res.json({ user: serializeUser(user), token: issueToken(user) });
 });
 
+// The token itself is stateless (see issueToken) - there's nothing server-side
+// to invalidate, this just logs the event. The frontend forgetting its own
+// token is what actually "logs out" the browser.
 router.post('/logout', requireAuth, async (req, res) => {
-  clearSessionCookie(res);
   await logAction({ userId: req.user.id, action: 'LOGOUT', targetTable: 'users', targetId: req.user.id });
   res.status(204).end();
 });

@@ -2,36 +2,26 @@ const jwt = require('jsonwebtoken');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 
-const COOKIE_NAME = 'loft_session';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 function issueToken(user) {
   return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '12h' });
 }
 
-// Frontend and backend live on different subdomains in deployment (e.g. two
-// separate *.onrender.com hosts), which browsers treat as cross-site. Cross-site
-// fetch/XHR only sends cookies marked SameSite=None; Secure - Lax would silently
-// drop the cookie on every request after login. Secure cookies require HTTPS
-// though, which local dev/tests don't have, so this only applies in production.
-const COOKIE_OPTIONS = process.env.NODE_ENV === 'production'
-  ? { httpOnly: true, sameSite: 'none', secure: true }
-  : { httpOnly: true, sameSite: 'lax', secure: false };
-
-function setSessionCookie(res, user) {
-  res.cookie(COOKIE_NAME, issueToken(user), {
-    ...COOKIE_OPTIONS,
-    maxAge: 12 * 60 * 60 * 1000,
-  });
-}
-
-function clearSessionCookie(res) {
-  res.clearCookie(COOKIE_NAME, COOKIE_OPTIONS);
-}
-
+// Bearer token in the Authorization header, not a cookie. Frontend and
+// backend live on two separate *.onrender.com hosts in deployment, which
+// browsers treat as cross-site - the cookie this used to be was already
+// correctly configured SameSite=None; Secure for that, but Safari's
+// Intelligent Tracking Prevention still blocked it for real iPad users,
+// since the backend host is only ever reached via background fetch calls,
+// never a top-level page visit, and ITP treats that as third-party tracking
+// regardless of the SameSite setting. A bearer token isn't a cookie at all,
+// so none of that applies - the frontend sends it explicitly on every
+// request instead of the browser deciding whether to attach it.
 async function requireAuth(req, res, next) {
   try {
-    const token = req.cookies[COOKIE_NAME];
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
     const payload = jwt.verify(token, JWT_SECRET);
@@ -60,4 +50,4 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, issueToken, setSessionCookie, clearSessionCookie, COOKIE_NAME };
+module.exports = { requireAuth, issueToken };

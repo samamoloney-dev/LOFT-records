@@ -1,10 +1,30 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+// Bearer token in localStorage, not a cookie - see backend/src/middleware/
+// auth.js for why (Safari's Intelligent Tracking Prevention blocks
+// cross-site cookies for a host that's only ever fetched in the
+// background, which broke login for real iPad users even though the
+// cookie was already correctly configured for cross-site use).
+const TOKEN_KEY = 'loft_token';
+let token = localStorage.getItem(TOKEN_KEY);
+
+function setToken(t) {
+  token = t;
+  localStorage.setItem(TOKEN_KEY, t);
+}
+
+function clearToken() {
+  token = null;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 async function request(path, { method = 'GET', body } = {}) {
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(`${API_URL}${path}`, {
     method,
-    credentials: 'include',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -24,4 +44,7 @@ export const api = {
   patch: (path, body) => request(path, { method: 'PATCH', body }),
   put: (path, body) => request(path, { method: 'PUT', body }),
   delete: (path) => request(path, { method: 'DELETE' }),
+  hasToken: () => !!token,
+  setToken,
+  clearToken,
 };

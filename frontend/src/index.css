@@ -41,7 +41,12 @@ button.primary { background: var(--text-accent); color: white; border-color: var
 button.danger { color: var(--text-danger); border-color: var(--text-danger); }
 
 input, select, textarea {
-  font: inherit;
+  font-family: inherit;
+  /* Explicit 16px, not inherited - iOS Safari auto-zooms the whole page on
+     focus if a form field's computed font-size is under 16px, which some
+     inputs would otherwise pick up by inheriting from a smaller-text
+     ancestor (e.g. a 13px helper-text wrapper). */
+  font-size: 16px;
   padding: 8px 10px;
   border-radius: 8px;
   border: 0.5px solid var(--border-strong);

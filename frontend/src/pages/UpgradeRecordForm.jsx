@@ -51,6 +51,21 @@ function isEligibleUpgradeAssessor(staffMember, fleet) {
   return !fleet || (staffMember.fleets || []).includes(fleet);
 }
 
+// Training Captain Upgrade Observation/Training flights specifically can be
+// conducted by any Training Captain, not just the checkers/examiners who
+// administer the record overall (UPGRADE_CHECKER_ROLES, used by
+// isEligibleUpgradeAssessor above) - per the operator's explicit request. A
+// Training Captain isn't in UPGRADE_CHECKER_ROLES since they don't start or
+// administer an Upgrade Record themselves, but they're exactly who most of
+// these observation flights are actually flown with in practice.
+const TRAINING_CAPTAIN_OBSERVATION_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
+function isEligibleUpgradeObservationTrainer(staffMember, fleet, variant) {
+  if (variant !== 'TRAINING_CAPTAIN') return isEligibleUpgradeAssessor(staffMember, fleet);
+  if (ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role)) return true;
+  if (!TRAINING_CAPTAIN_OBSERVATION_ROLES.includes(staffMember.role)) return false;
+  return !fleet || (staffMember.fleets || []).includes(fleet);
+}
+
 function UpgradeAssessorPicker({ value, fleet, onAssign }) {
   const [staff, setStaff] = useState([]);
   useEffect(() => { api.get('/api/users/roster').then(setStaff).catch(() => {}); }, []);
@@ -290,8 +305,10 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
   const personnelCheckAssessors = personnelCheckStaff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
   // Same roster, reused for the per-flight Trainer picker - anyone eligible
   // to be this record's overall Assessor is also eligible to have conducted
-  // an individual flight (same isEligibleUpgradeAssessor rule).
-  const flightTrainerOptions = personnelCheckStaff.filter((s) => isEligibleUpgradeAssessor(s, fleet));
+  // an individual flight, except Training Captain Upgrade observations,
+  // which are additionally open to any Training Captain (see
+  // isEligibleUpgradeObservationTrainer above).
+  const flightTrainerOptions = personnelCheckStaff.filter((s) => isEligibleUpgradeObservationTrainer(s, fleet, variant));
 
   function load() {
     api.get(`/api/checks?checkType=UPGRADE_RECORD&archived=${archived}&crewMemberId=${crewMemberId}`)

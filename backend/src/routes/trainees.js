@@ -314,6 +314,10 @@ router.get('/:id/clearances', async (req, res) => {
 const clearanceSchema = z.object({
   stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
   details: z.record(z.any()).optional(),
+  // Lets an already-completed real-world sign-off be backdated when this
+  // trainee's history is first entered into the system, instead of every
+  // entry reading as signed "today" - optional, defaults to now().
+  signedAt: z.string().optional(),
 });
 
 router.post('/:id/clearances', async (req, res) => {
@@ -327,11 +331,15 @@ router.post('/:id/clearances', async (req, res) => {
 
   const allowedStages = trainee.type === 'PILOT' ? PILOT_CLEARANCE_STAGES : CA_CLEARANCE_STAGES;
   if (!allowedStages.includes(parsed.data.stage)) return res.status(400).json({ error: 'Invalid stage for this trainee type' });
+  const signedAt = parsed.data.signedAt ? new Date(parsed.data.signedAt) : new Date();
+  if (Number.isNaN(signedAt.getTime()) || signedAt > new Date()) {
+    return res.status(400).json({ error: 'Signed date cannot be in the future' });
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO crew_clearances (trainee_id, stage, details, signed_by_name, signed_by_user_id, signed_at)
-     VALUES ($1, $2, $3, $4, $5, now()) RETURNING *`,
-    [trainee.id, parsed.data.stage, JSON.stringify(parsed.data.details || {}), req.user.name, req.user.id],
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [trainee.id, parsed.data.stage, JSON.stringify(parsed.data.details || {}), req.user.name, req.user.id, signedAt],
   );
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'crew_clearances', targetId: rows[0].id });
   res.status(201).json(rowToCamel(rows[0]));

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
+import { PinSignature } from '../components/PinSignature';
 
 // Signing off a clearance stage mirrors an actual FSM/HOFO signature on the
 // paper form, so it's restricted tighter than the rest of this admin-only
@@ -246,6 +247,11 @@ export function ClearanceTab({ member, apiBase }) {
   const [adding, setAdding] = useState(false);
   const [stage, setStage] = useState(stages[0]);
   const [details, setDetails] = useState(() => emptyDetailsFor(stages[0]));
+  // Defaults to today, but is editable - for initial setup, a stage that
+  // genuinely already happened (before this crew member's history was
+  // entered into the system) can be backdated to when it actually occurred
+  // rather than every entry reading as signed "today".
+  const [signedAtDate, setSignedAtDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   function load() {
     api.get(`${base}/clearances`).then(setEntries).catch((e) => setError(e.message));
@@ -255,6 +261,7 @@ export function ClearanceTab({ member, apiBase }) {
   function startAdding() {
     setStage(stages[0]);
     setDetails(emptyDetailsFor(stages[0]));
+    setSignedAtDate(new Date().toISOString().slice(0, 10));
     setAdding(true);
   }
 
@@ -263,11 +270,16 @@ export function ClearanceTab({ member, apiBase }) {
     setDetails(emptyDetailsFor(next));
   }
 
-  async function save(e) {
-    e.preventDefault();
+  // The actual sign-off only happens once the signer has confirmed their
+  // own PIN (see PinSignature below) - mirrors an actual wet signature, so
+  // typing the stage details in isn't enough on its own to create the
+  // record. The timestamp PinSignature returns is just "when the PIN was
+  // entered" - signedAtDate (above) is what's actually stored as signed_at,
+  // since that's the operator-chosen (possibly backdated) date.
+  async function completeSign() {
     setError(null);
     try {
-      await api.post(`${base}/clearances`, { stage, details });
+      await api.post(`${base}/clearances`, { stage, details, signedAt: signedAtDate || undefined });
       setAdding(false);
       load();
     } catch (err) { setError(err.message); }
@@ -292,7 +304,7 @@ export function ClearanceTab({ member, apiBase }) {
       {canSign && !adding && <button onClick={startAdding}>+ Add clearance stage</button>}
 
       {adding && (
-        <form className="card" onSubmit={save}>
+        <div className="card">
           <div className="field">
             <label>Stage</label>
             <select value={stage} onChange={(e) => changeStage(e.target.value)}>
@@ -300,11 +312,16 @@ export function ClearanceTab({ member, apiBase }) {
             </select>
           </div>
           <StageFields isPilot={isPilot} stage={stage} details={details} onChange={setDetails} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button type="submit">Sign off</button>
-            <button type="button" onClick={() => setAdding(false)}>Cancel</button>
+          <div className="field">
+            <label>Signed date</label>
+            <input type="date" value={signedAtDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setSignedAtDate(e.target.value)} />
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Defaults to today - backdate this if this stage already happened and you're entering it for initial setup.
+            </div>
           </div>
-        </form>
+          <PinSignature label="Sign off" personType="user" personId={user.id} onSigned={completeSign} />
+          <button type="button" onClick={() => setAdding(false)}>Cancel</button>
+        </div>
       )}
 
       {entries.length === 0 && !adding && (

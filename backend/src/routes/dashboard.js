@@ -44,7 +44,10 @@ function fleetSnapshotFrom(members) {
     for (const fleet of m.fleets) {
       if (!stats[fleet]) continue;
       stats[fleet].total += m.allItems.length;
-      stats[fleet].current += m.allItems.filter((i) => i.status === 'ok').length;
+      // due_soon is an advance warning ahead of a real deadline, not itself
+      // a problem, so it counts toward "current" here too - matches the
+      // Crew Current headline percentage's own definition above.
+      stats[fleet].current += m.allItems.filter((i) => i.status === 'ok' || i.status === 'due_soon').length;
     }
   }
   return FLEET_VALUES.map((fleet) => ({

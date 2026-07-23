@@ -116,7 +116,7 @@ function CrewRoster({ type }) {
   const canAddCrew = user.role !== 'CA_MANAGER';
   const [searchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
-  const [sortMode, setSortMode] = useState('fleet');
+  const [sortMode, setSortMode] = useState('surname');
   const [staff, setStaff] = useState([]);
   // Lets the Home Dashboard's "Quick Add Crew Member" quick action
   // (?quickAdd=1) land here with the form already open.

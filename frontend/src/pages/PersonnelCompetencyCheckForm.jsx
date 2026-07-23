@@ -45,6 +45,21 @@ function expiryDate(checkDate) {
   return d.toISOString().slice(0, 10);
 }
 
+// Buffered locally, committed onBlur - same fix as UpgradeRecordForm's
+// FlightRow. A date input left fully controlled off the parent's value and
+// firing onChange straight into an async PATCH doesn't work: the input's
+// value prop stays bound to the (not-yet-updated) parent state while the
+// request is in flight, so typing/picking a date visibly doesn't stick
+// until the round trip completes, and multi-segment typing can easily
+// outrun it entirely.
+function DateField({ value, disabled, onCommit }) {
+  const [local, setLocal] = useState(value || '');
+  useEffect(() => { setLocal(value || ''); }, [value]);
+  return (
+    <input type="date" disabled={disabled} value={local} onChange={(e) => setLocal(e.target.value)} onBlur={() => onCommit(local)} />
+  );
+}
+
 function ItemRow({ item, value, disabled, onChange }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
@@ -106,7 +121,7 @@ export function PersonnelCompetencyCheckEditor({ check, userName, candidateRole,
         </div>
         <div className="field">
           <label>Date</label>
-          <input type="date" disabled={locked} value={check.checkDate ? check.checkDate.slice(0, 10) : ''} onChange={(e) => onPatch({ checkDate: e.target.value })} />
+          <DateField disabled={locked} value={check.checkDate ? check.checkDate.slice(0, 10) : ''} onCommit={(v) => onPatch({ checkDate: v })} />
         </div>
       </div>
       <div className="grid2">

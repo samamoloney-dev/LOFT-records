@@ -52,18 +52,21 @@ function isEligibleUpgradeAssessor(staffMember, fleet) {
 }
 
 // Training Captain Upgrade Observation/Training flights specifically can be
-// conducted by any Training Captain, not just the checkers/examiners who
-// administer the record overall (UPGRADE_CHECKER_ROLES, used by
-// isEligibleUpgradeAssessor above) - per the operator's explicit request. A
-// Training Captain isn't in UPGRADE_CHECKER_ROLES since they don't start or
-// administer an Upgrade Record themselves, but they're exactly who most of
-// these observation flights are actually flown with in practice.
+// conducted by any pilot training staff - Training Captain, Check Captain
+// or Examiner - not just the checkers/examiners who administer the record
+// overall (UPGRADE_CHECKER_ROLES, used by isEligibleUpgradeAssessor above).
+// A Training Captain isn't in UPGRADE_CHECKER_ROLES since they don't start
+// or administer an Upgrade Record themselves, but they're exactly who most
+// of these observation flights are actually flown with in practice.
+// Deliberately not fleet-scoped, unlike the general assessor picker -
+// someone observing a flight (rather than conducting the actual
+// instruction/checking of the flying task) doesn't need a type rating on
+// that aircraft, so a trainer can observe on a fleet they don't personally
+// hold, per the operator's explicit request.
 const TRAINING_CAPTAIN_OBSERVATION_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 function isEligibleUpgradeObservationTrainer(staffMember, fleet, variant) {
   if (variant !== 'TRAINING_CAPTAIN') return isEligibleUpgradeAssessor(staffMember, fleet);
-  if (ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role)) return true;
-  if (!TRAINING_CAPTAIN_OBSERVATION_ROLES.includes(staffMember.role)) return false;
-  return !fleet || (staffMember.fleets || []).includes(fleet);
+  return ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role) || TRAINING_CAPTAIN_OBSERVATION_ROLES.includes(staffMember.role);
 }
 
 function UpgradeAssessorPicker({ value, fleet, onAssign }) {

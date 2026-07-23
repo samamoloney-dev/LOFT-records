@@ -11,6 +11,20 @@ import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 const COURSE_TITLES = ['Emergency procedures', 'PMI', 'Ground school'];
 
+// Buffered locally, committed onBlur - a date input left fully controlled
+// off the parent's value and firing onChange straight into an async PATCH
+// doesn't work: the value prop stays bound to the (not-yet-updated) parent
+// state while the request is in flight, so typing/picking a date visibly
+// doesn't stick until the round trip completes. Same fix as
+// PersonnelCompetencyCheckForm's own DateField.
+function DateField({ value, disabled, onCommit }) {
+  const [local, setLocal] = useState(value || '');
+  useEffect(() => { setLocal(value || ''); }, [value]);
+  return (
+    <input type="date" disabled={disabled} value={local} onChange={(e) => setLocal(e.target.value)} onBlur={() => onCommit(local)} />
+  );
+}
+
 function ItemRow({ item, value, disabled, onChange }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
@@ -182,10 +196,10 @@ export function GroundInstructorCheckForm({ userId, userName }) {
                   </div>
                   <div className="field">
                     <label>Date</label>
-                    <input
-                      type="date" disabled={locked}
+                    <DateField
+                      disabled={locked}
                       value={check.dateOfObservation ? check.dateOfObservation.slice(0, 10) : ''}
-                      onChange={(e) => save(check.id, { dateOfObservation: e.target.value })}
+                      onCommit={(v) => save(check.id, { dateOfObservation: v })}
                     />
                   </div>
                 </div>

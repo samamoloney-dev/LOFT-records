@@ -80,7 +80,13 @@ const PRINT_STYLES = `
   td, th { padding: 6px 10px; border-bottom: 1px solid #e4e6ea; text-align: left; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
   tr:nth-child(even) td { background: ${ROW_TINT_ALT}; }
-  .label { color: ${NAVY_MID}; width: 36%; white-space: nowrap; font-weight: 600; }
+  /* No nowrap - a long section title (e.g. Meeting Minutes' "Review of
+     Checking and Training Outcomes and Feedback") forced onto one line
+     was expanding this column at the content column's expense, squeezing
+     it down to a sliver and forcing whatever long text sat opposite it
+     into a very tall, awkwardly-paginated mess. Letting a long label wrap
+     onto 2-3 lines instead keeps both columns a stable, sane width. */
+  .label { color: ${NAVY_MID}; width: 36%; font-weight: 600; }
 
   .disclaimer { font-style: italic; color: #444; margin: 14px 0; font-size: 10.5px; padding: 8px 10px; background: #fafafa; border: 1px solid #e0e0e0; border-left: 3px solid #888; border-radius: 2px; }
 
@@ -164,16 +170,24 @@ const PRINT_STYLES = `
   .labeled-row small { display: block; font-size: 8.5px; color: #555; text-transform: uppercase; letter-spacing: 0.02em; }
 
   /* Denser rendering for long item-checklist forms (e.g. IPC/PC) so they
-     fit their intended page count instead of running several pages long. */
-  .compact h1 { font-size: 15px; margin-bottom: 10px; padding-bottom: 6px; }
-  .compact .meta { font-size: 10.5px; margin-bottom: 8px; padding: 5px 8px; }
-  .compact .form-section { margin-bottom: 6px; }
+     fit their intended page count instead of running several pages long -
+     tightened further (a single straggler row/box was enough to spill onto
+     an otherwise-empty extra page) rather than leaving that up to chance. */
+  .compact h1 { font-size: 15px; margin-bottom: 8px; padding-bottom: 5px; }
+  .compact .meta { font-size: 10.5px; margin-bottom: 5px; padding: 4px 8px; }
+  .compact .form-section { margin-bottom: 5px; }
   .compact .form-section h2 { font-size: 10px; padding: 4px 8px; }
   .compact td, .compact th { padding: 3px 8px; line-height: 1.3; }
+  .compact .field-grid { margin-bottom: 5px; }
+  .compact .field-grid > div { padding: 3px 8px; }
+  .compact .check-table { margin-bottom: 5px; }
+  .compact .seat-check { margin-bottom: 0; }
+  .compact .seat-check-title { padding: 3px; }
+  .compact .seat-check-row > div { padding: 3px 8px; }
   .columns-2 { column-count: 2; column-gap: 16px; }
   .compact-section { break-inside: avoid; -webkit-column-break-inside: avoid; }
-  .compact .check-row > div, .compact .check-head { padding: 2px 5px; font-size: 9.5px; line-height: 1.25; }
-  .compact .check-subhead { padding: 2px 5px; font-size: 9.5px; }
+  .compact .check-row > div, .compact .check-head { padding: 1.5px 5px; font-size: 9.5px; line-height: 1.15; }
+  .compact .check-subhead { padding: 1.5px 5px; font-size: 9.5px; }
 `;
 
 // Estimates how many printed pages the content will span from its plain

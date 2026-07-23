@@ -155,6 +155,56 @@ function FleetAccessPicker({ value, onChange, multi, disabled, options = FLEET_V
   );
 }
 
+// A staff member's own page - their profile summary plus the actions/forms
+// that used to clutter every row of the flat list (Reset Password, Ground
+// Instructor Check, Personnel (Air) Competency Check), per the operator's
+// explicit request to move these off the list itself.
+function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
+  const showGic = isGroundInstructorCheckEligible(u);
+  const showPac = PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role);
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <button onClick={onBack}>← Back</button>
+        <button onClick={onEdit}>Edit</button>
+      </div>
+      <div className="card">
+        <div style={{ fontWeight: 500, fontSize: 16 }}>{u.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+          {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
+            ? 'Fleets: all'
+            : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+          {ADMIN_ROLES.includes(u.role)
+            ? 'Check access: all'
+            : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
+        </div>
+        {u.groundInstructorCheck && (
+          <div style={{ marginTop: 6 }}>
+            <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
+          </div>
+        )}
+        {u.personnelAirCompetency && (
+          <div style={{ marginTop: 6 }}>
+            <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
+          </div>
+        )}
+      </div>
+
+      {canResetPasswords && (
+        <div className="card">
+          <div style={{ fontWeight: 500, marginBottom: 8 }}>Password</div>
+          <ResetPasswordButton userId={u.id} userName={u.name} />
+        </div>
+      )}
+      {showGic && <GroundInstructorCheckForm userId={u.id} userName={u.name} />}
+      {showPac && <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />}
+    </div>
+  );
+}
+
 export function FsStaff() {
   const { user: currentUser } = useAuth();
   const canResetPasswords = PASSWORD_RESET_ROLES.includes(currentUser.role);
@@ -169,8 +219,7 @@ export function FsStaff() {
   const [promoting, setPromoting] = useState(false);
   const [unlinkedCrew, setUnlinkedCrew] = useState([]);
   const [promoteCrewMemberId, setPromoteCrewMemberId] = useState('');
-  const [expandedGicId, setExpandedGicId] = useState(null);
-  const [expandedPacId, setExpandedPacId] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
 
   function load() {
     api.get('/api/users').then(setUsers).catch((e) => setError(e.message));
@@ -204,6 +253,9 @@ export function FsStaff() {
       arn: user.arn || '', checkAccess: user.checkAccess || [],
     });
     setShowForm(true);
+    // Editing always happens from the list view, even when triggered from
+    // a staff member's own profile page (see StaffProfile's Edit button).
+    setSelectedUserId(null);
   }
 
   function selectCrewMemberToPromote(id) {
@@ -247,6 +299,18 @@ export function FsStaff() {
   // trainees' separate first/last name columns (see Crew.jsx's own
   // surname sort) - the last space-separated word stands in for a surname.
   const sortedUsers = [...users].sort((a, b) => staffSurname(a.name).localeCompare(staffSurname(b.name)) || a.name.localeCompare(b.name));
+
+  const selectedUser = users.find((u) => u.id === selectedUserId);
+  if (selectedUser) {
+    return (
+      <StaffProfile
+        user={selectedUser}
+        canResetPasswords={canResetPasswords}
+        onEdit={() => openEditForm(selectedUser)}
+        onBack={() => setSelectedUserId(null)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -341,81 +405,38 @@ export function FsStaff() {
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {sortedUsers.map((u) => {
-        const showGic = isGroundInstructorCheckEligible(u);
-        const showPac = PERSONNEL_AIR_COMPETENCY_ROLES.includes(u.role);
-        return (
-          <div key={u.id} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 240px' }}>
-                <div style={{ fontWeight: 500 }}>{u.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
-                    ? 'Fleets: all'
-                    : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {ADMIN_ROLES.includes(u.role)
-                    ? 'Check access: all'
-                    : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
-                </div>
-                {u.groundInstructorCheck && (
-                  <div style={{ marginTop: 6 }}>
-                    <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
-                  </div>
-                )}
-                {u.personnelAirCompetency && (
-                  <div style={{ marginTop: 6 }}>
-                    <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button onClick={() => openEditForm(u)}>Edit</button>
-                <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
-              </div>
+      {sortedUsers.map((u) => (
+        <div key={u.id} className="card row" onClick={() => setSelectedUserId(u.id)}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>{u.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{u.email} · {formatUserRole(u.role)}{u.arn ? ` · ARN ${u.arn}` : ''}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {ADMIN_ROLES.includes(u.role) && !MULTI_FLEET_ROLES.includes(u.role)
+                ? 'Fleets: all'
+                : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
             </div>
-
-            {canResetPasswords && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
-                <ResetPasswordButton userId={u.id} userName={u.name} />
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {ADMIN_ROLES.includes(u.role)
+                ? 'Check access: all'
+                : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
+            </div>
+            {u.groundInstructorCheck && (
+              <div style={{ marginTop: 6 }}>
+                <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
               </div>
             )}
-
-            {(showGic || showPac) && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
-                {showGic && (
-                  <button
-                    className={expandedGicId === u.id ? 'primary' : ''}
-                    onClick={() => setExpandedGicId((id) => (id === u.id ? null : u.id))}
-                  >
-                    {expandedGicId === u.id ? 'Close Ground Instructor Check' : 'Ground Instructor Check'}
-                  </button>
-                )}
-                {showPac && (
-                  <button
-                    className={expandedPacId === u.id ? 'primary' : ''}
-                    onClick={() => setExpandedPacId((id) => (id === u.id ? null : u.id))}
-                  >
-                    {expandedPacId === u.id ? 'Close Personnel Competency Check' : 'Personnel Competency Check'}
-                  </button>
-                )}
-              </div>
-            )}
-            {expandedGicId === u.id && (
-              <div style={{ marginTop: 10 }}>
-                <GroundInstructorCheckForm userId={u.id} userName={u.name} />
-              </div>
-            )}
-            {expandedPacId === u.id && (
-              <div style={{ marginTop: 10 }}>
-                <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />
+            {u.personnelAirCompetency && (
+              <div style={{ marginTop: 6 }}>
+                <DueBadge label="Personnel (Air) Competency Check" info={u.personnelAirCompetency} />
               </div>
             )}
           </div>
-        );
-      })}
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => openEditForm(u)}>Edit</button>
+            <button className="danger" onClick={() => remove(u.id, u.name)}>Remove</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

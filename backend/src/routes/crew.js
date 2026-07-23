@@ -445,13 +445,16 @@ const quickAddSchema = z.object({
   }
 });
 
-router.post('/', blockCaManager, async (req, res) => {
-  const parsed = quickAddSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const d = parsed.data;
-
+// Shared by the single "Quick add crew member" route below and the bulk
+// spreadsheet import - one real INSERT path so both stay in lockstep
+// instead of two copies of the same SQL drifting apart. Returns
+// { error, status? } on failure (never throws for expected failures) or
+// { member } on success, so callers can decide how to report it (a single
+// res.status(...).json(...) for the one-at-a-time route, or a per-row
+// result entry for bulk import).
+async function createCrewMemberRecord(d, req) {
   const fleetError = fleetOrderError(d.type, d.fleets);
-  if (fleetError) return res.status(400).json({ error: fleetError });
+  if (fleetError) return { error: fleetError };
 
   let rows;
   try {
@@ -476,7 +479,7 @@ router.post('/', blockCaManager, async (req, res) => {
       ],
     ));
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'That staff account is already linked to another crew profile' });
+    if (err.code === '23505') return { error: 'That staff account is already linked to another crew profile', status: 409 };
     throw err;
   }
   const member = serializeCrewMember(rows[0]);
@@ -508,7 +511,59 @@ router.post('/', blockCaManager, async (req, res) => {
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id,
     description: `Added crew member ${member.name}`,
   });
-  res.status(201).json(await withCurrency(member));
+  return { member: await withCurrency(member) };
+}
+
+router.post('/', blockCaManager, async (req, res) => {
+  const parsed = quickAddSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const result = await createCrewMemberRecord(parsed.data, req);
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.status(201).json(result.member);
+});
+
+// Bulk import from a spreadsheet (see frontend BulkImportCrew.jsx, which
+// parses the .xlsx/.csv client-side and maps its columns onto this same
+// shape) - one row at a time through the exact same creation path as the
+// single "Quick add" form above, so validation never disagrees between the
+// two. Deliberately doesn't support linking to an existing staff account or
+// auto-creating a trainee record (userId/newHire/licencePhoto) - those are
+// edge cases better handled one at a time; a spreadsheet import is for the
+// common case of seeding many already-qualified crew at once. Partial
+// success is the point - invalid rows are reported back, not one bad row
+// failing the whole batch.
+router.post('/bulk-import', blockCaManager, async (req, res) => {
+  const rowsInput = Array.isArray(req.body.rows) ? req.body.rows : null;
+  if (!rowsInput) return res.status(400).json({ error: 'rows must be an array' });
+  if (rowsInput.length === 0) return res.status(400).json({ error: 'No rows to import' });
+  if (rowsInput.length > 500) return res.status(400).json({ error: 'Maximum 500 rows per import - split into smaller batches' });
+
+  const results = [];
+  for (let i = 0; i < rowsInput.length; i++) {
+    // +2 so this matches the spreadsheet row the operator would count by
+    // eye (1-indexed, plus the header row).
+    const rowNumber = i + 2;
+    const rawRow = rowsInput[i] || {};
+    const name = `${rawRow.firstName || ''} ${rawRow.lastName || ''}`.trim() || null;
+
+    const parsed = quickAddSchema.safeParse(rawRow);
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      const message = Object.entries(fieldErrors).map(([field, msgs]) => `${field}: ${msgs.join(', ')}`).join('; ') || 'Invalid row';
+      results.push({ row: rowNumber, name, status: 'error', error: message });
+      continue;
+    }
+
+    const result = await createCrewMemberRecord(parsed.data, req);
+    if (result.error) {
+      results.push({ row: rowNumber, name, status: 'error', error: result.error });
+    } else {
+      results.push({ row: rowNumber, name: result.member.name, status: 'created', id: result.member.id });
+    }
+  }
+
+  const created = results.filter((r) => r.status === 'created').length;
+  res.json({ created, failed: results.length - created, results });
 });
 
 const updateSchema = z.object({

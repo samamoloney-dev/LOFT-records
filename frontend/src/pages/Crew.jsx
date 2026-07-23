@@ -8,6 +8,7 @@ import { compressImage } from '../lib/imageCompress';
 import { useAuth } from '../context/AuthContext';
 import { crewLinkForItem } from '../lib/checkNav';
 import { SyllabusPicker } from '../components/SyllabusPicker';
+import { BulkImportCrew } from './BulkImportCrew';
 
 const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -338,7 +339,16 @@ export function Crew() {
   const isCaManager = user.role === 'CA_MANAGER';
   const tabs = isCaManager
     ? [{ key: 'cabin-attendants', label: 'Cabin Attendants' }]
-    : [{ key: 'pilots', label: 'Pilots' }, { key: 'cabin-attendants', label: 'Cabin Attendants' }, { key: 'archived', label: 'Archived' }];
+    : [
+      { key: 'pilots', label: 'Pilots' },
+      { key: 'cabin-attendants', label: 'Cabin Attendants' },
+      { key: 'archived', label: 'Archived' },
+      // Bulk-creating crew records is the same lifecycle-admin action as
+      // "Quick add crew member" (see crew.js's blockCaManager) - CA Manager
+      // doesn't get this tab for the same reason they don't get the
+      // Pilots/Archived ones above.
+      { key: 'bulk-import', label: 'Bulk Import' },
+    ];
   const [tab, setTab] = useState(isCaManager ? 'cabin-attendants' : 'pilots');
 
   return (
@@ -347,6 +357,7 @@ export function Crew() {
       {tab === 'pilots' && <CrewRoster type="PILOT" />}
       {tab === 'cabin-attendants' && <CrewRoster type="CABIN_ATTENDANT" />}
       {tab === 'archived' && <ArchivedCrew />}
+      {tab === 'bulk-import' && <BulkImportCrew />}
     </div>
   );
 }

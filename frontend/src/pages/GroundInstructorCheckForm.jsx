@@ -8,6 +8,7 @@ import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { sortNotCompletedFirst } from '../lib/sortChecks';
 
 const COURSE_TITLES = ['Emergency procedures', 'PMI', 'Ground school'];
 
@@ -155,7 +156,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
       {checks.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
       )}
-      {checks.map((check) => {
+      {sortNotCompletedFirst(checks).map((check) => {
         const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
         const visibleItems = visibleCheckFormItems(items, check.items);

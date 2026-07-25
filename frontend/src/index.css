@@ -107,6 +107,13 @@ input, select, textarea {
   .top-nav { display: none; }
   .sidebar-footer { flex-direction: row; flex: 1 1 100%; margin-top: 0; padding-top: 0.5rem; border-top: none; width: 100%; }
   .main-content { padding: 1rem; max-width: 100%; }
+
+  /* Apple's Human Interface Guidelines call for a 44px minimum tap
+     target - buttons/selects/the S-X-N tick buttons are comfortably
+     mouse-sized on a desktop but a bit tight for a thumb on a phone. */
+  button, .mobile-nav-select, select { min-height: 44px; }
+  button { padding: 10px 16px; }
+  .tick-btn { height: 44px; }
 }
 
 /* Every sub-tab bar in the app (Checks, Crew, Crew Detail, Archive, Trainee

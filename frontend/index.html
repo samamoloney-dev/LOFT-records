@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Flight Standards System</title>
+
+    <!-- Add to Home Screen support - cabin attendants mostly open this on
+         an iPhone, so letting them add it as a real home-screen icon
+         (rather than a bookmark) skips the address-bar step every time. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Flight Standards" />
+    <meta name="theme-color" content="#2f4bd1" />
   </head>
   <body>
     <div id="root"></div>

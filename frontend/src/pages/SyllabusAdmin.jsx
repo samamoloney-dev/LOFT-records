@@ -581,7 +581,7 @@ function SyllabusItemsSection() {
               onChange={(e) => setForm({ ...form, required: e.target.checked })}
               style={{ width: 'auto' }}
             />
-            Required to complete phase
+            {fleetGroup(form.fleets[0]) === 'CA' ? 'Required' : 'Required to complete phase'}
           </label>
         </div>
         {error && <div className="error-text">{error}</div>}

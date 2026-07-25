@@ -8,6 +8,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { sortNotCompletedFirst } from '../lib/sortChecks';
 
 const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
 // A Simulator Only Examiner never trains/checks on the line - their own
@@ -269,7 +270,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
       {checks.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
       )}
-      {checks.map((check) => {
+      {sortNotCompletedFirst(checks).map((check) => {
         const open = openId === check.id;
         const eligibleAssessors = staff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
 

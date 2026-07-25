@@ -7,6 +7,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
@@ -84,7 +85,10 @@ function ItemRow({ item, value, disabled, onChange }) {
   if (item.kind === 'text') {
     return (
       <div className="field" style={{ margin: '0 0 10px' }}>
-        <label>{item.description}</label>
+        <label>
+          {item.description}
+          <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+        </label>
         <input defaultValue={value || ''} disabled={disabled} onBlur={(e) => onChange(e.target.value)} />
       </div>
     );
@@ -93,7 +97,10 @@ function ItemRow({ item, value, disabled, onChange }) {
   if (item.kind === 'score') {
     return (
       <div className="row" style={{ cursor: 'default' }}>
-        <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+        <div style={{ flex: 1, fontSize: 13 }}>
+          {item.description}
+          <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+        </div>
         <input
           type="number" min="1" max="5" style={{ width: 60 }}
           disabled={disabled} defaultValue={value ?? ''}
@@ -106,7 +113,10 @@ function ItemRow({ item, value, disabled, onChange }) {
   // Plain tick.
   return (
     <div className="row" style={{ cursor: 'default' }}>
-      <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+      <div style={{ flex: 1, fontSize: 13 }}>
+        {item.description}
+        <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <button type="button" className={`tick-btn ${value === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange(true)}>✓</button>
         <button type="button" className={`tick-btn ${value === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange(false)}>✗</button>

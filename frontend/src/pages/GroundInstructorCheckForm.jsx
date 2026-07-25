@@ -6,6 +6,7 @@ import { isGroundInstructorCheckEligible, COMPETENCY_CHECK_ASSESSOR_ROLES } from
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
@@ -29,7 +30,10 @@ function DateField({ value, disabled, onCommit }) {
 function ItemRow({ item, value, disabled, onChange }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
-      <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+      <div style={{ flex: 1, fontSize: 13 }}>
+        {item.description}
+        <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <button className={`tick-btn ${value === true ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange(value === true ? undefined : true)}>Yes</button>
         <button className={`tick-btn ${value === false ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange(value === false ? undefined : false)}>No</button>

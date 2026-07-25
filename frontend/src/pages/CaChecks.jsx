@@ -8,6 +8,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
@@ -187,7 +188,10 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
           {visibleCaItems.map((item) => (
             <div key={item.id} className="row" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+                <div style={{ flex: 1, fontSize: 13 }}>
+                  {item.description}
+                  <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+                </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {['S', 'X', 'N'].map((v) => (
                     <button

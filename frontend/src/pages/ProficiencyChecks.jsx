@@ -7,6 +7,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import {
   openPrintWindow, section, signatureBlock, resultBadge,
   formTitleRow, fieldGrid, checklistTable, seatCheckBox, labeledRowGroup,
@@ -153,12 +154,15 @@ const emptyDetails = (variant) => ({
   role: '',
 });
 
-function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
+function ItemRow({ item, result, disabled, onSetResult }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13 }}>{description}</div>
-        {mos && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>MOS {mos}</div>}
+        <div style={{ fontSize: 13 }}>
+          {item.description}
+          <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+        </div>
+        {item.mos && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>MOS {item.mos}</div>}
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {['S', 'X', 'N'].map((v) => (
@@ -166,7 +170,7 @@ function ItemRow({ id, description, mos, result, disabled, onSetResult }) {
             key={v}
             disabled={disabled}
             className={`tick-btn ${result === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
-            onClick={() => onSetResult(id, result === v ? undefined : v)}
+            onClick={() => onSetResult(item.id, result === v ? undefined : v)}
           >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N/A'}</button>
         ))}
       </div>
@@ -487,7 +491,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <div className="card">
           <div style={{ fontWeight: 500, marginBottom: 6 }}>Recurrent Training (121.50 (1B))</div>
           {recurrentItems.map((item) => (
-            <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+            <ItemRow key={item.id} item={item} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
           ))}
         </div>
 
@@ -495,7 +499,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 6 }}>Knowledge requirements (Ground Component)</div>
             {knowledgeItems.map((item) => (
-              <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+              <ItemRow key={item.id} item={item} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
             ))}
           </div>
         )}
@@ -504,7 +508,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           <div key={s.section} className="card">
             <div style={{ fontWeight: 500, marginBottom: 6 }}>{s.section} (Flight Component)</div>
             {s.allItems.map((item) => (
-              <ItemRow key={item.id} id={item.id} description={item.description} mos={item.mos} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
+              <ItemRow key={item.id} item={item} result={results[item.id]} disabled={!!selected.completedAt} onSetResult={setItemResult} />
             ))}
           </div>
         ))}

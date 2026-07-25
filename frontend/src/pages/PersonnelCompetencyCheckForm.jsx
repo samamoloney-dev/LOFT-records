@@ -5,6 +5,7 @@ import { formatDate } from '../lib/format';
 import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow, section, signatureBlock } from '../lib/print';
 import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
@@ -64,7 +65,10 @@ function DateField({ value, disabled, onCommit }) {
 function ItemRow({ item, value, disabled, onChange }) {
   return (
     <div className="row" style={{ cursor: 'default' }}>
-      <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+      <div style={{ flex: 1, fontSize: 13 }}>
+        {item.description}
+        <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <button className={`tick-btn ${value === 'S' ? 'active-pass' : ''}`} disabled={disabled} onClick={() => onChange(value === 'S' ? undefined : 'S')}>S</button>
         <button className={`tick-btn ${value === 'U' ? 'active-fail' : ''}`} disabled={disabled} onClick={() => onChange(value === 'U' ? undefined : 'U')}>U</button>

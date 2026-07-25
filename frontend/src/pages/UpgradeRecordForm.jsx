@@ -5,6 +5,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { TabBar } from '../components/TabBar';
 import { openPrintWindow, signatureBlock, resultBadge, formTitleRow, fieldGrid, tickTable, labeledRowGroup } from '../lib/print';
 import { formatDate, formatUserRole, formatFleet } from '../lib/format';
@@ -145,7 +146,7 @@ function emptyFlight(stage) {
 // checklist review is one sitting with one assessor - unlike the LOFT
 // Package's per-item trainer picker, which exists because different
 // trainers cover different items across many separate flights.
-function BriefingItemRow({ description, value, disabled, assessorId, assessorName, onSignOff }) {
+function BriefingItemRow({ description, referenceDocument, referenceDocumentName, value, disabled, assessorId, assessorName, onSignOff }) {
   const v = value || {};
   const [confirming, setConfirming] = useState(false);
   return (
@@ -157,7 +158,10 @@ function BriefingItemRow({ description, value, disabled, assessorId, assessorNam
           disabled={disabled || v.tick || !assessorId}
           onClick={() => setConfirming((c) => !c)}
         >{v.tick ? '✓' : ''}</button>
-        <div style={{ fontSize: 13, flex: 1 }}>{description}</div>
+        <div style={{ fontSize: 13, flex: 1 }}>
+          {description}
+          <ReferenceDocIcon document={referenceDocument} name={referenceDocumentName} />
+        </div>
       </div>
       {v.tick && v.signedOffByName && (
         <div style={{ fontSize: 11, color: 'var(--text-success)', marginLeft: 32 }}>
@@ -571,7 +575,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 8 }}>Briefing</div>
             {briefingItems.map((item) => (
-              <BriefingItemRow key={item.id} description={item.description} value={items[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setBriefingItem(selected, item.id)} />
+              <BriefingItemRow key={item.id} description={item.description} referenceDocument={item.referenceDocument} referenceDocumentName={item.referenceDocumentName} value={items[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setBriefingItem(selected, item.id)} />
             ))}
             <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
           </div>
@@ -584,7 +588,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
               <div key={sectionName} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{sectionName}</div>
                 {sectionItems.map((item) => (
-                  <BriefingItemRow key={item.id} description={item.description} value={simItems[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setSimulatorItem(selected, item.id)} />
+                  <BriefingItemRow key={item.id} description={item.description} referenceDocument={item.referenceDocument} referenceDocumentName={item.referenceDocumentName} value={simItems[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setSimulatorItem(selected, item.id)} />
                 ))}
               </div>
             ))}

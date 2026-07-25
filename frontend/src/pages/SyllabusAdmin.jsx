@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
 import { SyllabusPicker } from '../components/SyllabusPicker';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 import { formatFleet, formatUserRole } from '../lib/format';
 
@@ -816,7 +817,23 @@ const CTL_FLEET_TABS = [
   { key: 'METRO_23', label: 'Metro 23' },
 ];
 
-const emptyCheckFormItemForm = (formKey, fleet) => ({ formKey, fleet: fleet || '', section: '', kind: 'tick', description: '', notes: '', mos: '', ipcOnly: false });
+const emptyCheckFormItemForm = (formKey, fleet) => ({
+  formKey, fleet: fleet || '', section: '', kind: 'tick', description: '', notes: '', mos: '', ipcOnly: false,
+  referenceDocument: '', referenceDocumentName: '',
+});
+
+// Reads an arbitrary file (PDF, image - a reference document isn't
+// necessarily a photo) as a base64 data URI, same storage approach as crew
+// licence photos - unlike lib/imageCompress.js's compressImage, this
+// doesn't assume the file decodes as an <img>, so it works for a PDF too.
+function readFileAsDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file'));
+    reader.readAsDataURL(file);
+  });
+}
 
 // One item list, editable here, drives the real Emergency Procedures,
 // Proficiency Check/IPC, Cabin Attendant Line Check, pilot Line Check,
@@ -864,9 +881,21 @@ function CheckFormItemsSection() {
 
   function openEditForm(item) {
     setEditingId(item.id);
-    setForm({ formKey, fleet: item.fleet || '', section: item.section || '', kind: item.kind, description: item.description, notes: item.notes || '', mos: item.mos || '', ipcOnly: item.ipcOnly });
+    setForm({
+      formKey, fleet: item.fleet || '', section: item.section || '', kind: item.kind, description: item.description,
+      notes: item.notes || '', mos: item.mos || '', ipcOnly: item.ipcOnly,
+      referenceDocument: item.referenceDocument || '', referenceDocumentName: item.referenceDocumentName || '',
+    });
     setAddingSection(false);
     setShowForm(true);
+  }
+
+  async function attachReferenceDocument(file) {
+    if (!file) return;
+    try {
+      const dataUri = await readFileAsDataUri(file);
+      setForm((f) => ({ ...f, referenceDocument: dataUri, referenceDocumentName: file.name }));
+    } catch (err) { setError(err.message); }
   }
 
   async function handleSubmit(e) {
@@ -877,6 +906,7 @@ function CheckFormItemsSection() {
         fleet: form.fleet || null, section: form.section || null, kind: form.kind,
         description: form.description, notes: form.notes || null, mos: form.mos || null, ipcOnly: form.ipcOnly,
         syllabusId: viewSyllabusId,
+        referenceDocument: form.referenceDocument || null, referenceDocumentName: form.referenceDocumentName || null,
       };
       if (editingId) {
         await api.patch(`/api/check-form-items/${editingId}`, payload);
@@ -1008,6 +1038,16 @@ function CheckFormItemsSection() {
               </label>
             </div>
           )}
+          <div className="field">
+            <label>Reference document (optional - PDF or image, shown as a small icon next to this item on the real check form)</label>
+            {form.referenceDocumentName && (
+              <div style={{ fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {form.referenceDocumentName}
+                <button type="button" onClick={() => setForm({ ...form, referenceDocument: '', referenceDocumentName: '' })}>Remove</button>
+              </div>
+            )}
+            <input type="file" accept="application/pdf,image/*" onChange={(e) => attachReferenceDocument(e.target.files[0])} />
+          </div>
           <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
         </form>
       )}
@@ -1020,7 +1060,10 @@ function CheckFormItemsSection() {
           {sectionItems.map((item) => (
             <div key={item.id} className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1, opacity: item.archived ? 0.6 : 1 }}>
-                <div style={{ fontSize: 13 }}>{item.description}{item.archived ? ' (archived)' : ''}</div>
+                <div style={{ fontSize: 13 }}>
+                  {item.description}{item.archived ? ' (archived)' : ''}
+                  <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+                </div>
                 {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
                   {item.mos ? `MOS ${item.mos}` : ''}{item.ipcOnly ? ' · IPC only' : ''}

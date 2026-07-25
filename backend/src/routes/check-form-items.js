@@ -71,6 +71,12 @@ const createSchema = z.object({
   mos: z.string().nullable().optional(),
   ipcOnly: z.boolean().optional(),
   syllabusId: z.string().uuid().nullable().optional(),
+  // A real attached file (SOP excerpt, diagram) rather than free-text notes
+  // - see 0088 migration. Stored as a base64 data URI, same as crew licence
+  // photos - referenceDocumentName is just the original filename, shown
+  // as the icon's tooltip/download name.
+  referenceDocument: z.string().nullable().optional(),
+  referenceDocumentName: z.string().nullable().optional(),
 });
 
 router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
@@ -83,9 +89,12 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
     [d.formKey, d.fleet || null],
   );
   const { rows } = await pool.query(
-    `INSERT INTO check_form_items (form_key, fleet, section, kind, description, notes, mos, ipc_only, sort_order, syllabus_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-    [d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null, d.ipcOnly || false, maxRows[0].next, d.syllabusId || null],
+    `INSERT INTO check_form_items (form_key, fleet, section, kind, description, notes, mos, ipc_only, sort_order, syllabus_id, reference_document, reference_document_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+    [
+      d.formKey, d.fleet || null, d.section || null, d.kind || 'tick', d.description, d.notes || null, d.mos || null,
+      d.ipcOnly || false, maxRows[0].next, d.syllabusId || null, d.referenceDocument || null, d.referenceDocumentName || null,
+    ],
   );
   const item = rowToCamel(rows[0]);
   await logAction({
@@ -105,11 +114,13 @@ const updateSchema = z.object({
   ipcOnly: z.boolean().optional(),
   archived: z.boolean().optional(),
   syllabusId: z.string().uuid().nullable().optional(),
+  referenceDocument: z.string().nullable().optional(),
+  referenceDocumentName: z.string().nullable().optional(),
 });
 const COLUMN_MAP = {
   fleet: 'fleet', section: 'section', kind: 'kind', description: 'description',
   notes: 'notes', mos: 'mos', ipcOnly: 'ipc_only', archived: 'archived',
-  syllabusId: 'syllabus_id',
+  syllabusId: 'syllabus_id', referenceDocument: 'reference_document', referenceDocumentName: 'reference_document_name',
 };
 
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {

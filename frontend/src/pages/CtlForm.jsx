@@ -6,6 +6,7 @@ import { AssignedToPicker } from '../components/AssignedToPicker';
 import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
+import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 
@@ -281,7 +282,10 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
                     if (item.kind === 'text') {
                       return (
                         <div key={key} className="field" style={{ margin: '0 0 10px' }}>
-                          <label>{item.description}</label>
+                          <label>
+                            {item.description}
+                            <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+                          </label>
                           <input
                             defaultValue={status || ''}
                             disabled={locked}
@@ -294,7 +298,10 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
                     return (
                       <div key={key} className="row" style={{ cursor: 'default' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13 }}>{item.description}</div>
+                          <div style={{ fontSize: 13 }}>
+                            {item.description}
+                            <ReferenceDocIcon document={item.referenceDocument} name={item.referenceDocumentName} />
+                          </div>
                           {item.notes && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{item.notes}</div>}
                         </div>
                         <div style={{ display: 'flex', gap: 4 }}>

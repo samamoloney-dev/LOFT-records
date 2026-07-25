@@ -264,7 +264,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
   function printCheck(check) {
     const d = check.details || {};
     const items = d.items || {};
-    let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date || ''}</div>`;
+    let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
     for (const s of sections) {
       body += section(s.title, s.items.map((desc) => {
         const v = items[desc] || {};

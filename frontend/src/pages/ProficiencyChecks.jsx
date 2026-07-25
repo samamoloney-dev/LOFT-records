@@ -394,7 +394,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       <div class="compact">
         ${formTitleRow(title, d.applicantArn || d.arn)}
         ${fieldGrid([
-          ["Candidate's Name", d.name], ['Date', d.date],
+          ["Candidate's Name", d.name], ['Date', d.date ? formatDate(d.date) : ''],
           ['Assessor(s)', d.assessor], ['Aircraft Type', d.actype],
         ])}
         ${checklistTable(recurrentRows, { withItemNo: false })}
@@ -418,7 +418,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         {
           label: 'FSTD',
           cells: [
-            { label: 'Date', value: d.date },
+            { label: 'Date', value: d.date ? formatDate(d.date) : '' },
             { label: 'FSTD number', value: d.fstdNumber },
             { label: 'FSTD type', value: d.fstdType },
             { label: 'Ground time', value: d.groundTime },
@@ -478,7 +478,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — {VARIANT_LABELS[d.variant]}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'} · Assessor: {d.assessor || '—'}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'} · Assessor: {d.assessor || '—'}</div>
         </div>
 
         <div className="card">

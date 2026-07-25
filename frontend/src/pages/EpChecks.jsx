@@ -135,7 +135,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     const itemRows = visibleCheckFormItems(epItems, d.items).map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N (Not Tested)' : '']);
     const html = `
       <h1>Emergency Procedures Check</h1>
-      <div class="meta">${d.name || ''} · ${d.date || ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
+      <div class="meta">${d.name || ''} · ${d.date ? formatDate(d.date) : ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
       ${section('Details', [
         ['Aircraft type', d.actype],
         ['Assessor', d.assessor],
@@ -184,7 +184,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {d.actype || 'No aircraft type'} · {d.date || 'No date'} · {(d.types || []).join(', ') || 'No type selected'}
+            {d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'} · {(d.types || []).join(', ') || 'No type selected'}
           </div>
         </div>
 

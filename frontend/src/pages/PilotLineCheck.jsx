@@ -262,7 +262,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
     let body = `
       <h1>Line Check</h1>
-      <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
+      <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
       ${section('General', [[REFRESHER_ITEM_NAME, isCurrent ? '✓ Current' : 'Not current']])}
     `;
     for (const [sectionName, sectionItems] of sections) {

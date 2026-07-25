@@ -177,12 +177,12 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     } else {
       body += section('Sectors 1 & 2', [
         ['Route', form.sectorDetails?.sectors12?.route], ['Aircraft', form.sectorDetails?.sectors12?.aircraft],
-        ['Date', form.sectorDetails?.sectors12?.date], ['Flight time (this flight)', form.sectorDetails?.sectors12?.thisFlight],
+        ['Date', form.sectorDetails?.sectors12?.date ? formatDate(form.sectorDetails.sectors12.date) : ''], ['Flight time (this flight)', form.sectorDetails?.sectors12?.thisFlight],
         ['Progressive total', form.sectorDetails?.sectors12?.progressiveTotal],
       ]);
       body += section('Sectors 3 & 4', [
         ['Route', form.sectorDetails?.sectors34?.route], ['Aircraft', form.sectorDetails?.sectors34?.aircraft],
-        ['Date', form.sectorDetails?.sectors34?.date], ['Flight time (this flight)', form.sectorDetails?.sectors34?.thisFlight],
+        ['Date', form.sectorDetails?.sectors34?.date ? formatDate(form.sectorDetails.sectors34.date) : ''], ['Flight time (this flight)', form.sectorDetails?.sectors34?.thisFlight],
         ['Total LOFT', form.sectorDetails?.sectors34?.progressiveTotal],
       ]);
       for (const [category, items] of grouped.entries()) {

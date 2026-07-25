@@ -188,11 +188,11 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
     let body = '<h1>Initial Take-Off & Landing Assessment</h1>';
     body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
     padded(form.observationSectors, OBSERVATION_COUNT).forEach((s, i) => {
-      body += section(`Observation - Sector ${i + 1}`, [['Date', s.date], ['Route', s.route]]);
+      body += section(`Observation - Sector ${i + 1}`, [['Date', s.date ? formatDate(s.date) : ''], ['Route', s.route]]);
     });
     padded(form.demonstrationSectors, DEMONSTRATION_COUNT).forEach((s, i) => {
       body += section(`Demonstration - Flight ${i + 1}`, [
-        ['Date', s.date], ['Airport', s.airport], ['Rwy', s.rwy], ['Wind', s.wind],
+        ['Date', s.date ? formatDate(s.date) : ''], ['Airport', s.airport], ['Rwy', s.rwy], ['Wind', s.wind],
         ['Take-Off', s.takeOff === 'X' ? 'Take over required' : s.takeOff === 'S' ? 'Satisfactory' : ''],
         ['Land', s.land === 'X' ? 'Take over required' : s.land === 'S' ? 'Satisfactory' : ''],
         ['Competent', s.competent === 'YES' ? 'Yes' : s.competent === 'NO' ? 'No' : ''],

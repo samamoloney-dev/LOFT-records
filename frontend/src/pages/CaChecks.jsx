@@ -132,7 +132,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     const ntsRows = visibleNtsMarkers.map((m) => [m.description, `Score ${d.nts?.[`score-${m.id}`] || '—'} · Code ${d.nts?.[`code-${m.id}`] || '—'}`]);
     const html = `
       <h1>Cabin Attendant Line Check (SA 540)</h1>
-      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date || ''}</div>
+      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
       ${section('Details', [
         ['Assessor', d.assessor],
         ['Assessor ARN', d.assessorArn],
@@ -173,7 +173,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         </div>
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Cabin Attendant Line Check</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date || 'No date'}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
         <div className="card">

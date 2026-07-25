@@ -45,7 +45,7 @@ export function ArchivedFlights({ traineeType }) {
       <div class="disclaimer">We, the undersigned, do hereby mutually agree upon and accept the comment written in this document as being a correct and honest account of the performance of the Applicant in each and every procedure carried out.</div>
       ${signatureBlock([['Assessor signature', f.assessorSignature], ['Candidate signature', f.candidateSignature]])}
     `;
-    openPrintWindow(`LOFT Flight - ${f.firstName} ${f.lastName} - ${f.date}`, html);
+    openPrintWindow(`LOFT Flight - ${f.firstName} ${f.lastName} - ${formatDate(f.date)}`, html);
   }
 
   const byTrainee = new Map();

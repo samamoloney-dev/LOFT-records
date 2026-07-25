@@ -373,7 +373,7 @@ export function TraineeDetail() {
               {trainee.archived && <span className="badge warn" style={{ marginLeft: 8 }}>Archived</span>}
             </div>
           </div>
-          {ADMIN_ROLES.includes(user.role) && ctlCompleted && !promoted && (
+          {ADMIN_ROLES.includes(user.role) && ctlCompleted && !promoted && !trainee.archived && (
             <button onClick={addToCrewRoster} disabled={promoting}>{promoting ? 'Adding…' : 'Add to Crew roster'}</button>
           )}
         </div>

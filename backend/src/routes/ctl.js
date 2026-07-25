@@ -193,6 +193,25 @@ router.post('/:traineeId/complete', async (req, res) => {
     userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: trainee.id,
     description: `Completed Check to Line for ${trainee.firstName} ${trainee.lastName}`,
   });
+
+  // A new-hire trainee (see trainees.js POST / newHire handling) already
+  // has a linked crew profile from day one, so there's no separate
+  // "promote to crew" step coming for them - do here what that step would
+  // otherwise do: start their Line Check anniversary from this completion
+  // date (pilots only - that's what line_check_anchor_date drives), and
+  // archive the now-redundant trainee record.
+  if (trainee.type === 'PILOT') {
+    const { rows: linkedCrew } = await pool.query('SELECT id FROM crew_members WHERE trainee_id = $1', [trainee.id]);
+    if (linkedCrew.length > 0) {
+      await pool.query('UPDATE crew_members SET line_check_anchor_date = now() WHERE id = $1', [linkedCrew[0].id]);
+      await pool.query('UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1', [trainee.id]);
+      await logAction({
+        userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: linkedCrew[0].id,
+        description: `Started Line Check anniversary for ${trainee.firstName} ${trainee.lastName} from Check to Line completion`,
+      });
+    }
+  }
+
   res.json(rowToCamel(updatedRows[0]));
 });
 

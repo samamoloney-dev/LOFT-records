@@ -273,6 +273,23 @@ function withRefresherDefaultDue(member, name, dueDate) {
   return dueDate;
 }
 
+const NEW_HIRE_GRACE_DAYS = 182; // ~6 months
+
+// A pilot crew member flagged new_hire_pilot (see 0087 migration) hasn't
+// had the chance to sit a recurrent Proficiency Check or Refresher Training
+// yet - hold off flagging either overdue until 6 months after their Check
+// to Line (line_check_anchor_date, the anchor their whole recurrency clock
+// is built from), per the operator's explicit request. Before Check to Line
+// even completes there's no anchor date to compute from yet, so grace stays
+// active unconditionally until one is set. Only ever suppresses the "never
+// done one" case - see the call sites below, which still let a real
+// completed date win regardless of this flag.
+function newHireGraceActive(member) {
+  if (!member.newHirePilot) return false;
+  if (!member.lineCheckAnchorDate) return true;
+  return new Date() < addDays(new Date(member.lineCheckAnchorDate), NEW_HIRE_GRACE_DAYS);
+}
+
 async function itemsFor(member, currency) {
   const fromCurrency = Object.entries(currency)
     .filter(([, info]) => !!info)
@@ -285,13 +302,17 @@ async function itemsFor(member, currency) {
     }));
 
   const competencies = await activeCompetencies(member.id, member.type, member.fleets);
+  const newHireGrace = newHireGraceActive(member);
   const fromCompetencies = competencies
     .filter((c) => !c.na)
     .map((c) => {
       const dueDate = withRefresherDefaultDue(member, c.name, c.due_date);
+      // See newHireGraceActive above - Refresher Training is the other half
+      // of the operator's "PC and Refresher Training" new-hire grace period.
+      const suppressed = c.name === 'Refresher Training' && !c.completed_date && newHireGrace;
       return {
         label: c.name,
-        status: competencyStatus(dueDate),
+        status: suppressed ? 'in_training' : competencyStatus(dueDate),
         dueDate,
         completedDate: c.completed_date,
         plannedDate: c.planned_date,
@@ -334,10 +355,14 @@ async function withCurrency(member) {
     // PC-variant check. The reverse doesn't hold: a plain PC doesn't touch
     // the IPC's own due date above.
     const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
+    // See newHireGraceActive above - a flagged new hire who's never sat a
+    // PC yet stays "in training" rather than "overdue" until 6 months past
+    // their Check to Line, on top of the ground-school gate above.
+    const pcSuppressed = !pc && newHireGraceActive(member);
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete),
       ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete),
-      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete),
+      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet. If there's no
       // anchor at all (e.g. a crew profile onboarded without one) but a
@@ -361,8 +386,21 @@ async function withCurrency(member) {
     };
   }
 
+  // Whether this crew member still has an active (non-archived) linked
+  // trainee record - i.e. genuinely still going through LOFT rather than
+  // just historically linked to one. Surfaced to the frontend so Currency
+  // Overview can add an "IN LOFT" remark alongside an overdue/due-soon item,
+  // since some of what's flagged there is expected while training is still
+  // in progress rather than a real oversight.
+  let inLoft = false;
+  if (member.traineeId) {
+    const { rows: traineeRows } = await pool.query('SELECT archived FROM trainees WHERE id = $1', [member.traineeId]);
+    inLoft = traineeRows.length > 0 && !traineeRows[0].archived;
+  }
+
   return {
     ...member,
+    inLoft,
     currency,
     urgentItems: await urgentItemsFor(member, currency),
     allItems: await allItemsFor(member, currency),
@@ -459,8 +497,8 @@ async function createCrewMemberRecord(d, req) {
   let rows;
   try {
     ({ rows } = await pool.query(
-      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn, licence_photo, syllabus_id)
-       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+      `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date, seed_ep_date, seed_ipc_date, seed_pc_date, seed_line_check_date, user_id, arn, licence_photo, syllabus_id, new_hire_pilot)
+       VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [
         d.firstName,
         d.lastName,
@@ -476,6 +514,7 @@ async function createCrewMemberRecord(d, req) {
         d.type === 'PILOT' ? d.arn : null,
         d.type === 'PILOT' ? (d.licencePhoto || null) : null,
         d.syllabusId || null,
+        d.type === 'PILOT' ? !!d.newHire : false,
       ],
     ));
   } catch (err) {
@@ -484,7 +523,13 @@ async function createCrewMemberRecord(d, req) {
   }
   const member = serializeCrewMember(rows[0]);
 
-  if (d.newHire) {
+  if (d.traineeId) {
+    // Called from trainees.js POST / (new-hire-from-LOFT flow, see below) -
+    // the trainee record already exists, so just link back to it rather
+    // than creating a second one.
+    await pool.query('UPDATE crew_members SET trainee_id = $1 WHERE id = $2', [d.traineeId, member.id]);
+    member.traineeId = d.traineeId;
+  } else if (d.newHire) {
     // Fire-and-forget-ish but awaited: a new hire needs a trainee LOFT
     // record too (ground school/phases/flights), separate from this crew
     // profile (which just tracks their ongoing recurrent currency). Linked
@@ -584,6 +629,12 @@ const updateSchema = z.object({
   // a pilot an admin has explicitly allocated to a Captain upgrade - see
   // CrewDetail.jsx's CurrencyFolder (citPrelim/citFinal tabs).
   captainInTraining: z.boolean().optional(),
+  // See newHireGraceActive above - correctable after creation (e.g. a
+  // trainee onboarded before this existed, or ticked by mistake), but only
+  // by HOTC/HOFO/Flight Ops Admin specifically, per the operator's explicit
+  // request (narrower than the rest of this route, which also allows
+  // Alternate) - enforced below rather than in the schema itself.
+  newHirePilot: z.boolean().optional(),
 });
 
 const COLUMN_MAP = {
@@ -596,8 +647,10 @@ const COLUMN_MAP = {
   userId: 'user_id',
   captainInTraining: 'captain_in_training',
   licencePhoto: 'licence_photo',
+  newHirePilot: 'new_hire_pilot',
 };
 const CAST_MAP = { fleets: '::fleet[]' };
+const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 router.patch('/:id', async (req, res) => {
   const member = await findCrewMember(req.params.id);
@@ -607,6 +660,9 @@ router.patch('/:id', async (req, res) => {
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (parsed.data.newHirePilot !== undefined && !NEW_HIRE_TOGGLE_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can change the new hire flag' });
+  }
 
   const fleetError = fleetOrderError(member.type, parsed.data.fleets ?? member.fleets);
   if (fleetError) return res.status(400).json({ error: fleetError });
@@ -950,3 +1006,4 @@ router.delete('/:id/clearances/:clearanceId', async (req, res) => {
 module.exports = router;
 module.exports.listCrewWithCurrency = listCrewWithCurrency;
 module.exports.hasIncompleteGroundSchool = hasIncompleteGroundSchool;
+module.exports.createCrewMemberRecord = createCrewMemberRecord;

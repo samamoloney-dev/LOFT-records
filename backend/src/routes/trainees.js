@@ -7,8 +7,15 @@ const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_
 const { logAction } = require('../lib/audit');
 const { fleetOrderError } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
+const { createCrewMemberRecord } = require('./crew');
 
 const router = express.Router();
+
+// Narrower than ADMIN_ROLES (which also includes Alternate) - only these
+// three can flag a pilot trainee as a new hire, per the operator's explicit
+// request. See newHire handling in POST / below and crew.js's
+// newHireGraceActive, which is what this flag actually drives.
+const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 const createSchema = z.object({
   firstName: z.string().min(1),
@@ -27,6 +34,21 @@ const createSchema = z.object({
   // LOFT Package come from - null/omitted means the fleet's standard one.
   // Fixed at creation, same as fleet.
   syllabusId: z.string().uuid().nullable().optional(),
+  // Pilots only (per the operator's explicit request) - also creates a
+  // linked crew profile straight away (see crew.js createCrewMemberRecord),
+  // rather than waiting until Check to Line/promote-to-crew, and flags it
+  // new_hire_pilot so Proficiency Check/Refresher Training don't show
+  // overdue before they've had the chance to sit one (see crew.js
+  // newHireGraceActive). Requires an ARN, same as crew creation does.
+  newHire: z.boolean().optional(),
+  arn: z.string().optional(),
+}).superRefine((d, ctx) => {
+  if (d.newHire && d.type !== 'PILOT') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newHire'], message: 'New hire is only for pilot trainees' });
+  }
+  if (d.newHire && !d.arn?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for a new hire crew profile' });
+  }
 });
 
 async function withHours(trainee) {
@@ -81,7 +103,11 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { firstName, lastName, type, role, fleet, phase, sourceCrewMemberId, syllabusId } = parsed.data;
+  const { firstName, lastName, type, role, fleet, phase, sourceCrewMemberId, syllabusId, newHire, arn } = parsed.data;
+
+  if (newHire && !NEW_HIRE_TOGGLE_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can flag a new hire' });
+  }
 
   if (sourceCrewMemberId) {
     const { rows: crewRows } = await pool.query('SELECT type, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
@@ -102,7 +128,29 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
       ? `Sent ${trainee.firstName} ${trainee.lastName} back to LOFT for ${fleet}`
       : `Added trainee ${trainee.firstName} ${trainee.lastName}`,
   });
-  res.status(201).json(await withHours(trainee));
+
+  // New hire (pilots only, see createSchema's superRefine) - also create
+  // their crew profile straight away, linked back via crew_members.
+  // trainee_id, through the exact same INSERT path Crew's own "Quick add"
+  // form uses (see crew.js createCrewMemberRecord) so the two never
+  // disagree on what a crew profile needs. Best effort: if this fails, the
+  // trainee record is still created; an admin can add the crew profile by
+  // hand from the Crew tab instead (its own "New hire" checkbox does the
+  // same thing in reverse).
+  let crewMemberId = null;
+  if (newHire) {
+    try {
+      const result = await createCrewMemberRecord({
+        firstName, lastName, type: 'PILOT', role, fleets: [fleet], arn, syllabusId, newHire: true, traineeId: trainee.id,
+      }, req);
+      if (result.member) crewMemberId = result.member.id;
+    } catch (err) {
+      // Swallow - the trainee record above already succeeded and is the
+      // primary outcome of this request.
+    }
+  }
+
+  res.status(201).json({ ...(await withHours(trainee)), crewMemberId });
 });
 
 const COLUMN_MAP = {

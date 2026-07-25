@@ -17,6 +17,10 @@ import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+// Narrower than ADMIN_ROLES (excludes Alternate) - only these three can
+// change the new hire flag, per the operator's explicit request. Mirrors
+// backend/src/routes/crew.js's own NEW_HIRE_TOGGLE_ROLES.
+const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // Mirrors CurrencyOverview.jsx's STATUS_ORDER - overdue/not-yet-completed
 // first, then due soon, then current, with Not Applicable always last
@@ -78,6 +82,7 @@ function initCrewInfoForm(member) {
     firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets,
     lineCheckAnchorDate: member.lineCheckAnchorDate ? member.lineCheckAnchorDate.slice(0, 10) : '',
     captainInTraining: !!member.captainInTraining,
+    newHirePilot: !!member.newHirePilot,
   };
 }
 
@@ -90,13 +95,22 @@ function CrewInfoEditor({ member, onSaved }) {
   const roles = member.type === 'PILOT' ? ['CAPTAIN', 'FIRST_OFFICER'] : ['CABIN_ATTENDANT'];
   const isPilot = member.type === 'PILOT';
   const isAdmin = ADMIN_ROLES.includes(user.role);
+  const canToggleNewHire = NEW_HIRE_TOGGLE_ROLES.includes(user.role);
 
   async function save(e) {
     e.preventDefault();
     setError(null);
     try {
-      const base = member.isLinked ? { role: form.role, fleets: form.fleets } : form;
-      const patch = isPilot ? { ...base, lineCheckAnchorDate: form.lineCheckAnchorDate || null, captainInTraining: form.captainInTraining } : base;
+      const { newHirePilot, ...formWithoutNewHire } = form;
+      const base = member.isLinked ? { role: form.role, fleets: form.fleets } : formWithoutNewHire;
+      const patch = isPilot
+        ? {
+          ...base,
+          lineCheckAnchorDate: form.lineCheckAnchorDate || null,
+          captainInTraining: form.captainInTraining,
+          ...(canToggleNewHire ? { newHirePilot } : {}),
+        }
+        : base;
       onSaved(await api.patch(`/api/crew/${member.id}`, patch));
       setEditing(false);
     } catch (err) { setError(err.message); }
@@ -149,6 +163,17 @@ function CrewInfoEditor({ member, onSaved }) {
             style={{ width: 'auto' }}
           />
           Allocated to Captain in Training (unlocks the CIT Preliminary/Final assessments below)
+        </label>
+      )}
+      {isPilot && canToggleNewHire && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={form.newHirePilot}
+            onChange={(e) => setForm({ ...form, newHirePilot: e.target.checked })}
+            style={{ width: 'auto' }}
+          />
+          New hire - hold off flagging Proficiency Check/Refresher Training as overdue until 6 months after Check to Line
         </label>
       )}
       {error && <div className="error-text">{error}</div>}

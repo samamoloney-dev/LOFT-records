@@ -241,6 +241,11 @@ function CrewRoster({ type }) {
               />
               New hire - also create their Trainees LOFT record
             </label>
+            {type === 'PILOT' && form.newHire && (
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Also holds off flagging Proficiency Check/Refresher Training as overdue until 6 months after their Check to Line.
+              </div>
+            )}
           </div>
 
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0.75rem 0 0.25rem' }}>

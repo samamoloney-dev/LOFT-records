@@ -104,6 +104,11 @@ function allRows(member) {
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
     status: item.status,
+    // Still has an active (non-archived) linked LOFT trainee record - see
+    // backend/src/routes/crew.js withCurrency's inLoft. Flagged overdue
+    // while still in training is often expected, not an oversight, so it
+    // gets a remark here rather than looking identical to a lapsed check.
+    inLoft: !!member.inLoft,
   }));
 }
 
@@ -176,7 +181,12 @@ export function CurrencyOverview() {
             </div>
             {r.plannedDate && <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>}
           </div>
-          <StatusPill status={r.status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {r.inLoft && r.status === 'overdue' && (
+              <span className="badge" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}>IN LOFT</span>
+            )}
+            <StatusPill status={r.status} />
+          </div>
         </div>
       ))}
     </div>

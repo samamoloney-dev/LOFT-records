@@ -21,11 +21,16 @@ const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // triggers that Clearance Form alert, so it's gated the same way. Mirrors
 // backend/src/routes/trainees.js's READY_FOR_LOFT_ROLES.
 const READY_FOR_LOFT_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+// Narrower than ADMIN_ROLES (excludes Alternate) - only these three can
+// flag a pilot trainee as a new hire, per the operator's explicit request.
+// Mirrors backend/src/routes/trainees.js's own NEW_HIRE_TOGGLE_ROLES.
+const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 export function Trainees() {
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const canConfirmReadyForLoft = READY_FOR_LOFT_ROLES.includes(user.role);
+  const canFlagNewHire = NEW_HIRE_TOGGLE_ROLES.includes(user.role);
   const [searchParams] = useSearchParams();
   const [trainees, setTrainees] = useState([]);
   const [confirmingId, setConfirmingId] = useState(null);
@@ -34,7 +39,7 @@ export function Trainees() {
   // with the form already open, instead of requiring an extra click.
   const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null });
+  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null, newHire: false, arn: '' });
   // Sends an existing, already-qualified crew member back through LOFT for
   // a new fleet (e.g. a Cabin Attendant converting from Dash 8 to Fokker
   // 100) instead of only supporting brand-new hires - see backend
@@ -68,7 +73,7 @@ export function Trainees() {
   }
 
   function resetForm() {
-    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null });
+    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null, newHire: false, arn: '' });
     setReturningToLoft(false);
     setSourceCrewMemberId('');
   }
@@ -140,7 +145,7 @@ export function Trainees() {
                 value={form.type}
                 onChange={(e) => {
                   const type = e.target.value;
-                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8', syllabusId: null });
+                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8', syllabusId: null, newHire: false, arn: '' });
                   setSourceCrewMemberId('');
                 }}
               >
@@ -161,6 +166,25 @@ export function Trainees() {
             </select>
           </div>
           <SyllabusPicker fleet={form.fleet} value={form.syllabusId} onChange={(syllabusId) => setForm({ ...form, syllabusId })} />
+          {form.type === 'PILOT' && canFlagNewHire && !returningToLoft && (
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={form.newHire}
+                  onChange={(e) => setForm({ ...form, newHire: e.target.checked })}
+                  style={{ width: 'auto' }}
+                />
+                New hire - also create their Crew profile now
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Holds off flagging Proficiency Check/Refresher Training as overdue until 6 months after their Check to Line, instead of the moment they're added to Crew.
+              </div>
+            </div>
+          )}
+          {form.newHire && (
+            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required /></div>
+          )}
           <button type="submit" className="primary">Create</button>
         </form>
       )}

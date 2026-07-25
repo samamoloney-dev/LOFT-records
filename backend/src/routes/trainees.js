@@ -17,7 +17,13 @@ const router = express.Router();
 // newHireGraceActive, which is what this flag actually drives.
 const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
-const createSchema = z.object({
+// Plain object shape (not the refined createSchema below) - updateSchema
+// further down derives from this directly via .omit()/.partial(), which
+// only exist on a ZodObject. Chaining .superRefine() onto createSchema
+// itself would turn it into a ZodEffects wrapper without those methods and
+// break that derivation (this crashed the server on boot - see the fixed
+// commit).
+const baseTraineeSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   type: z.enum(['PILOT', 'CABIN_ATTENDANT']),
@@ -42,7 +48,13 @@ const createSchema = z.object({
   // newHireGraceActive). Requires an ARN, same as crew creation does.
   newHire: z.boolean().optional(),
   arn: z.string().optional(),
-}).superRefine((d, ctx) => {
+});
+
+// The newHire/arn coupling only matters at creation time (POST / is the
+// only route that reads either field) - kept separate from
+// baseTraineeSchema so PATCH's updateSchema below isn't forced through
+// this same refinement for unrelated field edits.
+const createSchema = baseTraineeSchema.superRefine((d, ctx) => {
   if (d.newHire && d.type !== 'PILOT') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newHire'], message: 'New hire is only for pilot trainees' });
   }
@@ -168,7 +180,7 @@ const COLUMN_MAP = {
 // first. Allowing it through this generic update would let anyone bypass
 // that gate entirely - exactly the "phase 2 incomplete but advanced to
 // phase 3" bug the operator flagged.
-const updateSchema = createSchema.omit({ phase: true }).partial();
+const updateSchema = baseTraineeSchema.omit({ phase: true }).partial();
 
 router.patch('/:id', async (req, res) => {
   const trainee = await findTrainee(req.params.id);

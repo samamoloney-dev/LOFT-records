@@ -11,6 +11,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
 import { formatUserRole } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { sortNotCompletedFirst } from '../lib/sortChecks';
 
 const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -371,7 +372,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
       {error && <div className="error-text">{error}</div>}
 
       {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}emergency procedures checks yet.</div>}
-      {checks.map((c) => (
+      {sortNotCompletedFirst(checks).map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { api } from './api/client';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -48,15 +48,16 @@ const SYLLABUS_ADMIN_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
 // who can even see the Checks tab) - completed-check notifications go to
 // HOTC, HOFO and Flight Ops Admin only, per the operator's explicit request.
 const CHECK_NOTIFICATION_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
-function ChecksAlertBadge() {
-  const { user } = useAuth();
+function useChecksAlertCount(role) {
   const [count, setCount] = useState(0);
-
   useEffect(() => {
-    if (!CHECK_NOTIFICATION_ROLES.includes(user.role)) return;
+    if (!CHECK_NOTIFICATION_ROLES.includes(role)) return;
     api.get('/api/checks/alerts/count').then((d) => setCount(d.count)).catch(() => {});
-  }, [user.role]);
+  }, [role]);
+  return count;
+}
 
+function ChecksAlertBadge({ count }) {
   if (count === 0) return null;
   return (
     <span
@@ -71,6 +72,35 @@ function ChecksAlertBadge() {
 
 function Shell({ children }) {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const checksAlertCount = useChecksAlertCount(user.role);
+
+  // One list drives both the desktop sidebar links and the mobile <select>
+  // below, so the two can never drift apart. Cabin attendants are most
+  // likely to be on an iPhone in Safari, where a vertical list of a dozen
+  // links eats the whole screen - a native dropdown is a single, familiar,
+  // thumb-friendly control instead.
+  const navItems = [
+    ADMIN_ROLES.includes(user.role) && { to: '/', end: true, label: 'Home' },
+    { to: '/trainees', label: 'LOFT Trainees' },
+    CREW_VISIBLE_ROLES.includes(user.role) && { to: '/crew', label: 'Crew' },
+    ADMIN_ROLES.includes(user.role) && { to: '/currency', label: 'Currency Overview' },
+    ADMIN_ROLES.includes(user.role) && { to: '/planning', label: 'Planning' },
+    CHECK_ROLES.includes(user.role) && { to: '/checks', label: checksAlertCount > 0 ? `Checks (${checksAlertCount})` : 'Checks' },
+    ADMIN_ROLES.includes(user.role) && { to: '/fs-staff', label: 'FS Staff' },
+    ADMIN_ROLES.includes(user.role) && { to: '/staff', label: 'Resources' },
+    CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && { to: '/continuous-improvement', label: 'Continuous Improvement' },
+    SYLLABUS_ADMIN_ROLES.includes(user.role) && { to: '/syllabus', label: 'Syllabus' },
+    ADMIN_ROLES.includes(user.role) && { to: '/archive', label: 'Archive' },
+    user.role !== 'TRAINEE' && { to: '/meeting-minutes', label: 'Meeting Minutes' },
+  ].filter(Boolean);
+
+  // "end" items (Home) only match the exact root path; every other item
+  // matches any subpath (e.g. /trainees/123 still highlights "LOFT Trainees")
+  // so the mobile dropdown reflects wherever the user actually is.
+  const activeItem = navItems.find((item) => (item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)));
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -78,19 +108,18 @@ function Shell({ children }) {
           <span className="brand">Flight Standards System</span>
           <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
         </div>
+
+        <select className="mobile-nav-select" value={activeItem?.to || ''} onChange={(e) => navigate(e.target.value)} aria-label="Navigate">
+          {navItems.map((item) => <option key={item.to} value={item.to}>{item.label}</option>)}
+        </select>
+
         <nav className="top-nav">
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/" end>Home</NavLink>}
-          <NavLink to="/trainees">LOFT Trainees</NavLink>
-          {CREW_VISIBLE_ROLES.includes(user.role) && <NavLink to="/crew">Crew</NavLink>}
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/currency">Currency Overview</NavLink>}
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/planning">Planning</NavLink>}
-          {CHECK_ROLES.includes(user.role) && <NavLink to="/checks">Checks<ChecksAlertBadge /></NavLink>}
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/fs-staff">FS Staff</NavLink>}
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/staff">Resources</NavLink>}
-          {CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && <NavLink to="/continuous-improvement">Continuous Improvement</NavLink>}
-          {SYLLABUS_ADMIN_ROLES.includes(user.role) && <NavLink to="/syllabus">Syllabus</NavLink>}
-          {ADMIN_ROLES.includes(user.role) && <NavLink to="/archive">Archive</NavLink>}
-          {user.role !== 'TRAINEE' && <NavLink to="/meeting-minutes">Meeting Minutes</NavLink>}
+          {navItems.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end}>
+              {item.to === '/checks' ? 'Checks' : item.label}
+              {item.to === '/checks' && <ChecksAlertBadge count={checksAlertCount} />}
+            </NavLink>
+          ))}
         </nav>
         <div className="sidebar-footer">
           <ChangePassword />

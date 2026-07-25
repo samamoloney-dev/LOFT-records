@@ -15,6 +15,7 @@ import { formatUserRole, formatFleet } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
 import { compressImage } from '../lib/imageCompress';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { sortNotCompletedFirst } from '../lib/sortChecks';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -687,7 +688,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
       {error && <div className="error-text">{error}</div>}
 
       {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}{label.toLowerCase()} records yet.</div>}
-      {checks.map((c) => (
+      {sortNotCompletedFirst(checks).map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>

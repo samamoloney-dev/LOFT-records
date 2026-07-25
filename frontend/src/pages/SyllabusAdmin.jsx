@@ -438,7 +438,13 @@ function SyllabusItemsSection() {
     const { fleets, ...rest } = form;
     if (fleets.length === 0) { setError('Pick at least one fleet'); return; }
     try {
-      const payload = { ...rest, phase: Number(form.phase), syllabusId: viewSyllabusId };
+      // Cabin attendant LOFT Package items have no phase concept and no
+      // captain/FO distinction (see TraineeDetail.jsx) - the form hides
+      // both fields for a CA fleet, so force the values that mean "not
+      // applicable" here rather than trusting whatever was last set while
+      // the form may have been showing a pilot fleet.
+      const isCa = fleetGroup(fleets[0]) === 'CA';
+      const payload = { ...rest, phase: isCa ? 1 : Number(form.phase), roleScope: isCa ? 'BOTH' : form.roleScope, syllabusId: viewSyllabusId };
       let anyPending = false;
       if (editingId) {
         const res = await api.patch(`/api/syllabus/items/${editingId}`, { ...payload, fleet: fleets[0] });
@@ -519,18 +525,20 @@ function SyllabusItemsSection() {
             {SECTIONS.map((s) => <option key={s} value={s}>{s === 'SYLLABUS' ? 'LOFT Package' : 'Line Training Discussion'}</option>)}
           </select>
         </div>
-        <div className="grid2">
-          <div className="field">
-            <label>Role scope</label>
-            <select value={form.roleScope} onChange={(e) => setForm({ ...form, roleScope: e.target.value })}>
-              {ROLE_SCOPES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+        {fleetGroup(form.fleets[0]) !== 'CA' && (
+          <div className="grid2">
+            <div className="field">
+              <label>Role scope</label>
+              <select value={form.roleScope} onChange={(e) => setForm({ ...form, roleScope: e.target.value })}>
+                {ROLE_SCOPES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Phase</label>
+              <input type="number" min="1" value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value })} required />
+            </div>
           </div>
-          <div className="field">
-            <label>Phase</label>
-            <input type="number" min="1" value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value })} required />
-          </div>
-        </div>
+        )}
         <div className="field">
           <label>Category (section heading, e.g. "Pre-Departure" or "Fuel and Refuelling")</label>
           {addingCategory ? (
@@ -641,7 +649,9 @@ function SyllabusItemsSection() {
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13 }}>{item.description}</div>
                             <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                              Phase {item.phase} · {item.roleScope}{item.required ? ' · required' : ''}{item.notes ? ` · ${item.notes}` : ''}
+                              {fleetGroup(fleet) === 'CA'
+                                ? `${item.required ? 'Required' : 'Optional'}${item.notes ? ` · ${item.notes}` : ''}`
+                                : `Phase ${item.phase} · ${item.roleScope}${item.required ? ' · required' : ''}${item.notes ? ` · ${item.notes}` : ''}`}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>

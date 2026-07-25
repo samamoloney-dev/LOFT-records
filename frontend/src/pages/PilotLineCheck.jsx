@@ -11,6 +11,7 @@ import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox } f
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { sortNotCompletedFirst } from '../lib/sortChecks';
 
 // Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
@@ -450,7 +451,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
       {error && <div className="error-text">{error}</div>}
 
       {checks.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No {archived ? 'archived ' : ''}Line Checks yet.</div>}
-      {checks.map((c) => (
+      {sortNotCompletedFirst(checks).map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.date ? formatDate(c.details.date) : 'No date'}</div>

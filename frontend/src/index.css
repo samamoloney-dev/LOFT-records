@@ -88,6 +88,27 @@ input, select, textarea {
 
 .sidebar-footer { padding-top: 1rem; margin-top: 1rem; border-top: 0.5px solid var(--border); display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 
+/* Only ever shown below the mobile breakpoint (see media query below) -
+   the vertical link list stays the primary nav on a real screen. */
+.mobile-nav-select { display: none; }
+
+/* Cabin attendants are the group most likely to be on an iPhone in Safari.
+   Below this width the left sidebar becomes a compact top bar and the
+   vertical link list is replaced by a single native dropdown - much
+   easier to use one-handed than a long scrolling list of links. */
+@media (max-width: 768px) {
+  .app-shell { flex-direction: column; }
+  .sidebar {
+    width: 100%; border-right: none; border-bottom: 0.5px solid var(--border);
+    padding: 0.85rem 1rem; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px;
+  }
+  .top-bar { padding-bottom: 0; flex: 1 1 auto; min-width: 160px; }
+  .mobile-nav-select { display: block; flex: 1 1 100%; }
+  .top-nav { display: none; }
+  .sidebar-footer { flex-direction: row; flex: 1 1 100%; margin-top: 0; padding-top: 0.5rem; border-top: none; width: 100%; }
+  .main-content { padding: 1rem; max-width: 100%; }
+}
+
 /* Every sub-tab bar in the app (Checks, Crew, Crew Detail, Archive, Trainee
    Detail) shares this look, matching the top nav exactly. */
 .tab-bar {

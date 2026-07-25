@@ -10,8 +10,13 @@ const router = express.Router();
 
 // HOTC/HOFO/Flight Ops Admin only, per the operator's request - these are
 // real operational facts (which FSTD, its number/type per aircraft) that
-// only they should be setting.
-const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+// only they should be setting. aircraft_type is a free-text label, not a
+// fixed enum - Fokker 100/Dash 8/Metro are the three the "Autofill FSTD"
+// button on the IPC/PC check form actually matches against (it compares
+// against the check's own aircraft type field), but an operator can add
+// further presets under any label they choose (e.g. a second simulator for
+// the same type at a different training centre) - those just won't
+// autofill unless something else matches that exact label.
 
 router.use(requireAuth);
 router.use(requireRole(...ADMIN_ROLES));
@@ -27,8 +32,10 @@ const upsertSchema = z.object({
 });
 
 router.put('/:aircraftType', async (req, res) => {
-  const { aircraftType } = req.params;
-  if (!AIRCRAFT_TYPES.includes(aircraftType)) return res.status(400).json({ error: 'Unknown aircraft type' });
+  const aircraftType = (req.params.aircraftType || '').trim();
+  if (!aircraftType || aircraftType.length > 60) {
+    return res.status(400).json({ error: 'Aircraft type/label is required (max 60 characters)' });
+  }
 
   const parsed = upsertSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -42,6 +49,13 @@ router.put('/:aircraftType', async (req, res) => {
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'fstd_presets', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));
+});
+
+router.delete('/:aircraftType', async (req, res) => {
+  const { aircraftType } = req.params;
+  await pool.query('DELETE FROM fstd_presets WHERE aircraft_type = $1', [aircraftType]);
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'fstd_presets', targetId: aircraftType });
+  res.json({ ok: true });
 });
 
 module.exports = router;

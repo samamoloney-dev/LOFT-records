@@ -156,7 +156,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
       {checks.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
       )}
-      {sortNotCompletedFirst(checks).map((check) => {
+      {sortNotCompletedFirst(checks, (c) => c.dateOfObservation).map((check) => {
         const locked = !canEdit || !!check.completedAt;
         const open = openId === check.id;
         const visibleItems = visibleCheckFormItems(items, check.items);

@@ -28,7 +28,7 @@ export function DueBadge({ label, info }) {
     ? `${LABELS[info.status]} · due ${formatDate(info.dueDate)}`
     : info.status === 'in_training' ? 'Ground school not yet complete' : 'Not yet current';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
       <span
         className="badge"

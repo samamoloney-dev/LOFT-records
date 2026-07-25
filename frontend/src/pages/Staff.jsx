@@ -16,6 +16,7 @@ const FSTD_AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 function FstdPresetsPanel() {
   const [presets, setPresets] = useState([]);
   const [error, setError] = useState(null);
+  const [newLabel, setNewLabel] = useState('');
 
   function load() {
     api.get('/api/fstd-presets').then(setPresets).catch((e) => setError(e.message));
@@ -23,6 +24,13 @@ function FstdPresetsPanel() {
   useEffect(load, []);
 
   const presetFor = (aircraftType) => presets.find((p) => p.aircraftType === aircraftType) || {};
+  // Anything beyond the three standard aircraft types - e.g. a second
+  // simulator for the same type at a different training centre, or a type
+  // not in the fixed list above. The "Autofill FSTD" button on the IPC/PC
+  // check form only ever matches a preset whose label equals the check's
+  // own aircraft type field, so a custom label here is for manual
+  // reference unless something else on that check matches it exactly.
+  const extraPresets = presets.filter((p) => !FSTD_AIRCRAFT_TYPES.includes(p.aircraftType));
 
   async function save(aircraftType, patch) {
     setError(null);
@@ -35,6 +43,25 @@ function FstdPresetsPanel() {
       });
       load();
     } catch (err) { setError(err.message); }
+  }
+
+  async function addPreset(e) {
+    e.preventDefault();
+    const label = newLabel.trim();
+    if (!label) return;
+    setError(null);
+    try {
+      await api.put(`/api/fstd-presets/${encodeURIComponent(label)}`, { fstdNumber: '', fstdType: '' });
+      setNewLabel('');
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function removePreset(aircraftType) {
+    if (!window.confirm(`Remove the "${aircraftType}" FSTD preset?`)) return;
+    setError(null);
+    try { await api.delete(`/api/fstd-presets/${encodeURIComponent(aircraftType)}`); load(); }
+    catch (err) { setError(err.message); }
   }
 
   return (
@@ -58,6 +85,30 @@ function FstdPresetsPanel() {
           </div>
         );
       })}
+
+      {extraPresets.map((preset) => (
+        <div key={preset.aircraftType} className="grid2" style={{ marginBottom: 8 }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>{preset.aircraftType} — FSTD number</label>
+            <input defaultValue={preset.fstdNumber || ''} onBlur={(e) => save(preset.aircraftType, { fstdNumber: e.target.value })} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div className="field" style={{ margin: 0, flex: 1 }}>
+              <label>{preset.aircraftType} — FSTD type</label>
+              <input defaultValue={preset.fstdType || ''} onBlur={(e) => save(preset.aircraftType, { fstdType: e.target.value })} />
+            </div>
+            <button type="button" className="danger" onClick={() => removePreset(preset.aircraftType)}>Remove</button>
+          </div>
+        </div>
+      ))}
+
+      <form onSubmit={addPreset} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 4 }}>
+        <div className="field" style={{ margin: 0, flex: 1 }}>
+          <label>Add another preset (e.g. a second simulator, or a type not listed above)</label>
+          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Dash 8 (Perth Sim)" />
+        </div>
+        <button type="submit">Add</button>
+      </form>
       {error && <div className="error-text">{error}</div>}
     </div>
   );

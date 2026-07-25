@@ -63,6 +63,62 @@ const CA_TABS = [
   { key: 'clearance', label: 'Clearance' },
 ];
 
+// One row: a label, a "x/y" (or "Complete"/"Not started" when there's no
+// meaningful count) count, and a filled track - complete gets the success
+// colour so a trainer can tell at a glance which phases are actually done
+// rather than just close.
+function ProgressBar({ label, done, total, complete }) {
+  const isComplete = complete !== undefined ? complete : total > 0 && done === total;
+  const pct = total > 0 ? Math.round((done / total) * 100) : (isComplete ? 100 : 0);
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+        <span style={{ color: isComplete ? 'var(--text-success)' : 'var(--text-secondary)' }}>
+          {total > 0 ? `${done}/${total}` : (isComplete ? 'Complete' : 'Not started')}
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 3, background: isComplete ? 'var(--text-success)' : 'var(--text-accent)' }} />
+      </div>
+    </div>
+  );
+}
+
+// Ground School (a flat required-item list) plus one bar per phase found in
+// the fleet's LOFT Package (Phase 1-3, item-by-item), plus Phase 4 (its own
+// separate assessment form, not part of syllabus_items) - a single glance
+// at where a pilot trainee actually stands, visible regardless of which tab
+// is open. Cabin attendants have no phase concept (see CA_TABS above) so
+// this is pilot-only.
+function LoftProgressBars({ groundSchoolItems, syllabusItems, phaseCompletions, phase4Data }) {
+  if (!groundSchoolItems || !syllabusItems || !phaseCompletions) return null;
+
+  const gsRequired = groundSchoolItems.filter((i) => i.required && !i.details?.na);
+  const gsDone = gsRequired.filter((i) => i.completedAt).length;
+
+  const phaseNumbers = [...new Set(
+    syllabusItems.filter((i) => i.section === 'SYLLABUS').map((i) => i.phase),
+  )].sort((a, b) => a - b);
+
+  const p4Items = phase4Data?.items || [];
+  const p4Done = Object.values(phase4Data?.assessment?.itemResults || {}).filter((r) => r?.status).length;
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>LOFT progress</div>
+      <ProgressBar label="Ground School" done={gsDone} total={gsRequired.length} />
+      {phaseNumbers.map((phase) => {
+        const required = syllabusItems.filter((i) => i.section === 'SYLLABUS' && i.phase === phase && i.required);
+        const done = required.filter((i) => i.completedAt).length;
+        const signedOff = !!phaseCompletions.find((c) => c.phase === phase)?.completedAt;
+        return <ProgressBar key={phase} label={`Phase ${phase}`} done={done} total={required.length} complete={signedOff} />;
+      })}
+      <ProgressBar label="Phase 4" done={p4Done} total={p4Items.length} complete={!!phase4Data?.assessment?.completedAt} />
+    </div>
+  );
+}
+
 function approachTally(flights) {
   const counts = Object.fromEntries(APPROACH_TYPES.map((t) => [t, 0]));
   for (const f of flights) {
@@ -227,6 +283,8 @@ export function TraineeDetail() {
   // computation below until real data has arrived.
   const [groundSchoolItems, setGroundSchoolItems] = useState(null);
   const [phaseCompletions, setPhaseCompletions] = useState(null);
+  const [syllabusItems, setSyllabusItems] = useState(null);
+  const [phase4Data, setPhase4Data] = useState(null);
   const defaultTabSetForId = useRef(null);
 
   function load() {
@@ -240,6 +298,8 @@ export function TraineeDetail() {
   useEffect(() => {
     setGroundSchoolItems(null);
     setPhaseCompletions(null);
+    setSyllabusItems(null);
+    setPhase4Data(null);
   }, [id]);
 
   // Ground school completeness and phase sign-off status drive which tab
@@ -249,6 +309,8 @@ export function TraineeDetail() {
     if (!trainee || trainee.type === 'CABIN_ATTENDANT') return;
     api.get(`/api/ground-school/trainee/${id}`).then(setGroundSchoolItems).catch(() => setGroundSchoolItems([]));
     api.get(`/api/syllabus/trainee/${id}/phase-completions`).then(setPhaseCompletions).catch(() => setPhaseCompletions([]));
+    api.get(`/api/syllabus/trainee/${id}`).then(setSyllabusItems).catch(() => setSyllabusItems([]));
+    api.get(`/api/phase4/${id}`).then(setPhase4Data).catch(() => setPhase4Data(null));
   }, [id, trainee?.type]);
 
   // Default tab follows the trainee's actual progress: Ground School until
@@ -321,6 +383,15 @@ export function TraineeDetail() {
           </div>
         )}
       </div>
+
+      {!isCabinAttendant && (
+        <LoftProgressBars
+          groundSchoolItems={groundSchoolItems}
+          syllabusItems={syllabusItems}
+          phaseCompletions={phaseCompletions}
+          phase4Data={phase4Data}
+        />
+      )}
 
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
 

@@ -270,7 +270,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
       {checks.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>No checks recorded yet.</div>
       )}
-      {sortNotCompletedFirst(checks).map((check) => {
+      {sortNotCompletedFirst(checks, (c) => c.checkDate).map((check) => {
         const open = openId === check.id;
         const eligibleAssessors = staff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
 

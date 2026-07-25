@@ -11,7 +11,7 @@ import {
   openPrintWindow, section, signatureBlock, resultBadge,
   formTitleRow, fieldGrid, checklistTable, seatCheckBox, labeledRowGroup,
 } from '../lib/print';
-import { formatUserRole, formatFleet } from '../lib/format';
+import { formatUserRole, formatFleet, formatDate } from '../lib/format';
 import { SURVEY_FILL_ROLES } from '../lib/roles';
 import { compressImage } from '../lib/imageCompress';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
@@ -692,7 +692,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date ? formatDate(c.details.date) : 'No date'}</div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
         </div>

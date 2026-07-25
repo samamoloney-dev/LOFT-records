@@ -9,7 +9,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
-import { formatUserRole } from '../lib/format';
+import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 
@@ -355,7 +355,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{c.details?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date || 'No date'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.details?.actype || 'No aircraft type'} · {c.details?.date ? formatDate(c.details.date) : 'No date'}</div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
         </div>

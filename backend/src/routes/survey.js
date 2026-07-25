@@ -181,12 +181,32 @@ const RANGE_CLAUSES = {
 };
 
 router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
-  const dateClause = RANGE_CLAUSES[req.query.range] || '';
-
   // The date filter has to narrow which surveys count *before* joining to
   // responses - putting it on a plain LEFT JOIN's ON clause would only null
   // out the survey columns for out-of-range rows without excluding their
-  // scores from the aggregate.
+  // scores from the aggregate. An explicit start/end (the Export panel's
+  // custom date range) takes precedence over the preset range keys; fleet/
+  // rank narrow further on top of whichever date filter applies. Filters
+  // repeat the same COALESCE expression used in the SELECT list below
+  // rather than referencing its alias, since a WHERE clause can't see a
+  // sibling SELECT list alias in the same query.
+  const params = [];
+  const conditions = ['cs.submitted_at IS NOT NULL'];
+  if (req.query.start || req.query.end) {
+    if (req.query.start) { params.push(req.query.start); conditions.push(`cs.submitted_at >= $${params.length}`); }
+    if (req.query.end) { params.push(req.query.end); conditions.push(`cs.submitted_at < ($${params.length}::date + interval '1 day')`); }
+  } else if (RANGE_CLAUSES[req.query.range]) {
+    conditions.push(RANGE_CLAUSES[req.query.range].replace(/^AND /, ''));
+  }
+  if (req.query.fleet) {
+    params.push(req.query.fleet);
+    conditions.push(`COALESCE(NULLIF(c.details->>'actype', ''), 'Unspecified fleet') = $${params.length}`);
+  }
+  if (req.query.rank) {
+    params.push(req.query.rank);
+    conditions.push(`COALESCE(NULLIF(c.details->>'role', ''), 'UNSPECIFIED') = $${params.length}`);
+  }
+
   const { rows } = await pool.query(
     `WITH in_range_surveys AS (
        SELECT cs.id,
@@ -194,7 +214,7 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
               COALESCE(NULLIF(c.details->>'role', ''), 'UNSPECIFIED') AS role
        FROM check_surveys cs
        JOIN checks c ON c.id = cs.check_id
-       WHERE cs.submitted_at IS NOT NULL ${dateClause}
+       WHERE ${conditions.join(' AND ')}
      ),
      group_counts AS (
        SELECT actype, role, COUNT(DISTINCT id)::int AS survey_count
@@ -213,6 +233,7 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
      WHERE q.archived = false
      GROUP BY irs.actype, irs.role, q.id, q.text, q.sort_order, gc.survey_count
      ORDER BY irs.actype ASC, irs.role ASC, q.sort_order ASC, q.created_at ASC`,
+    params,
   );
   res.json(rows.map((r) => ({
     actype: r.actype,

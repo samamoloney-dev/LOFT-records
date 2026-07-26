@@ -288,15 +288,20 @@ export function fieldGrid(pairs) {
 // own "Tick | Item" briefing/simulator-training columns, rather than the
 // softer boxed .form-section table used elsewhere. `rows` is a list of
 // either { header: 'Subsection title' } or { description, tick } item rows
-// (tick already resolved to 'Yes'/'No'/'').
-export function tickTable(rows) {
+// (tick already resolved to 'Yes'/'No'/''). Pass twoColumn:true (as
+// checklistTable does) to flow across two newspaper-style columns - each
+// row breaks individually rather than the whole section, so long checklists
+// pack much tighter than one .form-section box per section (see
+// PilotLineCheck.jsx, which switched to this from section() for exactly
+// that reason - the boxed version couldn't fit SA 490 on one printed page).
+export function tickTable(rows, { twoColumn = false } = {}) {
   const cols = '1fr 60px';
   const head = `<div class="check-row check-head" style="grid-template-columns:${cols}"><div>Item</div><div>Tick</div></div>`;
   const body = rows.map((r) => {
     if (r.header) return `<div class="check-subhead">${r.header}</div>`;
     return `<div class="check-row" style="grid-template-columns:${cols}"><div>${r.description}</div><div>${r.tick ?? ''}</div></div>`;
   }).join('');
-  return `<div class="check-table">${head}${body}</div>`;
+  return `<div class="check-table${twoColumn ? ' two-col' : ''}">${head}${body}</div>`;
 }
 
 // A ruled Item No/Activities and Manoeuvres/MOS/Result checklist table,

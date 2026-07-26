@@ -8,7 +8,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox } from '../lib/print';
+import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox, tickTable } from '../lib/print';
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
@@ -260,28 +260,39 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
     const sections = groupBySection(visibleCheckFormItems(allTickableItems, results));
     const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
-    let body = `
-      <h1>Line Check</h1>
-      <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
-      ${section('General', [[REFRESHER_ITEM_NAME, isCurrent ? '✓ Current' : 'Not current']])}
-    `;
+    // One ruled two-column table (tickTable, same building block IPC/PC's
+    // ~50-item checklist uses) rather than a separate boxed .form-section
+    // per section - each row breaks individually instead of the whole
+    // section, which is what actually lets ~30 short tick items flow into
+    // two columns and fit on a single printed page.
+    const rows = [{ header: 'General' }, { description: REFRESHER_ITEM_NAME, tick: isCurrent ? '✓ Current' : 'Not current' }];
     for (const [sectionName, sectionItems] of sections) {
-      body += section(sectionName, sectionItems.map((item) => {
+      rows.push({ header: sectionName });
+      for (const item of sectionItems) {
         const v = results[item.id];
-        if (item.kind === 'text') return [item.description, v || ''];
-        if (item.kind === 'score') return [item.description, v !== undefined ? String(v) : ''];
-        return [item.description, v === true ? '✓' : v === false ? '✗' : ''];
-      }));
+        let tick = '';
+        if (item.kind === 'text') tick = v || '';
+        else if (item.kind === 'score') tick = v !== undefined ? String(v) : '';
+        else tick = v === true ? '✓' : v === false ? '✗' : '';
+        rows.push({ description: item.description, tick });
+      }
     }
-    body += seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null);
-    body += section('Details', [
-      ['Assessor', d.assessor],
-      ['Assessor ARN', d.assessorArn],
-      ['Comments', d.comments],
-      ['Overall assessment', resultBadge(check.result)],
-      ['Overall score', check.score],
-    ]);
-    body += signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]]);
+    const body = `
+      <div class="compact">
+        <h1>Line Check</h1>
+        <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
+        ${tickTable(rows, { twoColumn: true })}
+        ${seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null)}
+        ${section('Details', [
+          ['Assessor', d.assessor],
+          ['Assessor ARN', d.assessorArn],
+          ['Comments', d.comments],
+          ['Overall assessment', resultBadge(check.result)],
+          ['Overall score', check.score],
+        ])}
+      </div>
+      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+    `;
     openPrintWindow(`Line Check - ${crewMemberName}`, body);
   }
 

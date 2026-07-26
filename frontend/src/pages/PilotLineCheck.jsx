@@ -42,6 +42,13 @@ const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // item ticked ✓ rather than requiring every item individually answered.
 const TERMINAL_SECTION = 'Terminal';
 
+// Turbulence penetration is either demonstrated or described on a given
+// check, never both - same "only one of this pair required" shape as the
+// Terminal section above, just keyed by item description rather than by
+// whole section since these two items sit alongside other, individually-
+// mandatory items within In-flight Procedures and Tolerances.
+const TURBULENCE_ITEM_NAMES = ['Turbulence penetration - Demonstrated', 'Turbulence penetration - Described'];
+
 function groupBySection(items) {
   const map = new Map();
   for (const item of items) {
@@ -282,7 +289,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         <h1>Line Check</h1>
         <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
         ${tickTable(rows, { twoColumn: true })}
-        ${seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null)}
+        <div style="display:flex;justify-content:center;">${seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null)}</div>
         ${section('Details', [
           ['Assessor', d.assessor],
           ['Assessor ARN', d.assessorArn],
@@ -303,12 +310,15 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     const locked = !!selected.completedAt;
     const tickableItems = visibleCheckFormItems(allTickableItems, results);
     const sections = groupBySection(tickableItems);
-    const nonTerminalItems = tickableItems.filter((i) => i.section !== TERMINAL_SECTION);
+    const nonTerminalItems = tickableItems.filter((i) => i.section !== TERMINAL_SECTION && !TURBULENCE_ITEM_NAMES.includes(i.description));
     const terminalItems = tickableItems.filter((i) => i.section === TERMINAL_SECTION);
+    const turbulenceItems = tickableItems.filter((i) => TURBULENCE_ITEM_NAMES.includes(i.description));
     const terminalAnswered = terminalItems.length === 0 || terminalItems.some((item) => results[item.id] === true);
+    const turbulenceAnswered = turbulenceItems.length === 0 || turbulenceItems.some((item) => results[item.id] === true);
     const allItemsAnswered = tickableItems.length > 0
       && nonTerminalItems.every((item) => isItemAnswered(item, results[item.id]))
-      && terminalAnswered;
+      && terminalAnswered
+      && turbulenceAnswered;
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -362,14 +372,20 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
                 Tick ✓ the one approach actually flown - the rest can be left blank.
               </div>
             )}
-            {sectionItems.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                value={results[item.id]}
-                disabled={locked}
-                onChange={(v) => setItemResult(selected, item.id, v)}
-              />
+            {sectionItems.map((item, i) => (
+              <div key={item.id}>
+                {TURBULENCE_ITEM_NAMES.includes(item.description) && sectionItems.findIndex((it) => TURBULENCE_ITEM_NAMES.includes(it.description)) === i && (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 8px' }}>
+                    Tick ✓ whichever was actually done - demonstrated or described - the other can be left blank.
+                  </div>
+                )}
+                <ItemRow
+                  item={item}
+                  value={results[item.id]}
+                  disabled={locked}
+                  onChange={(v) => setItemResult(selected, item.id, v)}
+                />
+              </div>
             ))}
           </div>
         ))}

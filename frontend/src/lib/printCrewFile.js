@@ -127,8 +127,13 @@ export async function printCrewFile(member, competencies) {
     if (ctlData?.form && (ctlData.form.completedAt || ctlData.form.archived)) sections.push(buildCtlFormHtml(ctlData, member.type));
     if (landingData?.form && (landingData.form.completedAt || landingData.form.archived)) sections.push(buildLandingAssessmentHtml(landingData.form));
     if (flights && flights.length > 0) {
+      // GET /api/flights?traineeId=X (unlike the cross-trainee archive
+      // browse ArchivedFlights.jsx uses) doesn't join in firstName/lastName/
+      // traineeType - buildLoftFlightHtml needs those for its meta line and
+      // CA/pilot branching, so they're filled in from the crew member here.
+      const [firstName, ...rest] = member.name.split(' ');
       const mostRecentFlight = [...flights].sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-      sections.push(buildLoftFlightHtml(mostRecentFlight));
+      sections.push(buildLoftFlightHtml({ ...mostRecentFlight, firstName, lastName: rest.join(' '), traineeType: member.type }));
     }
   }
 

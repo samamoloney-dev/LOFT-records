@@ -15,6 +15,7 @@ import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
+import { printCrewFile } from '../lib/printCrewFile';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 // Narrower than ADMIN_ROLES (excludes Alternate) - only these three can
@@ -577,6 +578,7 @@ export function CrewDetail() {
   const initialSubTab = searchParams.get('sub');
   const [competencies, setCompetencies] = useState([]);
   const [competencyError, setCompetencyError] = useState(null);
+  const [printingFile, setPrintingFile] = useState(false);
   // Once completed + planned dates are both set, the dates are locked to
   // avoid accidental edits - this remembers which rows were explicitly
   // unlocked via the "Edit dates" checkbox, reset on every reload.
@@ -643,6 +645,14 @@ export function CrewDetail() {
     } catch (err) { setError(err.message); }
   }
 
+  async function printFile() {
+    setError(null);
+    setPrintingFile(true);
+    try { await printCrewFile(member, competencies); }
+    catch (err) { setError(err.message); }
+    finally { setPrintingFile(false); }
+  }
+
   if (error) return <div className="error-text">{error}</div>;
   if (!member) return null;
 
@@ -669,6 +679,7 @@ export function CrewDetail() {
           {member.type === 'PILOT' && <ArnDisplay member={member} onSaved={setMember} />}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {isAdmin && <button onClick={printFile} disabled={printingFile}>{printingFile ? 'Preparing…' : 'Print file'}</button>}
           <DeleteArchivedCrewButton member={member} onDelete={deleteMember} />
           <ArchiveButton archived={member.archived} canArchive={isAdmin} onArchive={archiveMember} onUnarchive={unarchiveMember} />
         </div>

@@ -6,7 +6,8 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildCaptainInTrainingHtml } from '../lib/printBuilders';
 import { formatDate, formatUserRole } from '../lib/format';
 
 // Captain in Training upgrade assessments (SA 567 Preliminary, SA 568
@@ -262,25 +263,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
   }
 
   function printCheck(check) {
-    const d = check.details || {};
-    const items = d.items || {};
-    let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
-    for (const s of sections) {
-      body += section(s.title, s.items.map((desc) => {
-        const v = items[desc] || {};
-        const mark = s.kind === 'satisfactory' ? (v.satisfactory === true ? 'Satisfactory' : v.satisfactory === false ? 'Unsatisfactory' : '')
-          : s.kind === 'yesno' ? (v.observation === true ? 'Yes' : v.observation === false ? 'No' : '')
-            : `${v.observation || ''}${v.minStandard !== undefined ? ` (Min standard: ${v.minStandard ? 'Yes' : 'No'})` : ''}`;
-        return [desc, `${mark}${v.comments ? ` — ${v.comments}` : ''}`];
-      }));
-    }
-    body += section('Overall Assessment', [
-      ['Final Recommendation', d.recommendation || ''],
-      ['Assessor Comments', d.assessorComments || ''],
-      ['Overall assessment', resultBadge(check.result)],
-    ]);
-    body += signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]]);
-    openPrintWindow(`${label} - ${crewMemberName}`, body);
+    openPrintWindow(`${label} - ${crewMemberName}`, buildCaptainInTrainingHtml(check, variant, crewMemberName));
   }
 
   if (selected) {

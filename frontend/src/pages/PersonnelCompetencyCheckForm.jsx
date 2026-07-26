@@ -6,7 +6,8 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildPersonnelCompetencyCheckHtml } from '../lib/printBuilders';
 import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
@@ -38,13 +39,6 @@ function relevantItems(items, candidateSection) {
   return items
     .filter((i) => i.section === 'PREFLIGHT' || i.section === candidateSection || i.section === 'DEBRIEF')
     .sort((a, b) => (SECTION_PRIORITY[a.section] ?? 1) - (SECTION_PRIORITY[b.section] ?? 1) || a.sortOrder - b.sortOrder);
-}
-
-function expiryDate(checkDate) {
-  if (!checkDate) return null;
-  const d = new Date(checkDate);
-  d.setMonth(d.getMonth() + 24);
-  return d.toISOString().slice(0, 10);
 }
 
 // Buffered locally, committed onBlur - same fix as UpgradeRecordForm's
@@ -241,28 +235,7 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
   }
 
   function printCheck(check) {
-    const relevant = visibleCheckFormItems(relevantItems(items, check.candidateSection), check.items);
-    const preflight = relevant.filter((i) => i.section === 'PREFLIGHT');
-    const subsection = relevant.filter((i) => i.section === check.candidateSection);
-    const debrief = relevant.filter((i) => i.section === 'DEBRIEF');
-    const rowFor = (item) => [item.description, check.items?.[item.id] || ''];
-
-    let body = '<h1>Flight Standards Personnel (Air) Competency Check</h1>';
-    body += `<div class="meta">Candidate: ${userName} · ${SECTION_LABELS[check.candidateSection] || ''} · Completed ${check.completedAt ? formatDate(check.completedAt) : '—'}</div>`;
-    body += section('Details', [
-      ['Training / Check Type', check.trainingCheckType],
-      ['Date', check.checkDate ? formatDate(check.checkDate) : ''],
-      ['Assessor', check.assessorName],
-      ['Expiry (24m)', check.checkDate ? formatDate(expiryDate(check.checkDate)) : ''],
-      ['Aircraft Type', check.aircraftType],
-    ]);
-    body += section('Section 1 — Preflight Examination', preflight.map(rowFor));
-    body += section(SECTION_LABELS[check.candidateSection] || 'Section', subsection.map(rowFor));
-    body += section('Section 4 — Debrief', debrief.map(rowFor));
-    body += section('Comments', [['Comments', check.comments], ['Recommendations', check.recommendations]]);
-    body += `<div style="font-size:12px;font-style:italic;margin:0.75rem 0;">I certify that the purpose of this assessment as specified in E.6.16 has been achieved.</div>`;
-    body += signatureBlock([['Assessor', check.certifiedSignature]]);
-    openPrintWindow('Flight Standards Personnel (Air) Competency Check', body);
+    openPrintWindow('Flight Standards Personnel (Air) Competency Check', buildPersonnelCompetencyCheckHtml(check, items, userName));
   }
 
   return (

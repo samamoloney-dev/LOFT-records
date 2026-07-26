@@ -5,7 +5,8 @@ import { formatDate, formatUserRole } from '../lib/format';
 import { LANDING_ASSESSMENT_EDIT_ROLES } from '../lib/roles';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
-import { openPrintWindow, section, signatureBlock } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildLandingAssessmentHtml } from '../lib/printBuilders';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 const OBSERVATION_COUNT = 4;
@@ -185,27 +186,7 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
   if (!data) return null;
 
   function printForm() {
-    let body = '<h1>Initial Take-Off & Landing Assessment</h1>';
-    body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
-    padded(form.observationSectors, OBSERVATION_COUNT).forEach((s, i) => {
-      body += section(`Observation - Sector ${i + 1}`, [['Date', s.date ? formatDate(s.date) : ''], ['Route', s.route]]);
-    });
-    padded(form.demonstrationSectors, DEMONSTRATION_COUNT).forEach((s, i) => {
-      body += section(`Demonstration - Flight ${i + 1}`, [
-        ['Date', s.date ? formatDate(s.date) : ''], ['Airport', s.airport], ['Rwy', s.rwy], ['Wind', s.wind],
-        ['Take-Off', s.takeOff === 'X' ? 'Take over required' : s.takeOff === 'S' ? 'Satisfactory' : ''],
-        ['Land', s.land === 'X' ? 'Take over required' : s.land === 'S' ? 'Satisfactory' : ''],
-        ['Competent', s.competent === 'YES' ? 'Yes' : s.competent === 'NO' ? 'No' : ''],
-      ]);
-    });
-    body += section('Comments / Observations', [['Comments', form.comments]]);
-    body += section('Release', [
-      ['Exempt', form.exempt ? 'Yes' : 'No'],
-      ['HOTC/HOFO signature', form.hotcHofoSignature],
-      ['Release date', form.releaseDate],
-    ]);
-    body += signatureBlock([['Sign to release Candidate to normal LOFT (Check Captain)', form.releaseSignature]]);
-    openPrintWindow('Initial Take-Off & Landing Assessment', body);
+    openPrintWindow('Initial Take-Off & Landing Assessment', buildLandingAssessmentHtml(form));
   }
 
   return (

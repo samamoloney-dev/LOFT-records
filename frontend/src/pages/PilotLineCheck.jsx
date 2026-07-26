@@ -8,7 +8,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock, resultBadge, seatCheckBox, tickTable } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildPilotLineCheckHtml } from '../lib/printBuilders';
 import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
@@ -262,45 +263,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   }
 
   function printCheck(check) {
-    const d = check.details || {};
-    const results = d.results || {};
-    const seatCheck = Array.isArray(d.seatCheck) ? d.seatCheck : [];
-    const sections = groupBySection(visibleCheckFormItems(allTickableItems, results));
-    const isCurrent = !!refresherCompetency && !refresherCompetency.na && !!refresherCompetency.dueDate && competencyStatus(refresherCompetency.dueDate) !== 'overdue';
-    // One ruled two-column table (tickTable, same building block IPC/PC's
-    // ~50-item checklist uses) rather than a separate boxed .form-section
-    // per section - each row breaks individually instead of the whole
-    // section, which is what actually lets ~30 short tick items flow into
-    // two columns and fit on a single printed page.
-    const rows = [{ header: 'General' }, { description: REFRESHER_ITEM_NAME, tick: isCurrent ? '✓ Current' : 'Not current' }];
-    for (const [sectionName, sectionItems] of sections) {
-      rows.push({ header: sectionName });
-      for (const item of sectionItems) {
-        const v = results[item.id];
-        let tick = '';
-        if (item.kind === 'text') tick = v || '';
-        else if (item.kind === 'score') tick = v !== undefined ? String(v) : '';
-        else tick = v === true ? '✓' : v === false ? '✗' : '';
-        rows.push({ description: item.description, tick });
-      }
-    }
-    const body = `
-      <div class="compact">
-        <h1>Line Check</h1>
-        <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
-        ${tickTable(rows, { twoColumn: true })}
-        <div style="display:flex;justify-content:center;">${seatCheckBox(seatCheck, SEAT_OPTIONS, 'Check Conducted In', null)}</div>
-        ${section('Details', [
-          ['Assessor', d.assessor],
-          ['Assessor ARN', d.assessorArn],
-          ['Comments', d.comments],
-          ['Overall assessment', resultBadge(check.result)],
-          ['Overall score', check.score],
-        ])}
-      </div>
-      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
-    `;
-    openPrintWindow(`Line Check - ${crewMemberName}`, body);
+    openPrintWindow(`Line Check - ${crewMemberName}`, buildPilotLineCheckHtml(check, items, refresherCompetency, crewMemberName));
   }
 
   if (selected) {

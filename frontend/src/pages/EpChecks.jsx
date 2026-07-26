@@ -9,7 +9,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildEpCheckHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
@@ -131,28 +132,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
   }
 
   function printCheck(check) {
-    const d = check.details || {};
-    const itemRows = visibleCheckFormItems(epItems, d.items).map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N (Not Tested)' : '']);
-    const html = `
-      <h1>Emergency Procedures Check</h1>
-      <div class="meta">${d.name || ''} · ${d.date ? formatDate(d.date) : ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
-      ${section('Details', [
-        ['Aircraft type', d.actype],
-        ['Assessor', d.assessor],
-        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
-      ])}
-      ${section('Assessment items', itemRows)}
-      ${section('Assessment', [
-        ['Life Jacket Training (Wet Drill) date', d.lifeJacketNa ? 'N/A' : d.lifeJacketDate],
-        ['Scenarios selected', d.scenarios],
-        ['Comments', d.comments],
-        ['Overall assessment', resultBadge(check.result)],
-        ['Overall score', check.score],
-      ])}
-      <div class="disclaimer">We, the undersigned, do hereby mutually agree upon and accept the comment written in this document as being a correct and honest account of the performance of the Applicant in each and every procedure carried out.</div>
-      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
-    `;
-    openPrintWindow(`EP Check - ${d.name || ''}`, html);
+    openPrintWindow(`EP Check - ${check.details?.name || ''}`, buildEpCheckHtml(check, epItems));
   }
 
   function toggleType(type) {

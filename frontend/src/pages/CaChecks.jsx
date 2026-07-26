@@ -9,7 +9,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildCaLineCheckHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
@@ -126,29 +127,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
   }
 
   function printCheck(check) {
-    const d = check.details || {};
-    const itemRows = visibleCheckFormItems(caItems, d.items).map((item) => [item.description, d.items?.[item.id] === 'S' ? '✓' : d.items?.[item.id] === 'X' ? '✗' : d.items?.[item.id] === 'N' ? 'N/A' : '']);
-    const visibleNtsMarkers = ntsMarkers.filter((m) => !m.archived || d.nts?.[`score-${m.id}`] !== undefined || d.nts?.[`code-${m.id}`] !== undefined);
-    const ntsRows = visibleNtsMarkers.map((m) => [m.description, `Score ${d.nts?.[`score-${m.id}`] || '—'} · Code ${d.nts?.[`code-${m.id}`] || '—'}`]);
-    const html = `
-      <h1>Cabin Attendant Line Check (SA 540)</h1>
-      <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
-      ${section('Details', [
-        ['Assessor', d.assessor],
-        ['Assessor ARN', d.assessorArn],
-        ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
-        ['In-flight service', d.serviceMode === 'demo' ? 'Demonstrated' : d.serviceMode === 'desc' ? 'Described' : ''],
-      ])}
-      ${section('Assessment', itemRows)}
-      ${section('Non Technical Skill Assessment', ntsRows)}
-      ${section('Result', [
-        ['Comments', d.comments],
-        ['Overall assessment', resultBadge(check.result)],
-        ['Overall score', check.score],
-      ])}
-      ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
-    `;
-    openPrintWindow(`CA Line Check - ${d.name || ''}`, html);
+    openPrintWindow(`CA Line Check - ${check.details?.name || ''}`, buildCaLineCheckHtml(check, caItems, ntsMarkers));
   }
 
   if (selected) {

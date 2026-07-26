@@ -7,7 +7,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { PinSignature } from '../components/PinSignature';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildGroundInstructorCheckHtml } from '../lib/printBuilders';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 
@@ -133,22 +134,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
   }
 
   function printCheck(check) {
-    let body = '<h1>Flight Standards Personnel (Ground) Competency Check</h1>';
-    body += `<div class="meta">Applicant (Instructor): ${userName} · Completed ${check.completedAt ? formatDate(check.completedAt) : '—'}</div>`;
-    body += section('Details', [
-      ['Course Title', check.courseTitle],
-      ['Date of Observation', check.dateOfObservation ? formatDate(check.dateOfObservation) : ''],
-      ['Name of Assessor', check.assessorName],
-    ]);
-    body += section('Items', visibleCheckFormItems(items, check.items).map((item) => [
-      item.description,
-      check.items?.[item.id] === true ? 'Yes' : check.items?.[item.id] === false ? 'No' : '',
-    ]));
-    body += signatureBlock([
-      [`Assessor${check.assessorPrintedName ? ` - ${check.assessorPrintedName}` : ''}`, check.assessorSignature],
-      [`Instructor${check.instructorPrintedName ? ` - ${check.instructorPrintedName}` : ''}`, check.instructorSignature],
-    ]);
-    openPrintWindow('Flight Standards Personnel (Ground) Competency Check', body);
+    openPrintWindow('Flight Standards Personnel (Ground) Competency Check', buildGroundInstructorCheckHtml(check, items, userName));
   }
 
   return (

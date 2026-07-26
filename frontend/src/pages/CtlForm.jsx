@@ -7,7 +7,8 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, section, signatureBlock, resultBadge } from '../lib/print';
+import { openPrintWindow } from '../lib/print';
+import { buildCtlFormHtml } from '../lib/printBuilders';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
@@ -168,42 +169,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     : visibleItems.length > 0 && visibleItems.every((item) => form.assessmentItems[itemKey(item)] !== undefined);
 
   function printForm() {
-    const statusLabel = (v) => (v === true ? '✓' : v === false ? '✗' : v === 'SATISFACTORY' ? '✓' : v === 'UNSATISFACTORY' ? '✗' : v === 'NA' ? 'N/A' : '');
-    let body = `<h1>Check to Line Assessment</h1>`;
-    body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
-
-    if (isCabinAttendant) {
-      body += section('Assessment', CA_ASSESSMENT_ITEMS.map((item) => [item, statusLabel(form.assessmentItems[item])]));
-    } else {
-      body += section('Sectors 1 & 2', [
-        ['Route', form.sectorDetails?.sectors12?.route], ['Aircraft', form.sectorDetails?.sectors12?.aircraft],
-        ['Date', form.sectorDetails?.sectors12?.date ? formatDate(form.sectorDetails.sectors12.date) : ''], ['Flight time (this flight)', form.sectorDetails?.sectors12?.thisFlight],
-        ['Progressive total', form.sectorDetails?.sectors12?.progressiveTotal],
-      ]);
-      body += section('Sectors 3 & 4', [
-        ['Route', form.sectorDetails?.sectors34?.route], ['Aircraft', form.sectorDetails?.sectors34?.aircraft],
-        ['Date', form.sectorDetails?.sectors34?.date ? formatDate(form.sectorDetails.sectors34.date) : ''], ['Flight time (this flight)', form.sectorDetails?.sectors34?.thisFlight],
-        ['Total LOFT', form.sectorDetails?.sectors34?.progressiveTotal],
-      ]);
-      for (const [category, items] of grouped.entries()) {
-        body += section(category, items.map((item) => {
-          const v = form.assessmentItems[itemKey(item)];
-          return [item.description, item.kind === 'text' ? (v || '') : statusLabel(v)];
-        }));
-      }
-      body += section('Non Technical Skill Assessment', data.ntsMarkers.map((m) => [m, form.ntsScores?.[m] || '—']));
-      body += section('Comments', [['Comments', form.comments]]);
-      body += `<div class="disclaimer">We the undersigned, do hereby mutually agree upon and accept the comments written in this document as being a correct and honest account of the performance of the trainee in each and every check procedure carried out.</div>`;
-    }
-
-    body += section('Result', [
-      ['Overall result', resultBadge(form.overallResult)],
-      ...(!isCabinAttendant ? [['Overall score', form.overallScore]] : []),
-    ]);
-    if (!isCabinAttendant) {
-      body += signatureBlock([["Assessor's signature", form.assessorSignature], ['Candidate signature', form.candidateSignature]]);
-    }
-    openPrintWindow('Check to Line Assessment', body);
+    openPrintWindow('Check to Line Assessment', buildCtlFormHtml(data, traineeType));
   }
 
   const locked = !canEdit || !!form.completedAt;

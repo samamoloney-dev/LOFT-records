@@ -121,11 +121,11 @@ function Shell({ children }) {
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <ChangePassword />
-          <button onClick={logout}>Sign out</button>
-        </div>
       </aside>
+      <div className="sidebar-footer">
+        <ChangePassword />
+        <button onClick={logout}>Sign out</button>
+      </div>
       <main className="main-content">
         {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
         {user.role !== 'TRAINEE' && <ContentApprovalAlert />}

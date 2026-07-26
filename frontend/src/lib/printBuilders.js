@@ -166,7 +166,6 @@ export function buildProficiencyCheckHtml(check, pcItems) {
 
 // ---- Pilot Line Check (PilotLineCheck.jsx) ----
 const REFRESHER_ITEM_NAME = 'Refresher training and check';
-const LINE_CHECK_SEAT_OPTIONS = ['LHS', 'RHS'];
 
 function groupBySection(items) {
   const map = new Map();
@@ -202,8 +201,8 @@ export function buildPilotLineCheckHtml(check, items, refresherCompetency, crewM
       <h1>Line Check</h1>
       <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
       ${tickTable(rows, { twoColumn: true })}
-      <div style="display:flex;justify-content:center;">${seatCheckBox(seatCheck, LINE_CHECK_SEAT_OPTIONS, 'Check Conducted In', null)}</div>
       ${section('Details', [
+        ['Check conducted in', seatCheck.length > 0 ? seatCheck.join(', ') : '—'],
         ['Assessor', d.assessor],
         ['Assessor ARN', d.assessorArn],
         ['Comments', d.comments],

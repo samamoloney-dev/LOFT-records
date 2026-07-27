@@ -106,6 +106,28 @@ async function lastCompletedCheck(crewMemberId, checkType, variant) {
   return rows[0]?.completed_at || null;
 }
 
+// A planned check's own row (crew_planned_checks) is deleted the moment
+// "Create check form" turns it into a real check (see the create-check
+// route below) - so once that happens, dueInfo's plannedDate/
+// plannedAssignedTo just go back to null with nothing to show for it. This
+// tells dueInfo whether an active (non-archived), not-yet-completed check
+// of this type already exists, so the UI can say "Check Form Issued"
+// instead of the planned note just vanishing.
+async function hasInProgressCheck(crewMemberId, checkType, variant) {
+  const params = [crewMemberId, checkType];
+  let variantClause = '';
+  if (variant) {
+    params.push(variant);
+    variantClause = `AND details->>'variant' = $${params.length}`;
+  }
+  const { rows } = await pool.query(
+    `SELECT 1 FROM checks
+     WHERE crew_member_id = $1 AND check_type = $2 ${variantClause} AND completed_at IS NULL AND archived = false LIMIT 1`,
+    params,
+  );
+  return rows.length > 0;
+}
+
 async function completedPilotLineCheckCount(crewMemberId) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM checks
@@ -135,16 +157,16 @@ async function hasIncompleteGroundSchool(traineeId) {
   return rows.length > 0;
 }
 
-function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete) {
+function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete, issued) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
   const plannedDate = planned?.plannedDate ? new Date(planned.plannedDate).toISOString() : null;
   const plannedAssignedTo = planned?.assignedToName
     ? { id: planned.assignedTo, name: planned.assignedToName, arn: planned.assignedToArn, role: planned.assignedToRole }
     : null;
   if (!dueDate) {
-    return { dueDate: null, status: groundSchoolIncomplete ? 'in_training' : 'overdue', completedDate: completed, plannedDate, plannedAssignedTo };
+    return { dueDate: null, status: groundSchoolIncomplete ? 'in_training' : 'overdue', completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued };
   }
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate, plannedAssignedTo };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued };
 }
 
 // HOTC/HOFO/Flight Ops Admin can note a planned date for an upcoming check
@@ -299,6 +321,7 @@ async function itemsFor(member, currency) {
       dueDate: info.dueDate,
       completedDate: info.completedDate,
       plannedDate: info.plannedDate,
+      issued: info.issued,
     }));
 
   const competencies = await activeCompetencies(member.id, member.type, member.fleets);
@@ -339,13 +362,17 @@ async function withCurrency(member) {
   let currency;
 
   if (member.type === 'PILOT') {
-    const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete] = await Promise.all([
+    const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete, epIssued, ipcIssued, pcIssued, lineCheckIssued] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
       completedPilotLineCheckCount(member.id),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
       hasIncompleteGroundSchool(member.traineeId),
+      hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
+      hasInProgressCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
+      hasInProgressCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
+      hasInProgressCheck(member.id, 'PILOT_LINE_CHECK'),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const ipc = latestOf(ipcChk, member.seedIpcDate);
@@ -360,9 +387,9 @@ async function withCurrency(member) {
     // their Check to Line, on top of the ground-school gate above.
     const pcSuppressed = !pc && newHireGraceActive(member);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete),
-      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete),
-      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete, epIssued),
+      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete, ipcIssued),
+      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed, pcIssued),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet. If there's no
       // anchor at all (e.g. a crew profile onboarded without one) but a
@@ -371,18 +398,20 @@ async function withCurrency(member) {
       // to a rolling 365 days from the last completion instead (same rule
       // EP/IPC/PC already use), rather than leaving them stuck reading
       // "never completed" forever despite a real completed check on file.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete),
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete, lineCheckIssued),
     };
   } else {
-    const [epChk, lineCheckChk] = await Promise.all([
+    const [epChk, lineCheckChk, epIssued, lineCheckIssued] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
+      hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
+      hasInProgressCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, false, epIssued),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, false, lineCheckIssued),
     };
   }
 

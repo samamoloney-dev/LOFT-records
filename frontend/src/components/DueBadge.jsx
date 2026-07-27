@@ -17,11 +17,15 @@ const LABELS = {
 };
 
 // Small colour-coded pill for a single recurrency item's next-due date.
-// `info` is the { dueDate, status, completedDate, plannedDate } shape
-// returned by the backend's currency object (see
+// `info` is the { dueDate, status, completedDate, plannedDate, issued }
+// shape returned by the backend's currency object (see
 // backend/src/routes/crew.js withCurrency). plannedDate is purely
 // informational - an admin's note that a check is booked for a date,
-// distinct from the computed due date.
+// distinct from the computed due date. issued is set once that plan has
+// actually turned into a real (not yet completed) check record - its own
+// crew_planned_checks row is deleted the moment that happens (see
+// crew.js's create-check route), so without this the "Planned for X" note
+// would just silently vanish with nothing to show for it.
 export function DueBadge({ label, info }) {
   if (!info) return null;
   const text = info.dueDate
@@ -37,7 +41,9 @@ export function DueBadge({ label, info }) {
       {info.completedDate && (
         <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>Completed {formatDate(info.completedDate)}</div>
       )}
-      {info.plannedDate && (
+      {info.issued ? (
+        <div style={{ fontSize: 10.5, color: 'var(--text-accent)' }}>Check Form Issued</div>
+      ) : info.plannedDate && (
         <div style={{ fontSize: 10.5, color: 'var(--text-accent)' }}>Planned for {formatDate(info.plannedDate)}</div>
       )}
     </div>

@@ -202,11 +202,19 @@ router.get('/flight/:flightId', async (req, res) => {
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const scope = roleScopeFor(trainee.role);
+  // Pilots progress through numbered phases (1-3), so a given flight only
+  // ever covers that phase's own items - unlike cabin crew (no phases),
+  // whose full required-tasks list applies to every flight the same way.
+  // Always reflects the trainee's *current* phase (same as the trainee-level
+  // view's outstandingForPhase), not whatever phase they were in when this
+  // particular flight happened.
+  const isPilot = trainee.type === 'PILOT';
   const { rows: itemRows } = await pool.query(
     `SELECT * FROM syllabus_items
      WHERE fleet = $1 AND syllabus_id IS NOT DISTINCT FROM $2 AND section = 'SYLLABUS' AND (role_scope = 'BOTH' OR role_scope = $3)
+       AND ($4::int IS NULL OR phase = $4)
      ORDER BY category ASC, description ASC`,
-    [trainee.fleet, trainee.syllabusId, scope],
+    [trainee.fleet, trainee.syllabusId, scope, isPilot ? trainee.phase : null],
   );
 
   const { rows: progressRows } = await pool.query(

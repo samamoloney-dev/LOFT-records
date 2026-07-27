@@ -40,14 +40,14 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   const [syllabusItems, setSyllabusItems] = useState([]);
   const [categoryNotes, setCategoryNotes] = useState([]);
 
-  // Cabin crew syllabus items are re-signed on every flight (not carried
-  // over), so this is scoped to this specific flight's own sign-off state.
+  // Every trainee's syllabus items are re-signed on every flight (not
+  // carried over), so this is scoped to this specific flight's own sign-off
+  // state - pilots (phase-scoped) and cabin crew (no phases) alike, see
+  // backend/src/routes/syllabus.js GET /flight/:flightId.
   function loadSyllabusItems() {
-    if (isCabinAttendant) {
-      api.get(`/api/syllabus/flight/${flight.id}`).then(setSyllabusItems).catch(() => {});
-    }
+    api.get(`/api/syllabus/flight/${flight.id}`).then(setSyllabusItems).catch(() => {});
   }
-  useEffect(loadSyllabusItems, [isCabinAttendant, flight.id]);
+  useEffect(loadSyllabusItems, [flight.id]);
 
   // Trainer comments on the LOFT Package (see SyllabusPanel.jsx's
   // CategoryNoteField) are entered per subject, not per flight - but they
@@ -56,11 +56,11 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   // the subjects actually covered on this flight, via syllabusItems above)
   // so a comment made on the LOFT package doesn't need digging for.
   function loadCategoryNotes() {
-    if (isCabinAttendant && trainee?.id) {
+    if (trainee?.id) {
       api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
     }
   }
-  useEffect(loadCategoryNotes, [isCabinAttendant, trainee?.id]);
+  useEffect(loadCategoryNotes, [trainee?.id]);
 
   // Passed into FlightSyllabusList as its onChange - a sign-off or a
   // category note edit from within the expanded Syllabus sub-tab should
@@ -204,26 +204,6 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
               <strong>Homework:</strong> {flight.nextSortieNotes}
             </div>
           )}
-          {/* Not every required task gets covered on every single flight -
-              that's normal, not a failure. This is just a record of what
-              this particular flight didn't get to; the running reminder of
-              what's still genuinely outstanding lives on the trainee's LOFT
-              package (SyllabusPanel), where it's actually meant to stand out. */}
-          {outstanding.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-              <strong>Not covered on this flight ({outstanding.length}):</strong>{' '}
-              {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
-              {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''} - still needed on a future flight.
-            </div>
-          )}
-          {flightCategoryNotes.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-              <strong>LOFT Package comments:</strong>
-              {flightCategoryNotes.map((n) => (
-                <div key={n.category} style={{ marginTop: 2 }}>{n.category}: {n.notes}</div>
-              ))}
-            </div>
-          )}
         </>
       ) : (
         <>
@@ -239,6 +219,28 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           )}
         </>
       )}
+      {/* Not every required task gets covered on every single flight -
+          that's normal, not a failure. This is just a record of what this
+          particular flight didn't get to; the running reminder of what's
+          still genuinely outstanding lives on the trainee's LOFT package
+          (SyllabusPanel/trainee-level Syllabus tab), where it's actually
+          meant to stand out. Applies to pilots and cabin crew alike - both
+          re-sign their syllabus items on every flight. */}
+      {outstanding.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+          <strong>Not covered on this flight ({outstanding.length}):</strong>{' '}
+          {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
+          {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''} - still needed on a future flight.
+        </div>
+      )}
+      {flightCategoryNotes.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+          <strong>LOFT Package comments:</strong>
+          {flightCategoryNotes.map((n) => (
+            <div key={n.category} style={{ marginTop: 2 }}>{n.category}: {n.notes}</div>
+          ))}
+        </div>
+      )}
 
       {editing && (
         <div style={{ marginTop: '0.75rem' }}>
@@ -253,6 +255,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
               ]
               : [
                 { key: 'details', label: 'Flight Details' },
+                { key: 'syllabus', label: 'Syllabus' },
                 { key: 'nextSortie', label: 'Next Sortie' },
               ]
             ).map((t) => (
@@ -399,7 +402,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
             </div>
           )}
 
-          {subTab === 'syllabus' && isCabinAttendant && (
+          {subTab === 'syllabus' && (
             <FlightSyllabusList flightId={flight.id} trainee={trainee} onChange={refreshSyllabus} />
           )}
 

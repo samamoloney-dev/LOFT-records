@@ -126,7 +126,22 @@ export function BulkImportCrew() {
       const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' });
       if (raw.length === 0) { setError('No rows found in the first sheet of this file.'); return; }
       if (raw.length > 500) { setError(`This file has ${raw.length} rows - the maximum per import is 500. Split it into smaller batches.`); return; }
-      setRows(raw.map(mapRow));
+      const mapped = raw.map(mapRow);
+      const isBlankRow = (r) => !r.firstName && !r.lastName && !r.type && !r.role && r.fleets.length === 0;
+      // Every field blank on every row means none of this file's column
+      // headers matched anything in HEADER_MAP - almost always a title row
+      // or merged cell sitting above the real header row, which throws off
+      // which row sheet_to_json reads as headers. Surface the headers it
+      // actually saw instead of silently submitting hundreds of blank rows
+      // for the backend to reject one at a time with a wall of Zod errors.
+      if (mapped.every(isBlankRow)) {
+        const headers = Object.keys(raw[0] || {}).filter((h) => !/^__EMPTY/.test(h));
+        setError(`None of this file's columns were recognized${headers.length ? ` (found: ${headers.join(', ')})` : ''}. Check the first row of the sheet is the actual column headers - First Name, Last Name, Type, Role, Fleet, etc - not a title row sitting above them.`);
+        return;
+      }
+      // Trailing blank rows (common at the end of an exported sheet) would
+      // otherwise show up as bogus "failed" rows in the import report.
+      setRows(mapped.filter((r) => !isBlankRow(r)));
     } catch (err) {
       setError(`Could not read that file: ${err.message}`);
     }

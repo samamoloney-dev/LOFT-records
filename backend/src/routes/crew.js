@@ -52,7 +52,7 @@ function forbiddenForCaManager(req, member) {
 // simulator form applied to them - see crew_members.fleets, set directly
 // on this profile regardless of any staff link.
 const CREW_SELECT = `
-  SELECT crew_members.*, u.name AS linked_user_name, u.role AS linked_user_role
+  SELECT crew_members.*, u.name AS linked_user_name, u.role AS linked_user_role, u.check_access AS linked_check_access
   FROM crew_members
   LEFT JOIN users u ON u.id = crew_members.user_id
 `;
@@ -60,7 +60,7 @@ const CREW_SELECT = `
 function serializeCrewMember(row) {
   const m = rowToCamel(row);
   const isLinked = !!m.userId;
-  const { linkedUserName, linkedUserRole, ...rest } = m;
+  const { linkedUserName, linkedUserRole, linkedCheckAccess, ...rest } = m;
   return {
     ...rest,
     fleets: parsePgArray(rest.fleets),
@@ -71,6 +71,12 @@ function serializeCrewMember(row) {
     // a given upgrade tier (a Check Captain doesn't need a Training Captain
     // Upgrade form, etc).
     linkedRole: isLinked ? linkedUserRole : null,
+    // Needed alongside linkedRole to decide Ground Instructor Check
+    // eligibility (see lib/roles.js isGroundInstructorCheckEligible, which
+    // checks EMERGENCY_PROCEDURES checkAccess as well as role) - surfaced
+    // so the crew profile's own Specialist Training tab can apply the same
+    // eligibility rule as the Staff page without a second fetch.
+    linkedCheckAccess: isLinked ? parsePgArray(linkedCheckAccess) : null,
   };
 }
 
@@ -155,6 +161,19 @@ async function hasIncompleteGroundSchool(traineeId) {
     [traineeId],
   );
   return rows.length > 0;
+}
+
+// Whether this crew member still has an active (non-archived) linked
+// trainee record - i.e. genuinely still going through LOFT rather than
+// just historically linked to one. See withCurrency's use of this: IPC,
+// Line Check and Refresher Training don't apply yet while someone's still
+// in LOFT, regardless of where ground school itself is up to (that only
+// covers the earlier phase - see hasIncompleteGroundSchool above), so
+// those shouldn't show as overdue just because they've never been done.
+async function isInLoft(traineeId) {
+  if (!traineeId) return false;
+  const { rows } = await pool.query('SELECT archived FROM trainees WHERE id = $1', [traineeId]);
+  return rows.length > 0 && !rows[0].archived;
 }
 
 function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete, issued) {
@@ -312,7 +331,7 @@ function newHireGraceActive(member) {
   return new Date() < addDays(new Date(member.lineCheckAnchorDate), NEW_HIRE_GRACE_DAYS);
 }
 
-async function itemsFor(member, currency) {
+async function itemsFor(member, currency, inLoft) {
   const fromCurrency = Object.entries(currency)
     .filter(([, info]) => !!info)
     .map(([key, info]) => ({
@@ -332,7 +351,10 @@ async function itemsFor(member, currency) {
       const dueDate = withRefresherDefaultDue(member, c.name, c.due_date);
       // See newHireGraceActive above - Refresher Training is the other half
       // of the operator's "PC and Refresher Training" new-hire grace period.
-      const suppressed = c.name === 'Refresher Training' && !c.completed_date && newHireGrace;
+      // Also suppressed for anyone still genuinely in LOFT (see isInLoft) -
+      // it isn't due until well after their first Line Check, regardless of
+      // whether they were specifically flagged new_hire_pilot.
+      const suppressed = c.name === 'Refresher Training' && !c.completed_date && (newHireGrace || inLoft);
       return {
         label: c.name,
         status: suppressed ? 'in_training' : competencyStatus(dueDate),
@@ -345,20 +367,20 @@ async function itemsFor(member, currency) {
   return [...fromCurrency, ...fromCompetencies];
 }
 
-async function urgentItemsFor(member, currency) {
-  const items = await itemsFor(member, currency);
+async function urgentItemsFor(member, currency, inLoft) {
+  const items = await itemsFor(member, currency, inLoft);
   return items.filter((i) => isUrgent(i.status));
 }
 
 // Every recurrent check and competency, whatever its status - Currency
 // Overview shows the whole roster's picture (not just problems) so
 // "everything's fine" is as visible as "this is overdue".
-async function allItemsFor(member, currency) {
-  return itemsFor(member, currency);
+async function allItemsFor(member, currency, inLoft) {
+  return itemsFor(member, currency, inLoft);
 }
 
 async function withCurrency(member) {
-  const planned = await plannedDatesFor(member.id);
+  const [planned, inLoft] = await Promise.all([plannedDatesFor(member.id), isInLoft(member.traineeId)]);
   let currency;
 
   if (member.type === 'PILOT') {
@@ -386,10 +408,30 @@ async function withCurrency(member) {
     // PC yet stays "in training" rather than "overdue" until 6 months past
     // their Check to Line, on top of the ground-school gate above.
     const pcSuppressed = !pc && newHireGraceActive(member);
+    // A pilot who's completed their qualifying IPC but has never yet sat a
+    // dedicated Proficiency Check - the gap right after finishing LOFT,
+    // before their first stand-alone PC - is due one 6 months after that
+    // IPC, not the usual 365-day rolling clock, per the operator's explicit
+    // rule that the first PC is done 6 months after the IPC. This only
+    // covers that one "never had a real PC" gap; once a dedicated
+    // PC-variant check (or a seeded PC date) exists, the normal 365-day
+    // clock above (still anchored off either check type) takes over as
+    // before.
+    const pcNeverCompleted = !pcChk && !member.seedPcDate;
+    const pcDueDate = pcNeverCompleted && ipcChk ? nextDueRolling(ipcChk, NEW_HIRE_GRACE_DAYS) : nextDueRolling(pc);
+    // Not yet a fully current line pilot - IPC, Line Check and Refresher
+    // Training (see itemsFor above) don't apply until LOFT is actually
+    // finished, regardless of where ground school itself is up to
+    // (groundSchoolIncomplete only covers the earlier phase), per the
+    // operator's explicit request. EP and PC are deliberately left out of
+    // this gate: EP training happens early in LOFT and should still show as
+    // applicable, and PC's own "not yet due" handling is the
+    // pcDueDate/pcSuppressed logic above.
+    const inTraining = groundSchoolIncomplete || inLoft;
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete, epIssued),
-      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, groundSchoolIncomplete, ipcIssued),
-      proficiencyCheck: dueInfo(nextDueRolling(pc), pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed, pcIssued),
+      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, inTraining, ipcIssued),
+      proficiencyCheck: dueInfo(pcDueDate, pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed, pcIssued),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet. If there's no
       // anchor at all (e.g. a crew profile onboarded without one) but a
@@ -398,7 +440,7 @@ async function withCurrency(member) {
       // to a rolling 365 days from the last completion instead (same rule
       // EP/IPC/PC already use), rather than leaving them stuck reading
       // "never completed" forever despite a real completed check on file.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, groundSchoolIncomplete, lineCheckIssued),
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, inTraining, lineCheckIssued),
     };
   } else {
     const [epChk, lineCheckChk, epIssued, lineCheckIssued] = await Promise.all([
@@ -411,28 +453,20 @@ async function withCurrency(member) {
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, false, epIssued),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, false, lineCheckIssued),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, inLoft, lineCheckIssued),
     };
-  }
-
-  // Whether this crew member still has an active (non-archived) linked
-  // trainee record - i.e. genuinely still going through LOFT rather than
-  // just historically linked to one. Surfaced to the frontend so Currency
-  // Overview can add an "IN LOFT" remark alongside an overdue/due-soon item,
-  // since some of what's flagged there is expected while training is still
-  // in progress rather than a real oversight.
-  let inLoft = false;
-  if (member.traineeId) {
-    const { rows: traineeRows } = await pool.query('SELECT archived FROM trainees WHERE id = $1', [member.traineeId]);
-    inLoft = traineeRows.length > 0 && !traineeRows[0].archived;
   }
 
   return {
     ...member,
+    // Surfaced to the frontend so Currency Overview can add an "IN LOFT"
+    // remark alongside an overdue/due-soon item, since some of what's
+    // flagged there is expected while training is still in progress rather
+    // than a real oversight.
     inLoft,
     currency,
-    urgentItems: await urgentItemsFor(member, currency),
-    allItems: await allItemsFor(member, currency),
+    urgentItems: await urgentItemsFor(member, currency, inLoft),
+    allItems: await allItemsFor(member, currency, inLoft),
   };
 }
 

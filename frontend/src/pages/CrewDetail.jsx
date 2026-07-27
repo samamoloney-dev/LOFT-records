@@ -9,10 +9,14 @@ import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { ClearanceTab } from './ClearanceTab';
 import { CaptainInTrainingForm } from './CaptainInTrainingForm';
+import { UpgradeRecordForm } from './UpgradeRecordForm';
+import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
+import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
 import { formatFleet, formatTraineeRole } from '../lib/format';
+import { UPGRADE_VARIANTS, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
 import { printCrewFile } from '../lib/printCrewFile';
@@ -389,6 +393,51 @@ function CurrencyFolder({ member, initialSubTab }) {
   );
 }
 
+// Ties this crew member's progression as Flight Standards staff back to
+// their own profile - previously their Upgrade Record and (once linked to a
+// staff account) Ground Instructor/Personnel (Air) Competency Checks were
+// only reachable from the Upgrades and FS Staff pages, with nothing linking
+// back here. Reuses the exact same form components those pages use, just
+// scoped to this one crew member/candidate rather than a picker.
+function SpecialistTrainingTab({ member }) {
+  const isPilot = member.type === 'PILOT';
+  // Only Captains are upgrade candidates on the pilot side (a First Officer
+  // must hold Captain first, same gate UpgradePicker applies) - Cabin
+  // Attendants have no equivalent rank gate.
+  const upgradeVariants = isPilot
+    ? (member.role === 'CAPTAIN' ? ['TRAINING_CAPTAIN', 'CHECK_CAPTAIN'] : [])
+    : ['TRAINING_CABIN_ATTENDANT', 'CHECK_CABIN_ATTENDANT'];
+  // GIC/PAC only apply once this crew profile is linked to a staff account
+  // (see crew.js serializeCrewMember) - mirrors the same eligibility rules
+  // FsStaff.jsx uses to decide showGic/showPac for a staff member's own
+  // profile.
+  const showGic = member.isLinked && isGroundInstructorCheckEligible({ role: member.linkedRole, checkAccess: member.linkedCheckAccess });
+  const showPac = member.isLinked && PERSONNEL_AIR_COMPETENCY_ROLES.includes(member.linkedRole);
+  const fleet = member.fleets.length === 1 ? member.fleets[0] : undefined;
+
+  const subTabs = [
+    ...upgradeVariants.map((v) => ({ key: v, label: UPGRADE_VARIANTS[v].label })),
+    ...(showGic ? [{ key: 'gic', label: 'Ground Instructor Check' }] : []),
+    ...(showPac ? [{ key: 'pac', label: 'Personnel (Air) Competency Check' }] : []),
+  ];
+  const [subTab, setSubTab] = useState(subTabs[0]?.key);
+
+  if (subTabs.length === 0) {
+    return <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No specialist training applicable to this crew member.</div>;
+  }
+
+  return (
+    <div>
+      <TabBar tabs={subTabs} active={subTab} onSelect={setSubTab} />
+      {upgradeVariants.map((v) => subTab === v && (
+        <UpgradeRecordForm key={v} variant={v} crewMemberId={member.id} crewMemberName={member.name} fleet={fleet} crewIsLinked={member.isLinked} />
+      ))}
+      {subTab === 'gic' && <GroundInstructorCheckForm userId={member.userId} userName={member.name} />}
+      {subTab === 'pac' && <PersonnelCompetencyCheckForm userId={member.userId} userName={member.name} />}
+    </div>
+  );
+}
+
 // One competency's status badge + editable dates - used by the general
 // Competencies list below the top block (Medical is special-cased into its
 // own compact MedicalBox above instead - see ExpiryTab).
@@ -668,6 +717,7 @@ export function CrewDetail() {
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
     ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),
+    ...(isAdmin ? [{ key: 'specialistTraining', label: 'Specialist Training' }] : []),
   ];
 
   return (
@@ -707,6 +757,7 @@ export function CrewDetail() {
         <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
       )}
       {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
+      {topTab === 'specialistTraining' && isAdmin && <SpecialistTrainingTab member={member} />}
     </div>
   );
 }

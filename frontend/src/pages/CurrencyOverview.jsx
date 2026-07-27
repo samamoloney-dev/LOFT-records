@@ -104,6 +104,10 @@ function allRows(member) {
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
     status: item.status,
+    // A typed note explaining why this is overdue (see crew.js's
+    // ReasonEditor/overdueReason) - only ever set on the recurrent
+    // check items (EP/IPC/PC/Line Check), not ad-hoc competencies.
+    overdueReason: item.overdueReason,
     // Still has an active (non-archived) linked LOFT trainee record - see
     // backend/src/routes/crew.js withCurrency's inLoft. Flagged overdue
     // while still in training is often expected, not an oversight, so it
@@ -186,6 +190,7 @@ export function CurrencyOverview() {
               {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)} (${expiryText(r.dueDate)})` : ''}
             </div>
             {r.plannedDate && <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>}
+            {r.overdueReason && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Reason: {r.overdueReason}</div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {r.inLoft && r.status === 'overdue' && (

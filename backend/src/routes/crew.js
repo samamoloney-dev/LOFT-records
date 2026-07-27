@@ -347,6 +347,7 @@ async function itemsFor(member, currency, inLoft) {
       completedDate: info.completedDate,
       plannedDate: info.plannedDate,
       issued: info.issued,
+      overdueReason: info.overdueReason,
     }));
 
   const competencies = await activeCompetencies(member.id, member.type, member.fleets);

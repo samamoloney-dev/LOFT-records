@@ -520,11 +520,15 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
         {['OBSERVATION', 'TRAINING'].includes(subTab) && (() => {
           const stage = FLIGHT_STAGES.find((s) => s.key === subTab);
           const rows = flights.filter((f) => f.stage === stage.key);
+          // Training Captain's Observation stage only needs one flight,
+          // per the operator's explicit request - every other stage/variant
+          // keeps the default minimum above.
+          const min = stage.key === 'OBSERVATION' && variant === 'TRAINING_CAPTAIN' ? 1 : stage.min;
           return (
             <>
               <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontWeight: 500 }}>{stage.label} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 12 }}>({rows.length}/{stage.min} min)</span></div>
+                  <div style={{ fontWeight: 500 }}>{stage.label} <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: 12 }}>({rows.length}/{min} min)</span></div>
                   {!locked && <button type="button" onClick={() => addFlight(selected, stage.key)}>+ Add flight</button>}
                 </div>
                 {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No flights logged yet.</div>}

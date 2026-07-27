@@ -32,7 +32,7 @@ function groupByPhaseThenCategory(items) {
 
 // Trainer comments at the subject (category) level, not per individual
 // topic - one box per category card, shared by pilots and cabin crew.
-function CategoryNoteField({ traineeId, category, section, initialNotes }) {
+function CategoryNoteField({ traineeId, category, section, initialNotes, onSaved }) {
   const [value, setValue] = useState(initialNotes || '');
   const [error, setError] = useState(null);
 
@@ -40,6 +40,7 @@ function CategoryNoteField({ traineeId, category, section, initialNotes }) {
     setError(null);
     try {
       await api.put(`/api/syllabus/trainee/${traineeId}/category-notes`, { category, section, notes: value });
+      onSaved?.();
     } catch (err) { setError(err.message); }
   }
 
@@ -243,7 +244,7 @@ export function FlightSyllabusList({ flightId, trainee, onChange }) {
           {categoryItems.map((item) => (
             <SyllabusItemRow key={item.id} item={item} onSignOff={signOff} showPhase={false} fleet={trainee.fleet} />
           ))}
-          <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} />
+          <CategoryNoteField traineeId={trainee.id} category={category} section="SYLLABUS" initialNotes={noteFor(category)} onSaved={onChange} />
         </div>
       ))}
       {items.length === 0 && (

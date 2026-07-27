@@ -38,6 +38,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   const [otherTasks, setOtherTasks] = useState(flight.otherCompletedTasks || '');
   const [error, setError] = useState(null);
   const [syllabusItems, setSyllabusItems] = useState([]);
+  const [categoryNotes, setCategoryNotes] = useState([]);
 
   // Cabin crew syllabus items are re-signed on every flight (not carried
   // over), so this is scoped to this specific flight's own sign-off state.
@@ -48,7 +49,32 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   }
   useEffect(loadSyllabusItems, [isCabinAttendant, flight.id]);
 
+  // Trainer comments on the LOFT Package (see SyllabusPanel.jsx's
+  // CategoryNoteField) are entered per subject, not per flight - but they
+  // were only ever visible by opening this flight and switching to its
+  // Syllabus sub-tab. Surfaced here in the summary instead (scoped to just
+  // the subjects actually covered on this flight, via syllabusItems above)
+  // so a comment made on the LOFT package doesn't need digging for.
+  function loadCategoryNotes() {
+    if (isCabinAttendant && trainee?.id) {
+      api.get(`/api/syllabus/trainee/${trainee.id}/category-notes`).then(setCategoryNotes).catch(() => {});
+    }
+  }
+  useEffect(loadCategoryNotes, [isCabinAttendant, trainee?.id]);
+
+  // Passed into FlightSyllabusList as its onChange - a sign-off or a
+  // category note edit from within the expanded Syllabus sub-tab should
+  // both refresh what's shown in this card's own summary above.
+  function refreshSyllabus() {
+    loadSyllabusItems();
+    loadCategoryNotes();
+  }
+
   const outstanding = syllabusItems.filter((i) => !i.completedAt);
+  const flightCategories = [...new Set(syllabusItems.map((i) => i.category))];
+  const flightCategoryNotes = categoryNotes.filter(
+    (n) => n.section === 'SYLLABUS' && flightCategories.includes(n.category) && n.notes?.trim(),
+  );
 
   // Only whoever created the flight may edit it - an ownership lock, not a
   // role check. Admins keep an override (mirrors backend canEditFlight) so
@@ -188,6 +214,14 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
               <strong>Not covered on this flight ({outstanding.length}):</strong>{' '}
               {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
               {outstanding.length > 8 ? ` and ${outstanding.length - 8} more` : ''} - still needed on a future flight.
+            </div>
+          )}
+          {flightCategoryNotes.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              <strong>LOFT Package comments:</strong>
+              {flightCategoryNotes.map((n) => (
+                <div key={n.category} style={{ marginTop: 2 }}>{n.category}: {n.notes}</div>
+              ))}
             </div>
           )}
         </>
@@ -366,7 +400,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
           )}
 
           {subTab === 'syllabus' && isCabinAttendant && (
-            <FlightSyllabusList flightId={flight.id} trainee={trainee} onChange={loadSyllabusItems} />
+            <FlightSyllabusList flightId={flight.id} trainee={trainee} onChange={refreshSyllabus} />
           )}
 
           {subTab === 'other' && isCabinAttendant && (

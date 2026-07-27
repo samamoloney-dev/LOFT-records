@@ -6,6 +6,7 @@ import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
+import { AutoTextarea } from '../components/AutoTextarea';
 import { openPrintWindow } from '../lib/print';
 import { buildPersonnelCompetencyCheckHtml } from '../lib/printBuilders';
 import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
@@ -53,6 +54,23 @@ function DateField({ value, disabled, onCommit }) {
   useEffect(() => { setLocal(value || ''); }, [value]);
   return (
     <input type="date" disabled={disabled} value={local} onChange={(e) => setLocal(e.target.value)} onBlur={() => onCommit(local)} />
+  );
+}
+
+// Same buffered-onBlur pattern as DateField above, wrapping AutoTextarea
+// instead of a plain <textarea> so Comments/Recommendations grow to fit
+// whatever's typed instead of scrolling inside a fixed 3-row box.
+function BufferedAutoTextarea({ value, disabled, onCommit, rows }) {
+  const [local, setLocal] = useState(value || '');
+  useEffect(() => { setLocal(value || ''); }, [value]);
+  return (
+    <AutoTextarea
+      value={local}
+      disabled={disabled}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => onCommit(local)}
+      minHeight={rows * 22}
+    />
   );
 }
 
@@ -144,11 +162,11 @@ export function PersonnelCompetencyCheckEditor({ check, userName, candidateRole,
 
       <div className="field" style={{ marginTop: 10 }}>
         <label>Comments</label>
-        <textarea disabled={locked} rows={3} defaultValue={check.comments || ''} onBlur={(e) => onPatch({ comments: e.target.value })} />
+        <BufferedAutoTextarea disabled={locked} rows={3} value={check.comments || ''} onCommit={(v) => onPatch({ comments: v })} />
       </div>
       <div className="field">
         <label>Recommendations</label>
-        <textarea disabled={locked} rows={3} defaultValue={check.recommendations || ''} onBlur={(e) => onPatch({ recommendations: e.target.value })} />
+        <BufferedAutoTextarea disabled={locked} rows={3} value={check.recommendations || ''} onCommit={(v) => onPatch({ recommendations: v })} />
       </div>
 
       {!check.completedAt && (

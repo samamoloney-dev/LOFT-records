@@ -6,6 +6,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
+import { AutoTextarea } from '../components/AutoTextarea';
 import { TabBar } from '../components/TabBar';
 import { openPrintWindow } from '../lib/print';
 import { buildUpgradeRecordHtml } from '../lib/printBuilders';
@@ -69,6 +70,27 @@ const TRAINING_CAPTAIN_OBSERVATION_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'
 function isEligibleUpgradeObservationTrainer(staffMember, fleet, variant) {
   if (variant !== 'TRAINING_CAPTAIN') return isEligibleUpgradeAssessor(staffMember, fleet);
   return ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role) || TRAINING_CAPTAIN_OBSERVATION_ROLES.includes(staffMember.role);
+}
+
+// Same "buffered locally, committed onBlur" pattern as the rest of this
+// form's free-text fields (see FlightRow's own comment on why - a
+// fully-controlled input firing straight into an async PATCH loses
+// keystrokes while the request is in flight), wrapping AutoTextarea instead
+// of a plain <textarea> so the box grows to fit whatever's typed instead of
+// scrolling inside a fixed height.
+function BufferedAutoTextarea({ value, disabled, onCommit, minHeight, placeholder }) {
+  const [local, setLocal] = useState(value || '');
+  useEffect(() => { setLocal(value || ''); }, [value]);
+  return (
+    <AutoTextarea
+      value={local}
+      disabled={disabled}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => onCommit(local)}
+      minHeight={minHeight}
+      placeholder={placeholder}
+    />
+  );
 }
 
 function UpgradeAssessorPicker({ value, fleet, onAssign }) {
@@ -492,7 +514,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
             {briefingItems.map((item) => (
               <BriefingItemRow key={item.id} description={item.description} referenceDocument={item.referenceDocument} referenceDocumentName={item.referenceDocumentName} value={items[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setBriefingItem(selected, item.id)} />
             ))}
-            <div className="field"><label>Briefing comments</label><textarea defaultValue={d.briefingComments} disabled={locked} onBlur={(e) => patchDetails(selected, { briefingComments: e.target.value })} style={{ minHeight: 60 }} /></div>
+            <div className="field"><label>Briefing comments</label><BufferedAutoTextarea value={d.briefingComments} disabled={locked} onCommit={(v) => patchDetails(selected, { briefingComments: v })} minHeight={60} /></div>
           </div>
         )}
 
@@ -512,7 +534,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
             )}
             <div className="field">
               <label>Optional simulator training (any additional simulator sessions conducted)</label>
-              <textarea defaultValue={d.simulatorOtherTraining} disabled={locked} onBlur={(e) => patchDetails(selected, { simulatorOtherTraining: e.target.value })} style={{ minHeight: 60 }} />
+              <BufferedAutoTextarea value={d.simulatorOtherTraining} disabled={locked} onCommit={(v) => patchDetails(selected, { simulatorOtherTraining: v })} minHeight={60} />
             </div>
           </div>
         )}
@@ -584,7 +606,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
             </div>
 
             <div className="card">
-              <div className="field"><label>Assessor comments</label><textarea defaultValue={d.assessorComments} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorComments: e.target.value })} style={{ minHeight: 70 }} /></div>
+              <div className="field"><label>Assessor comments</label><BufferedAutoTextarea value={d.assessorComments} disabled={locked} onCommit={(v) => patchDetails(selected, { assessorComments: v })} minHeight={70} /></div>
               <div className="grid2">
                 {selected.assignedTo ? (
                   <PinSignature

@@ -28,7 +28,7 @@ router.get('/planned-checks', async (req, res) => {
     `SELECT pc.*, cm.first_name, cm.last_name, cm.fleets, cm.type
      FROM crew_planned_checks pc
      JOIN crew_members cm ON cm.id = pc.crew_member_id
-     WHERE cm.archived = false
+     WHERE cm.archived = false AND pc.planned_date IS NOT NULL
      ORDER BY pc.planned_date ASC`,
   );
   res.json(rows.map((row) => {

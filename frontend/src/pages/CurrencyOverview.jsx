@@ -161,6 +161,12 @@ export function CurrencyOverview() {
       if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate;
       return !!r.plannedDate;
     });
+  // Once specifically looking at what's already booked in, the planned date
+  // itself (closest first) is more useful than the usual overdue-first
+  // ordering - that's the whole point of checking what's coming up next.
+  if (rosteredFilter === 'rostered') {
+    filteredRows.sort((a, b) => new Date(a.plannedDate) - new Date(b.plannedDate));
+  }
 
   return (
     <div>

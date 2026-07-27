@@ -264,6 +264,33 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved, disab
   );
 }
 
+// HOTC/HOFO/Flight Ops Admin only - a typed note explaining why a check is
+// currently overdue (e.g. "Awaiting simulator availability", "On extended
+// leave"), independent of whether a date's been booked in yet. Only shown
+// once a check is actually overdue - reuses the same crew_planned_checks
+// row PlannedDateEditor writes to (see crew.js), buffered locally and
+// committed onBlur like the other free-text fields in this app.
+function ReasonEditor({ crewMemberId, checkKey, reason, onSaved, disabled }) {
+  const [local, setLocal] = useState(reason || '');
+  useEffect(() => { setLocal(reason || ''); }, [reason]);
+
+  async function commit() {
+    if (local === (reason || '')) return;
+    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { reason: local || null });
+    onSaved(updated);
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Reason overdue</label>
+      <input
+        value={local} disabled={disabled} onChange={(e) => setLocal(e.target.value)} onBlur={commit}
+        placeholder="e.g. awaiting simulator slot" style={{ fontSize: 11, padding: '4px 6px', width: 180 }}
+      />
+    </div>
+  );
+}
+
 // Medical, styled to match the other boxes in this row (DueBadge + a
 // compact "Plan a date" input) rather than the fuller Competencies-list
 // card - actually editing Completed/Due dates now happens on the dedicated
@@ -585,22 +612,34 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
         <div>
           <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} disabled={archived} />
+          {member.currency.emergencyProcedures.status === 'overdue' && (
+            <ReasonEditor crewMemberId={member.id} checkKey="emergencyProcedures" reason={member.currency.emergencyProcedures.overdueReason} onSaved={onSaved} disabled={archived} />
+          )}
         </div>
         {isPilot && (
           <div>
             <DueBadge label="IPC" info={member.currency.ipc} />
             <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} disabled={archived} />
+            {member.currency.ipc.status === 'overdue' && (
+              <ReasonEditor crewMemberId={member.id} checkKey="ipc" reason={member.currency.ipc.overdueReason} onSaved={onSaved} disabled={archived} />
+            )}
           </div>
         )}
         {isPilot && (
           <div>
             <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
             <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} disabled={archived} />
+            {member.currency.proficiencyCheck.status === 'overdue' && (
+              <ReasonEditor crewMemberId={member.id} checkKey="proficiencyCheck" reason={member.currency.proficiencyCheck.overdueReason} onSaved={onSaved} disabled={archived} />
+            )}
           </div>
         )}
         <div>
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} disabled={archived} />
+          {member.currency.lineCheck.status === 'overdue' && (
+            <ReasonEditor crewMemberId={member.id} checkKey="lineCheck" reason={member.currency.lineCheck.overdueReason} onSaved={onSaved} disabled={archived} />
+          )}
         </div>
         {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />}
       </div>

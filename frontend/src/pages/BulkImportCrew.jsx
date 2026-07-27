@@ -27,6 +27,22 @@ const HEADER_MAP = {
   lastlinecheckdate: 'lastLineCheckDate', linecheckdate: 'lastLineCheckDate',
 };
 
+// Some real-world templates put a title row ("Crew Bulk Import Template -
+// Flight Standards System") above the real column headers - scans the
+// first few rows for the one that actually looks like a header row (at
+// least 2 cells matching HEADER_MAP), instead of always assuming row 1.
+// Deliberately doesn't drop blank rows here - the returned index has to
+// line up with the sheet's real row numbers for sheet_to_json's `range`
+// option below to skip to the right place.
+function findHeaderRowIndex(sheet, maxScan = 5) {
+  const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  for (let i = 0; i < Math.min(maxScan, grid.length); i++) {
+    const matches = (grid[i] || []).filter((cell) => HEADER_MAP[normalizeHeader(cell)]).length;
+    if (matches >= 2) return i;
+  }
+  return 0;
+}
+
 const FLEET_NAME_TO_CODE = {
   DASH8: 'DASH_8', DHC8: 'DASH_8',
   FOKKER100: 'FOKKER_100', F100: 'FOKKER_100',
@@ -123,7 +139,7 @@ export function BulkImportCrew() {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const raw = XLSX.utils.sheet_to_json(sheet, { defval: '', range: findHeaderRowIndex(sheet) });
       if (raw.length === 0) { setError('No rows found in the first sheet of this file.'); return; }
       if (raw.length > 500) { setError(`This file has ${raw.length} rows - the maximum per import is 500. Split it into smaller batches.`); return; }
       const mapped = raw.map(mapRow);

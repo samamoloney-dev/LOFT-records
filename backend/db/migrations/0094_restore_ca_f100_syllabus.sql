@@ -73,5 +73,5 @@ FROM (VALUES
 ) AS v(category, section, description, notes)
 WHERE NOT EXISTS (
   SELECT 1 FROM syllabus_items si
-  WHERE si.fleet = 'CA_FOKKER_100' AND si.category = v.category AND si.section = v.section AND si.description = v.description
+  WHERE si.fleet = 'CA_FOKKER_100' AND si.category = v.category AND si.section = v.section::syllabus_section AND si.description = v.description
 );

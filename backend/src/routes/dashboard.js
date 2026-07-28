@@ -153,12 +153,14 @@ router.get('/summary', async (req, res) => {
        ORDER BY cc.planned_date ASC`,
     ),
     pool.query(
-      `SELECT id, first_name, last_name, type, role, fleet, phase, ready_for_loft_at FROM trainees
+      `SELECT id, first_name, last_name, type, role, fleet, phase FROM trainees
        WHERE archived = false ORDER BY last_name ASC`,
     ),
-    // Ground school completion fraction (pilots) - an N/A item counts the
-    // same as completed, mirroring hasIncompleteGroundSchool's own "not
-    // outstanding" definition above.
+    // Ground school completion fraction - pilots and cabin attendants alike
+    // now (ground_school_items/progress are fleet-scoped, not pilot-only -
+    // see migration 0091). An N/A item counts the same as completed,
+    // mirroring hasIncompleteGroundSchool's own "not outstanding" definition
+    // above.
     pool.query(
       `SELECT t.id AS trainee_id,
               COUNT(*) FILTER (WHERE gsp.completed_at IS NOT NULL OR COALESCE((gsp.details->>'na')::boolean, false))::int AS complete,
@@ -166,7 +168,7 @@ router.get('/summary', async (req, res) => {
        FROM trainees t
        JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.syllabus_id IS NOT DISTINCT FROM t.syllabus_id AND gsi.required = true
        LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
-       WHERE t.archived = false AND t.type = 'PILOT'
+       WHERE t.archived = false
        GROUP BY t.id`,
     ),
     // Flight count + required-tasks sign-off fraction (cabin crew) - each
@@ -286,13 +288,13 @@ router.get('/summary', async (req, res) => {
     clearanceRows.map((r) => `${r.trainee_id ? `trainee:${r.trainee_id}` : `crew:${r.crew_member_id}`}:${r.stage}`),
   );
   const ctlCompletedByTrainee = new Set(ctlCompletedRows.map((r) => r.trainee_id));
-  // Pilots: back to auto-detecting via Ground School completion (now
-  // including the "Aircraft Endorsement" item restored by migration 0086) -
-  // per the operator's request, this lives in the pilot's own Ground
-  // School tab alongside the rest of their pre-LOFT checklist, not a
-  // separate button. Cabin attendants have no Ground School tab to hang
-  // this off, so their trigger stays the explicit ready_for_loft_at button
-  // (see trainees.js POST /:id/ready-for-loft) below.
+  // Auto-detect via real Ground School completion for both pilots and
+  // cabin attendants now (ground_school_items/progress are fleet-scoped,
+  // not pilot-only - see migration 0091) - this replaces the cabin
+  // attendant-only manual "Ground School Complete" button (ready_for_loft_at),
+  // which existed only because cabin attendants had no real checklist to
+  // detect completion from. Pilots' own trigger already included the
+  // "Aircraft Endorsement" item restored by migration 0086.
   const gsCompleteByTrainee = new Set(
     groundSchoolProgressRows.filter((r) => r.total > 0 && r.complete === r.total).map((r) => r.trainee_id),
   );
@@ -306,7 +308,7 @@ router.get('/summary', async (req, res) => {
         linkTo: `/trainees/${t.id}`,
       });
     }
-    if (t.type === 'CABIN_ATTENDANT' && t.ready_for_loft_at && !clearanceStageSigned.has(`trainee:${t.id}:GROUND_SCHOOL`)) {
+    if (t.type === 'CABIN_ATTENDANT' && gsCompleteByTrainee.has(t.id) && !clearanceStageSigned.has(`trainee:${t.id}:GROUND_SCHOOL`)) {
       clearanceAlerts.push({
         key: `clearance:trainee:${t.id}:GROUND_SCHOOL`,
         text: `${t.first_name} ${t.last_name} — ground school complete — needs Clearance Form`,

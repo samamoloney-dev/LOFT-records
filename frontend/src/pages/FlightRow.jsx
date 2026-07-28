@@ -268,9 +268,11 @@ export function FlightRow({ flight, trainee, loftNumber, onChange, onDelete }) {
           particular flight didn't get to; the running reminder of what's
           still genuinely outstanding lives on the trainee's LOFT package
           (SyllabusPanel/trainee-level Syllabus tab), where it's actually
-          meant to stand out. Applies to pilots and cabin crew alike - both
-          re-sign their syllabus items on every flight. */}
-      {outstanding.length > 0 && (
+          meant to stand out. Cabin crew only, per the operator's explicit
+          request - pilots no longer get a per-flight Syllabus sub-tab
+          either (see the subTab list below), so this summary would have
+          nothing to link back to for them. */}
+      {isCabinAttendant && outstanding.length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
           <strong>Not covered on this flight ({outstanding.length}):</strong>{' '}
           {outstanding.slice(0, 8).map((i) => i.description).join(', ')}
@@ -299,7 +301,6 @@ export function FlightRow({ flight, trainee, loftNumber, onChange, onDelete }) {
               ]
               : [
                 { key: 'details', label: 'Flight Details' },
-                { key: 'syllabus', label: 'Syllabus' },
                 { key: 'nextSortie', label: 'Next Sortie' },
               ]
             ).map((t) => (
@@ -446,7 +447,7 @@ export function FlightRow({ flight, trainee, loftNumber, onChange, onDelete }) {
             </div>
           )}
 
-          {subTab === 'syllabus' && (
+          {subTab === 'syllabus' && isCabinAttendant && (
             <FlightSyllabusList flightId={flight.id} trainee={trainee} onChange={refreshSyllabus} />
           )}
 

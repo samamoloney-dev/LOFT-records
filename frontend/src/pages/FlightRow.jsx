@@ -18,7 +18,26 @@ export const APPROACH_TYPES = ['ILS', 'LLZ', 'RNP LNAV', 'NDB', 'VOR', 'DGA'];
 // that field stays free text.
 export const DASH_8_VARIANTS = ['Dash 8-100', 'Dash 8-300'];
 
-export function FlightRow({ flight, trainee, loftNumber, onChange }) {
+// Recursively "nothing typed in" - mirrors backend/src/routes/flights.js's
+// own isBlank, covers sectorDetails' nested route/approaches or
+// position/aircraft/destination shape as well as plain string fields.
+function isBlank(value) {
+  if (value === null || value === undefined || value === '') return true;
+  if (Array.isArray(value)) return value.every(isBlank);
+  if (typeof value === 'object') return Object.values(value).every(isBlank);
+  return false;
+}
+
+// Only HOTC/HOFO/Flight Ops Admin, and only shown while the flight
+// genuinely has nothing recorded against it - per the operator's explicit
+// request, this is for a flight added by mistake (wrong trainee,
+// double-clicked "+ Add flight", etc.), not a way to erase a real training
+// record. Deliberately narrower than the general admin role list used
+// elsewhere in this file (excludes Alternate), matching the operator's
+// exact wording.
+const DELETE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+
+export function FlightRow({ flight, trainee, loftNumber, onChange, onDelete }) {
   const { user } = useAuth();
   const isCabinAttendant = trainee?.type === 'CABIN_ATTENDANT';
   const [editing, setEditing] = useState(false);
@@ -88,6 +107,26 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
   // admin) can reopen it - cabin attendant flights only (see backend
   // flights.js /:id/reopen).
   const canReopen = isCabinAttendant && flight.locked && (user.id === flight.trainingCaptainId || isAdmin);
+  const isFlightBlank = !flight.hours
+    && isBlank(flight.sectorDetails)
+    && isBlank(flight.loftPerformanceRating)
+    && isBlank(flight.debriefComments)
+    && isBlank(flight.nextSortieNotes)
+    && isBlank(flight.otherCompletedTasks)
+    && isBlank(flight.assessorSignature)
+    && isBlank(flight.candidateSignature)
+    && !flight.acknowledgedByTrainee
+    && outstanding.length === syllabusItems.length;
+  const canDelete = DELETE_ROLES.includes(user.role) && isFlightBlank;
+
+  async function deleteFlight() {
+    setError(null);
+    if (!window.confirm('Delete this flight? It has no information recorded - this cannot be undone.')) return;
+    try {
+      await api.delete(`/api/flights/${flight.id}`);
+      onDelete();
+    } catch (err) { setError(err.message); }
+  }
 
   async function saveComments() {
     setError(null);
@@ -184,8 +223,10 @@ export function FlightRow({ flight, trainee, loftNumber, onChange }) {
         <div style={{ display: 'flex', gap: 6 }}>
           {canReopen && <button onClick={reopen}>Reopen</button>}
           <button onClick={() => setEditing((v) => !v)}>{editing ? 'Close' : 'Open'}</button>
+          {canDelete && <button className="danger" onClick={deleteFlight}>Delete</button>}
         </div>
       </div>
+      {error && !editing && <div className="error-text">{error}</div>}
 
       {isCabinAttendant ? (
         <>

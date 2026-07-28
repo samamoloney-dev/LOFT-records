@@ -267,6 +267,7 @@ function FlightsTab({ traineeId, trainee, flights, onFlightsChange, ctlCompleted
           trainee={trainee}
           loftNumber={loftNumberById.get(f.id)}
           onChange={(updated) => onFlightsChange(flights.map((x) => (x.id === updated.id ? updated : x)))}
+          onDelete={() => onFlightsChange(flights.filter((x) => x.id !== f.id))}
         />
       ))}
     </div>

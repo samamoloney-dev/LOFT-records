@@ -215,6 +215,59 @@ router.post('/:id/acknowledge', async (req, res) => {
   res.json(await findFlight(flight.id));
 });
 
+// Recursively "nothing typed in" - covers sectorDetails' nested route/
+// approaches or position/aircraft/destination shape as well as plain
+// string/number fields, without needing to know which of the two
+// (pilot vs cabin attendant) this flight uses.
+function isBlank(value) {
+  if (value === null || value === undefined || value === '') return true;
+  if (Array.isArray(value)) return value.every(isBlank);
+  if (typeof value === 'object') return Object.values(value).every(isBlank);
+  return false;
+}
+
+// Only HOTC/HOFO/Flight Ops Admin, and only when the flight genuinely has
+// nothing recorded against it - per the operator's explicit request, this
+// is for a flight added by mistake (wrong trainee, double-clicked "+ Add
+// flight", etc.), not a way to erase a real training record - anything
+// with actual content should be archived instead, never deleted.
+const DELETE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
+
+router.delete('/:id', async (req, res) => {
+  if (!DELETE_ROLES.includes(req.user.role)) {
+    return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can delete a flight' });
+  }
+  const flight = await findFlight(req.params.id);
+  if (!flight) return res.status(404).json({ error: 'Not found' });
+  const trainee = await assertTraineeVisible(req, res, flight.traineeId);
+  if (!trainee) return;
+
+  const { rows: progressRows } = await pool.query(
+    'SELECT 1 FROM flight_syllabus_progress WHERE flight_id = $1 AND completed_at IS NOT NULL LIMIT 1',
+    [flight.id],
+  );
+  const blank = !flight.hours
+    && isBlank(flight.sectorDetails)
+    && isBlank(flight.loftPerformanceRating)
+    && isBlank(flight.debriefComments)
+    && isBlank(flight.nextSortieNotes)
+    && isBlank(flight.otherCompletedTasks)
+    && isBlank(flight.assessorSignature)
+    && isBlank(flight.candidateSignature)
+    && !flight.acknowledgedByTrainee
+    && progressRows.length === 0;
+  if (!blank) {
+    return res.status(400).json({ error: 'This flight has information recorded and cannot be deleted - archive it instead' });
+  }
+
+  await pool.query('DELETE FROM flights WHERE id = $1', [flight.id]);
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'flights', targetId: flight.id,
+    description: `Deleted a blank flight entered in error for ${trainee.firstName} ${trainee.lastName}`,
+  });
+  res.status(204).send();
+});
+
 // LOFT flights archive as one package per trainee, not individually - and
 // only once their Check to Line is complete (mirrors how their whole
 // training record comes together on their own trainee page).

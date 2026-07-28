@@ -162,6 +162,19 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
        ON CONFLICT (trainee_id, ground_school_item_id) DO NOTHING`,
       [trainee.id, fleet, syllabusId || null],
     );
+    // Landing Assessment (SA_575, Fokker 100/Dash 8 only - see
+    // TraineeDetail.jsx's LANDING_ASSESSMENT_FLEETS) doesn't apply either -
+    // they've already demonstrated landing competency as a First Officer
+    // on this fleet. Marked exempt (the same mechanism a genuine HOTC/HOFO
+    // exemption decision uses) and completed immediately.
+    if (['DASH_8', 'FOKKER_100'].includes(fleet)) {
+      await pool.query(
+        `INSERT INTO landing_assessment_forms (trainee_id, exempt, hotc_hofo_signature, completed_at)
+         VALUES ($1, true, $2, now())
+         ON CONFLICT (trainee_id) DO NOTHING`,
+        [trainee.id, 'Not required - already completed as First Officer on this fleet'],
+      );
+    }
   }
 
   await logAction({

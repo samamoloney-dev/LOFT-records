@@ -12,7 +12,7 @@
 -- originally added here - those were intentionally moved to
 -- ground_school_items by migration 0091 and must stay there.
 INSERT INTO syllabus_items (fleet, role_scope, phase, category, section, description, notes, required)
-SELECT 'CA_FOKKER_100', 'BOTH', 1, v.category, v.section, v.description, v.notes, true
+SELECT 'CA_FOKKER_100', 'BOTH', 1, v.category, v.section::syllabus_section, v.description, v.notes, true
 FROM (VALUES
   ('Signing On', 'SYLLABUS', 'Signing on', NULL),
   ('Grooming Up To Standard', 'SYLLABUS', 'Grooming up to standard', NULL),

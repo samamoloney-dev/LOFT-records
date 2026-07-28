@@ -415,7 +415,7 @@ export function buildUpgradeRecordHtml(check, context) {
     ['Candidate', crewMemberName],
     ['Aircraft Type', fleetLabel || ''],
     ['Date', d.date ? formatDate(d.date) : ''],
-    ['Assessor', check.assignedToName ? `${check.assignedToRole ? formatUserRole(check.assignedToRole) : ''} ${check.assignedToName}`.trim() : ''],
+    ['Mentor', check.assignedToName ? `${check.assignedToRole ? formatUserRole(check.assignedToRole) : ''} ${check.assignedToName}`.trim() : ''],
   ]);
   body += tickTable(upgradeTickTableRows(allBriefingItems, items));
   if (d.briefingComments) body += `<div style="padding:6px 10px;font-size:11px;"><b>Comments:</b> ${d.briefingComments}</div>`;
@@ -424,8 +424,10 @@ export function buildUpgradeRecordHtml(check, context) {
     const simItems = d.simulatorItems || {};
     body += `<div class="page-break"></div>`;
     body += formTitleRow(`${label} (continued) — Simulator Training`);
+    body += fieldGrid([['Examiner', d.simulatorExaminerName || '']]);
     body += tickTable(upgradeTickTableRows(allSimulatorItems || [], simItems));
     if (d.simulatorOtherTraining) body += `<div style="padding:6px 10px;font-size:11px;"><b>Optional simulator training:</b> ${d.simulatorOtherTraining}</div>`;
+    body += signatureBlock([['Examiner signature', d.simulatorExaminerSig]]);
   }
 
   for (const stage of UPGRADE_FLIGHT_STAGES) {
@@ -437,7 +439,7 @@ export function buildUpgradeRecordHtml(check, context) {
     if (stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2) {
       body += `<div class="disclaimer">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[0]}</div>`;
       body += `<div style="padding:6px 10px;font-size:11px;">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[1]}</div>`;
-      body += signatureBlock([['Assessor signature (Training Captain recommendation)', d.trainingRecommendationSig]]);
+      body += signatureBlock([['Mentor signature (Training Captain recommendation)', d.trainingRecommendationSig]]);
     }
   }
 

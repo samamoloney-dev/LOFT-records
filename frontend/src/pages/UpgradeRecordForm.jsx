@@ -93,16 +93,42 @@ function BufferedAutoTextarea({ value, disabled, onCommit, minHeight, placeholde
   );
 }
 
+// Labelled "Mentor" rather than "Assessor" - this is the person picked when
+// training commences (Briefing/Observation/Training), per the operator's
+// explicit request. The Check tab's own final sign-off further down still
+// refers to this same person as the record's Assessor once it's their turn
+// to complete that stage - different people fill in different parts of the
+// same paper form.
 function UpgradeAssessorPicker({ value, fleet, onAssign }) {
   const [staff, setStaff] = useState([]);
   useEffect(() => { api.get('/api/users/roster').then(setStaff).catch(() => {}); }, []);
   const eligible = staff.filter((s) => isEligibleUpgradeAssessor(s, fleet));
   return (
     <div className="field">
-      <label>Assessor</label>
+      <label>Mentor</label>
       <select value={value || ''} onChange={(e) => onAssign(eligible.find((s) => s.id === e.target.value) || null)}>
         <option value="">— Unassigned —</option>
         {eligible.map((s) => <option key={s.id} value={s.id}>{s.name} ({formatUserRole(s.role)})</option>)}
+      </select>
+    </div>
+  );
+}
+
+// Training Captain's Simulator training must specifically be conducted and
+// signed off by an Examiner - a stricter, separate identity from the
+// record's overall Mentor (who oversees Briefing/Observation/Training),
+// per the operator's explicit rule that the examiner who completes this
+// session signs the form.
+function SimulatorExaminerPicker({ value, onAssign }) {
+  const [staff, setStaff] = useState([]);
+  useEffect(() => { api.get('/api/users/roster').then(setStaff).catch(() => {}); }, []);
+  const eligible = staff.filter((s) => s.role === 'EXAMINER');
+  return (
+    <div className="field">
+      <label>Examiner</label>
+      <select value={value || ''} onChange={(e) => onAssign(eligible.find((s) => s.id === e.target.value) || null)}>
+        <option value="">— Unassigned —</option>
+        {eligible.map((s) => <option key={s.id} value={s.id}>{s.name}{s.arn ? ` · ARN ${s.arn}` : ''}</option>)}
       </select>
     </div>
   );
@@ -138,9 +164,8 @@ const TRAINING_CAPTAIN_RECOMMENDATION_TEXT = [
 ];
 
 const RECOMMENDATIONS = [
-  'Candidate is recommended for upgrade',
-  'Additional training required',
-  'Standard not yet met',
+  'Approval Granted',
+  'Further Training Necessary',
 ];
 
 function resultFor(recommendation) {
@@ -152,6 +177,7 @@ function emptyDetails(variant) {
   return {
     variant, date: '', briefingItems: {}, briefingComments: '',
     simulatorItems: {}, simulatorOtherTraining: '',
+    simulatorExaminerId: '', simulatorExaminerName: '', simulatorExaminerArn: '', simulatorExaminerSig: '', simulatorExaminerSigAt: '',
     flights: [], recommendation: '', assessorComments: '',
     assessorSig: '', candidateSig: '',
   };
@@ -169,7 +195,7 @@ function emptyFlight(stage) {
 // checklist review is one sitting with one assessor - unlike the LOFT
 // Package's per-item trainer picker, which exists because different
 // trainers cover different items across many separate flights.
-function BriefingItemRow({ description, referenceDocument, referenceDocumentName, value, disabled, assessorId, assessorName, onSignOff }) {
+function BriefingItemRow({ description, referenceDocument, referenceDocumentName, value, disabled, assessorId, assessorName, roleLabel = 'mentor', onSignOff }) {
   const v = value || {};
   const [confirming, setConfirming] = useState(false);
   return (
@@ -192,7 +218,7 @@ function BriefingItemRow({ description, referenceDocument, referenceDocumentName
         </div>
       )}
       {!v.tick && !disabled && !assessorId && (
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 32 }}>Assign an assessor above before signing off items.</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 32 }}>Assign a {roleLabel} above before signing off items.</div>
       )}
       {confirming && (
         <div style={{ marginLeft: 32, marginTop: 4, display: 'flex', gap: 6 }}>
@@ -373,12 +399,26 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     } catch (err) { setError(err.message); }
   }
 
-  function signOffItem(check, listKey, itemId) {
-    const signed = { tick: true, signedOffById: check.assignedTo, signedOffByName: check.assignedToName, completedAt: new Date().toISOString() };
+  function signOffItem(check, listKey, itemId, signerId, signerName) {
+    const signed = { tick: true, signedOffById: signerId, signedOffByName: signerName, completedAt: new Date().toISOString() };
     patchDetails(check, { [listKey]: { ...(check.details?.[listKey] || {}), [itemId]: signed } });
   }
-  function setBriefingItem(check, key) { signOffItem(check, 'briefingItems', key); }
-  function setSimulatorItem(check, key) { signOffItem(check, 'simulatorItems', key); }
+  function setBriefingItem(check, key) { signOffItem(check, 'briefingItems', key, check.assignedTo, check.assignedToName); }
+  // Simulator items are signed off by the dedicated Examiner (see
+  // SimulatorExaminerPicker above), not the record's overall Mentor -
+  // per the operator's explicit rule that the examiner who completes the
+  // training captain sim signs the form.
+  function setSimulatorItem(check, key) {
+    signOffItem(check, 'simulatorItems', key, check.details?.simulatorExaminerId, check.details?.simulatorExaminerName);
+  }
+
+  async function assignSimulatorExaminer(check, examiner) {
+    await patchDetails(check, {
+      simulatorExaminerId: examiner?.id || null,
+      simulatorExaminerName: examiner?.name || null,
+      simulatorExaminerArn: examiner?.arn || null,
+    });
+  }
 
   function addFlight(check, stage) {
     patchDetails(check, { flights: [...(check.details?.flights || []), emptyFlight(stage)] });
@@ -501,7 +541,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
 
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
-            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assessor'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
+            {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Mentor'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
           <UpgradeAssessorPicker value={selected.assignedTo} fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
@@ -521,11 +561,12 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
         {subTab === 'SIMULATOR' && variant === 'TRAINING_CAPTAIN' && (
           <div className="card">
             <div style={{ fontWeight: 500, marginBottom: 8 }}>Required Simulator Training</div>
+            <SimulatorExaminerPicker value={d.simulatorExaminerId} onAssign={(s) => assignSimulatorExaminer(selected, s)} />
             {Object.entries(simulatorBySection).map(([sectionName, sectionItems]) => (
               <div key={sectionName} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{sectionName}</div>
                 {sectionItems.map((item) => (
-                  <BriefingItemRow key={item.id} description={item.description} referenceDocument={item.referenceDocument} referenceDocumentName={item.referenceDocumentName} value={simItems[item.id]} disabled={locked} assessorId={selected.assignedTo} assessorName={selected.assignedToName} onSignOff={() => setSimulatorItem(selected, item.id)} />
+                  <BriefingItemRow key={item.id} description={item.description} referenceDocument={item.referenceDocument} referenceDocumentName={item.referenceDocumentName} value={simItems[item.id]} disabled={locked} assessorId={d.simulatorExaminerId} assessorName={d.simulatorExaminerName} roleLabel="examiner" onSignOff={() => setSimulatorItem(selected, item.id)} />
                 ))}
               </div>
             ))}
@@ -536,6 +577,15 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
               <label>Optional simulator training (any additional simulator sessions conducted)</label>
               <BufferedAutoTextarea value={d.simulatorOtherTraining} disabled={locked} onCommit={(v) => patchDetails(selected, { simulatorOtherTraining: v })} minHeight={60} />
             </div>
+            {d.simulatorExaminerId ? (
+              <PinSignature
+                label="Examiner signature" personType="user" personId={d.simulatorExaminerId}
+                signedName={d.simulatorExaminerSig} signedAt={d.simulatorExaminerSigAt} disabled={locked}
+                onSigned={(name, at) => patchDetails(selected, { simulatorExaminerSig: name, simulatorExaminerSigAt: at })}
+              />
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Assign an examiner above before signing.</div>
+            )}
           </div>
         )}
 
@@ -566,12 +616,12 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
                   ))}
                   {selected.assignedTo ? (
                     <PinSignature
-                      label="Assessor signature" personType="user" personId={selected.assignedTo}
+                      label="Mentor signature" personType="user" personId={selected.assignedTo}
                       signedName={d.trainingRecommendationSig} signedAt={d.trainingRecommendationSigAt} disabled={locked}
                       onSigned={(name, at) => patchDetails(selected, { trainingRecommendationSig: name, trainingRecommendationSigAt: at })}
                     />
                   ) : (
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Assign an assessor above before signing.</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Assign a mentor above before signing.</div>
                   )}
                 </div>
               )}

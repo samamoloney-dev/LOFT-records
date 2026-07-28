@@ -122,10 +122,20 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   }
 
   if (sourceCrewMemberId) {
-    const { rows: crewRows } = await pool.query('SELECT type, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
+    const { rows: crewRows } = await pool.query('SELECT type, role, fleets, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
     if (crewRows.length === 0) return res.status(400).json({ error: 'Crew member not found' });
     if (crewRows[0].archived) return res.status(400).json({ error: 'This crew member is archived' });
     if (crewRows[0].type !== type) return res.status(400).json({ error: 'Crew member type does not match the selected trainee type' });
+    // Already on this fleet - the only reason to send them back to LOFT for
+    // it again is a same-fleet Captain upgrade (an existing First Officer
+    // upgrading to Captain on the fleet they already hold), per the
+    // operator's explicit request. Anyone else already on this fleet has
+    // nothing to repeat training for.
+    if (parsePgArray(crewRows[0].fleets).includes(fleet)) {
+      if (type !== 'PILOT' || role !== 'CAPTAIN' || crewRows[0].role !== 'FIRST_OFFICER') {
+        return res.status(400).json({ error: 'This crew member is already qualified on this fleet' });
+      }
+    }
   }
 
   const { rows } = await pool.query(
@@ -240,9 +250,13 @@ router.post('/:id/promote-to-crew', async (req, res) => {
       const mergedFleets = [...new Set([...parsePgArray(sourceCrew.fleets), trainee.fleet])];
       const fleetError = fleetOrderError(sourceCrew.type, mergedFleets);
       if (fleetError) throw Object.assign(new Error(fleetError), { status: 400 });
+      // A same-fleet Captain upgrade (see POST / above) changes the crew
+      // member's role, not their fleets - an FO upgrading to Captain on a
+      // fleet they already hold gains no new fleet at all, just a new role.
+      const roleChanged = trainee.role !== sourceCrew.role;
       ({ rows } = await client.query(
-        'UPDATE crew_members SET fleets = $1::fleet[] WHERE id = $2 RETURNING *',
-        [mergedFleets, sourceCrew.id],
+        `UPDATE crew_members SET fleets = $1::fleet[]${roleChanged ? ', role = $3' : ''} WHERE id = $2 RETURNING *`,
+        roleChanged ? [mergedFleets, sourceCrew.id, trainee.role] : [mergedFleets, sourceCrew.id],
       ));
     } else {
       ({ rows } = await client.query(
@@ -282,7 +296,9 @@ router.post('/:id/promote-to-crew', async (req, res) => {
   await logAction({
     userId: req.user.id, action: 'PROMOTE_TO_CREW', targetTable: 'crew_members', targetId: crewMember.id,
     description: sourceCrew
-      ? `Added ${trainee.fleet} to ${crewMember.firstName} ${crewMember.lastName}'s crew record`
+      ? (sourceCrew.role !== trainee.role
+        ? `Upgraded ${crewMember.firstName} ${crewMember.lastName} to ${trainee.role} on ${trainee.fleet}`
+        : `Added ${trainee.fleet} to ${crewMember.firstName} ${crewMember.lastName}'s crew record`)
       : `Promoted ${crewMember.firstName} ${crewMember.lastName} to the Crew roster`,
   });
   res.status(sourceCrew ? 200 : 201).json(crewMember);

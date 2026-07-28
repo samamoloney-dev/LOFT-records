@@ -57,19 +57,34 @@ export function Trainees() {
 
   useEffect(load, []);
 
-  // Only crew not already qualified on the fleet currently selected below -
-  // no point sending someone back to LOFT for a fleet they already hold.
+  // Two cases: crew not already qualified on the fleet currently selected
+  // below (a new-fleet conversion - no point sending someone back to LOFT
+  // for a fleet they already hold), or - if the selected role is Captain -
+  // an existing First Officer already on that exact fleet upgrading to
+  // Captain on it (per the operator's explicit request, e.g. a Dash 8 FO
+  // upgrading to Captain on the Dash 8). Anyone else already on the fleet
+  // (already a Captain there, or the role picked isn't Captain) has nothing
+  // to repeat training for.
   useEffect(() => {
     if (!returningToLoft) { setEligibleCrew([]); return; }
     api.get(`/api/crew?type=${form.type}`)
-      .then((crew) => setEligibleCrew(crew.filter((c) => !c.fleets.includes(form.fleet))))
+      .then((crew) => setEligibleCrew(crew.filter((c) => {
+        if (!c.fleets.includes(form.fleet)) return true;
+        return form.type === 'PILOT' && form.role === 'CAPTAIN' && c.role === 'FIRST_OFFICER';
+      })))
       .catch(() => {});
-  }, [returningToLoft, form.type, form.fleet]);
+  }, [returningToLoft, form.type, form.fleet, form.role]);
 
   function selectSourceCrewMember(id) {
     setSourceCrewMemberId(id);
     const member = eligibleCrew.find((c) => c.id === id);
-    if (member) setForm((f) => ({ ...f, firstName: member.firstName, lastName: member.lastName, role: member.role }));
+    if (!member) return;
+    // A same-fleet Captain upgrade candidate is already on form.fleet - the
+    // admin had to set Role to Captain above just to see them in this list,
+    // so don't clobber that back to the member's current (First Officer)
+    // role the way a new-fleet conversion's prefill would.
+    const alreadyOnFleet = member.fleets.includes(form.fleet);
+    setForm((f) => ({ ...f, firstName: member.firstName, lastName: member.lastName, ...(alreadyOnFleet ? {} : { role: member.role }) }));
   }
 
   function resetForm() {
@@ -117,7 +132,7 @@ export function Trainees() {
                 onChange={(e) => { setReturningToLoft(e.target.checked); setSourceCrewMemberId(''); }}
                 style={{ width: 'auto' }}
               />
-              This is an existing crew member returning to LOFT for a new fleet (e.g. Dash 8 → Fokker 100)
+              This is an existing crew member returning to LOFT for a new fleet (e.g. Dash 8 → Fokker 100), or an existing First Officer upgrading to Captain on their current fleet
             </label>
           </div>
           {returningToLoft && (
@@ -129,7 +144,8 @@ export function Trainees() {
               </select>
               {eligibleCrew.length === 0 && (
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  No crew found who aren't already qualified on {formatFleet(form.fleet)}.
+                  No crew found who aren't already qualified on {formatFleet(form.fleet)}
+                  {form.type === 'PILOT' && form.role === 'CAPTAIN' ? ', and no First Officers on that fleet eligible for a Captain upgrade' : ''}.
                 </div>
               )}
             </div>

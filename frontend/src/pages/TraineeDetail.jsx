@@ -17,10 +17,12 @@ import { formatFleet, formatTraineeRole } from '../lib/format';
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
-// flight - mirrors backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
+// flight - Check Captain conducts LOFT too, per the operator's explicit
+// correction, not just Training Captain. Mirrors
+// backend/src/middleware/roles.js FLIGHT_CREATOR_ROLES.
 const FLIGHT_CREATOR_ROLES = [
   'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
+  'TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
 ];
 
 // The Landing Assessment tab only applies to Fokker 100/Dash 8 pilot

@@ -107,11 +107,13 @@ const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_O
 const CHECK_ACCESS_TYPES = ['PC', 'IPC', 'LINE_CHECK', 'CHECK_TO_LINE', 'EMERGENCY_PROCEDURES'];
 
 // Anyone who trains or checks trainees (pilot or cabin crew side) can log a
-// flight. Combined with canAccessTraineeRecord below, CA Trainer/CA Checker
-// are still limited to Cabin Attendant trainees only.
+// flight - Check Captain conducts LOFT too, per the operator's explicit
+// correction, not just Training Captain. Combined with canAccessTraineeRecord
+// below, CA Trainer/CA Checker are still limited to Cabin Attendant trainees
+// only.
 const FLIGHT_CREATOR_ROLES = [
   'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
-  'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
+  'TRAINING_CAPTAIN', 'CC', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER',
 ];
 
 function requireRole(...roles) {

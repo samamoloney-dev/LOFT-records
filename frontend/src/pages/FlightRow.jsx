@@ -107,8 +107,11 @@ export function FlightRow({ flight, trainee, loftNumber, onChange, onDelete }) {
   // admin) can reopen it - cabin attendant flights only (see backend
   // flights.js /:id/reopen).
   const canReopen = isCabinAttendant && flight.locked && (user.id === flight.trainingCaptainId || isAdmin);
-  const isFlightBlank = !flight.hours
-    && isBlank(flight.sectorDetails)
+  // Hours is a required field on the "+ Add flight" form for pilots, so a
+  // flight entered by mistake almost always still has one typed in - it's
+  // deliberately not part of this check, otherwise virtually no pilot
+  // flight would ever qualify as blank.
+  const isFlightBlank = isBlank(flight.sectorDetails)
     && isBlank(flight.loftPerformanceRating)
     && isBlank(flight.debriefComments)
     && isBlank(flight.nextSortieNotes)

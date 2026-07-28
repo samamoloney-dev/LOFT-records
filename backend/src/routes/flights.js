@@ -246,8 +246,11 @@ router.delete('/:id', async (req, res) => {
     'SELECT 1 FROM flight_syllabus_progress WHERE flight_id = $1 AND completed_at IS NOT NULL LIMIT 1',
     [flight.id],
   );
-  const blank = !flight.hours
-    && isBlank(flight.sectorDetails)
+  // Hours is a required field on the "+ Add flight" form for pilots, so a
+  // flight entered by mistake almost always still has one typed in - it's
+  // deliberately not part of this check, otherwise virtually no pilot
+  // flight would ever qualify as blank.
+  const blank = isBlank(flight.sectorDetails)
     && isBlank(flight.loftPerformanceRating)
     && isBlank(flight.debriefComments)
     && isBlank(flight.nextSortieNotes)

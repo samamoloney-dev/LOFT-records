@@ -61,10 +61,15 @@ function pilotTabs(fleet, role) {
 // School (the CASR 121 Initial/Conversion Training course-completion
 // checklists, per the operator's explicit correction) uses the exact same
 // GroundSchoolPanel pilots do - it's already fleet-agnostic, keyed off
-// trainee.fleet/syllabusId rather than trainee.type.
+// trainee.fleet/syllabusId rather than trainee.type. The Syllabus tab (the
+// per-fleet Duty checklist, e.g. SA 541/542's Signing On/Pre-Flight
+// Duties/etc. categories) uses the same SyllabusItemsList pilots do too -
+// it already branches internally on isCabinAttendant to group by category
+// instead of by phase, so it just needed to stop being hidden here.
 const CA_TABS = [
   { key: 'groundSchool', label: 'Ground School' },
   { key: 'flights', label: 'Flights' },
+  { key: 'syllabus', label: 'Syllabus' },
   { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'ctl', label: 'Check to Line' },
   { key: 'clearance', label: 'Clearance' },
@@ -403,7 +408,7 @@ export function TraineeDetail() {
 
       <TabBar tabs={tabs} active={tab} onSelect={setTab} />
 
-      {tab === 'syllabus' && !isCabinAttendant && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
+      {tab === 'syllabus' && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
       {tab === 'groundSchool' && <GroundSchoolPanel trainee={trainee} />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}

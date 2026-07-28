@@ -121,6 +121,7 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can flag a new hire' });
   }
 
+  let sameFleetCaptainUpgrade = false;
   if (sourceCrewMemberId) {
     const { rows: crewRows } = await pool.query('SELECT type, role, fleets, archived FROM crew_members WHERE id = $1', [sourceCrewMemberId]);
     if (crewRows.length === 0) return res.status(400).json({ error: 'Crew member not found' });
@@ -135,6 +136,7 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
       if (type !== 'PILOT' || role !== 'CAPTAIN' || crewRows[0].role !== 'FIRST_OFFICER') {
         return res.status(400).json({ error: 'This crew member is already qualified on this fleet' });
       }
+      sameFleetCaptainUpgrade = true;
     }
   }
 
@@ -144,11 +146,31 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
     [firstName, lastName, type, role, fleet, phase || 1, sourceCrewMemberId || null, syllabusId || null],
   );
   const trainee = rowToCamel(rows[0]);
+
+  // A Captain upgrade on a fleet the pilot is already type-rated on doesn't
+  // need Ground School repeated - they already completed it as a First
+  // Officer on this exact fleet, per the operator's explicit request.
+  // Backfilled as already-complete (same pattern as migration 0086's
+  // "already in training" backfill) so hasIncompleteGroundSchool doesn't
+  // block their LOFT progression on a checklist that doesn't apply to them.
+  if (sameFleetCaptainUpgrade) {
+    await pool.query(
+      `INSERT INTO ground_school_progress (trainee_id, ground_school_item_id, completed_at, signed_off_by_name)
+       SELECT $1, gsi.id, now(), 'Not required - already completed as First Officer on this fleet'
+       FROM ground_school_items gsi
+       WHERE gsi.fleet = $2 AND gsi.syllabus_id IS NOT DISTINCT FROM $3
+       ON CONFLICT (trainee_id, ground_school_item_id) DO NOTHING`,
+      [trainee.id, fleet, syllabusId || null],
+    );
+  }
+
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'trainees', targetId: trainee.id,
-    description: sourceCrewMemberId
-      ? `Sent ${trainee.firstName} ${trainee.lastName} back to LOFT for ${fleet}`
-      : `Added trainee ${trainee.firstName} ${trainee.lastName}`,
+    description: sameFleetCaptainUpgrade
+      ? `Started ${trainee.firstName} ${trainee.lastName}'s Captain upgrade on ${fleet}`
+      : sourceCrewMemberId
+        ? `Sent ${trainee.firstName} ${trainee.lastName} back to LOFT for ${fleet}`
+        : `Added trainee ${trainee.firstName} ${trainee.lastName}`,
   });
 
   // New hire (pilots only, see createSchema's superRefine) - also create

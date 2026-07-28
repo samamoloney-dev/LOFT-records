@@ -55,8 +55,13 @@ function pilotTabs(fleet, role) {
 }
 
 // Cabin attendants have no phase concept - the syllabus is signed off
-// cumulatively across training flights rather than gated by phase.
+// cumulatively across training flights rather than gated by phase. Ground
+// School (the CASR 121 Initial/Conversion Training course-completion
+// checklists, per the operator's explicit correction) uses the exact same
+// GroundSchoolPanel pilots do - it's already fleet-agnostic, keyed off
+// trainee.fleet/syllabusId rather than trainee.type.
 const CA_TABS = [
+  { key: 'groundSchool', label: 'Ground School' },
   { key: 'flights', label: 'Flights' },
   { key: 'discussion', label: 'Line Training Discussion' },
   { key: 'ctl', label: 'Check to Line' },
@@ -397,7 +402,7 @@ export function TraineeDetail() {
 
       {tab === 'syllabus' && !isCabinAttendant && <SyllabusItemsList trainee={trainee} section="SYLLABUS" />}
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
-      {tab === 'groundSchool' && !isCabinAttendant && <GroundSchoolPanel trainee={trainee} />}
+      {tab === 'groundSchool' && <GroundSchoolPanel trainee={trainee} />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}
       {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}

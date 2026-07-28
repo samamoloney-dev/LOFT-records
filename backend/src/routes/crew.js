@@ -451,17 +451,18 @@ async function withCurrency(member) {
       lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, inTraining, lineCheckIssued),
     };
   } else {
-    const [epChk, lineCheckChk, epIssued, lineCheckIssued] = await Promise.all([
+    const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
       hasInProgressCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
+      hasIncompleteGroundSchool(member.traineeId),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, false, epIssued),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, inLoft, lineCheckIssued),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete, epIssued),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, groundSchoolIncomplete || inLoft, lineCheckIssued),
     };
   }
 

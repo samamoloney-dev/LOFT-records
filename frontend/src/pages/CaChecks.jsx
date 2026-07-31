@@ -240,10 +240,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             <label>Comments</label>
             <textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 70 }} />
           </div>
-          <div className="grid2">
-            <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
-            <div className="field"><label>Assessor ARN</label><input value={d.assessorArn || ''} disabled /></div>
-          </div>
+          <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
           <div className="grid2">
             {selected.assignedTo ? (
               <PinSignature

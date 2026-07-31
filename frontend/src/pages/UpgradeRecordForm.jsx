@@ -356,9 +356,21 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
   // Who's eligible to conduct the Check tab's Personnel (Air) Competency
   // Check - a different, narrower list than UPGRADE_CHECKER_ROLES (the
   // upgrade record's own assessor), matching the standalone SA518 form.
+  // Cabin training/checking is restricted to cabin-side checkers plus the
+  // admin trio - pilot-only checkers/examiners never sign off a Cabin
+  // Attendant candidate's check, per the operator's explicit rule. The
+  // Mentor/observation-trainer pools above are already implicitly scoped by
+  // fleet (a pilot checker's fleets never include a CA_* fleet), but this
+  // pool has no fleet data to lean on, so it needs an explicit crew-type
+  // check instead.
   const [personnelCheckStaff, setPersonnelCheckStaff] = useState([]);
   useEffect(() => { api.get('/api/users/roster').then(setPersonnelCheckStaff).catch(() => {}); }, []);
-  const personnelCheckAssessors = personnelCheckStaff.filter((s) => COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role));
+  const CA_PERSONNEL_CHECK_ASSESSOR_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'CA_CHECKER', 'CA_MANAGER'];
+  const personnelCheckAssessors = personnelCheckStaff.filter((s) => (
+    variantConfig.crewType === 'CABIN_ATTENDANT'
+      ? CA_PERSONNEL_CHECK_ASSESSOR_ROLES.includes(s.role)
+      : COMPETENCY_CHECK_ASSESSOR_ROLES.includes(s.role)
+  ));
   // Same roster, reused for the per-flight Trainer picker - anyone eligible
   // to be this record's overall Assessor is also eligible to have conducted
   // an individual flight, except Training Captain Upgrade observations,
@@ -658,9 +670,13 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
             <div className="card">
               <div className="field"><label>Assessor comments</label><BufferedAutoTextarea value={d.assessorComments} disabled={locked} onCommit={(v) => patchDetails(selected, { assessorComments: v })} minHeight={70} /></div>
               <div className="grid2">
-                {selected.assignedTo ? (
+                {/* Signs as whoever conducted the Personnel (Air) Competency
+                    Check above (its own Assessor field), not the record's
+                    overall Mentor - per the operator's explicit correction,
+                    that may not be the same person. */}
+                {personnelCheck?.assessorId ? (
                   <PinSignature
-                    label="Assessor signature" personType="user" personId={selected.assignedTo}
+                    label="Assessor signature" personType="user" personId={personnelCheck.assessorId}
                     signedName={d.assessorSig} signedAt={d.assessorSigAt} disabled={locked}
                     onSigned={(name, at) => patchDetails(selected, { assessorSig: name, assessorSigAt: at })}
                   />

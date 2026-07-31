@@ -7,6 +7,7 @@ import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { ArchivedFlights } from './ArchivedFlights';
 import { ArchivedCheckToLine } from './ArchivedCheckToLine';
+import { ArchivedUpgrades } from './ArchivedUpgrades';
 import { TabBar } from '../components/TabBar';
 
 // Archived trainees (whole trainee records, archived automatically when
@@ -42,6 +43,7 @@ export function Archive() {
   const topTabs = [
     { key: 'pilots', label: 'Pilots' },
     { key: 'cabin-attendants', label: 'Cabin Attendants' },
+    { key: 'specialist', label: 'Specialist' },
     { key: 'others', label: 'Others' },
   ];
   const [topTab, setTopTab] = useState('pilots');
@@ -88,6 +90,8 @@ export function Archive() {
           {caTab === 'ep' && <EpChecks appliesTo="CABIN_ATTENDANT" archived />}
         </div>
       )}
+
+      {topTab === 'specialist' && <ArchivedUpgrades />}
 
       {topTab === 'others' && <ArchivedTrainees />}
     </div>

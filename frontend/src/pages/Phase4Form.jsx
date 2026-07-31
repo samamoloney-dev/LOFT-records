@@ -93,16 +93,21 @@ export function Phase4Form({ traineeId, flights }) {
   useEffect(() => {
     if (!canEdit || !data || !flights || flights.length === 0) return;
     const chronological = [...flights].sort((a, b) => new Date(a.date) - new Date(b.date));
-    const totalHours = chronological.reduce((sum, f) => sum + Number(f.hours), 0);
+    // Hours are only ever recorded to one decimal place, but summing
+    // floating-point numbers in JS (e.g. 3.8 + 2.7) can land on something
+    // like 6.499999999999999 - round back to 1dp so this reads the same as
+    // every other total hours figure in the app.
+    const round1 = (n) => Math.round(n * 10) / 10;
+    const totalHours = round1(chronological.reduce((sum, f) => sum + Number(f.hours), 0));
     const last4 = chronological.slice(-4);
-    const last2Hours = last4.slice(-2).reduce((sum, f) => sum + Number(f.hours), 0);
+    const last2Hours = round1(last4.slice(-2).reduce((sum, f) => sum + Number(f.hours), 0));
 
     const patch = {};
     if (!assessment.sectorDetails?.sectors34?.progressiveTotal) {
       patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: totalHours };
     }
     if (last4.length >= 2 && !assessment.sectorDetails?.sectors12?.progressiveTotal) {
-      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: totalHours - last2Hours };
+      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: round1(totalHours - last2Hours) };
     }
     if (Object.keys(patch).length > 0) {
       save({ sectorDetails: { ...assessment.sectorDetails, ...patch } });

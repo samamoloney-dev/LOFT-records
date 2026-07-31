@@ -49,7 +49,8 @@ function SectorFields({ label, value, disabled, onChange }) {
       </div>
       <div className="field">
         <label>Flight time (progressive total)</label>
-        <input type="number" step="0.1" disabled={disabled} value={v.progressiveTotal || ''} onChange={(e) => update('progressiveTotal', e.target.value)} />
+        <div style={{ fontSize: 14, padding: '6px 0' }}>{v.progressiveTotal ?? 0}h</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Carried over from the Flights tab - not editable here.</div>
       </div>
     </div>
   );
@@ -83,31 +84,25 @@ export function Phase4Form({ traineeId, flights }) {
     save({ sectorDetails: { ...assessment.sectorDetails, [key]: value } });
   }
 
-  // Carries the running flight-time total over from the trainee's own LOFT
-  // Flights tab instead of the Training Captain re-typing it here - "1&2"
-  // and "3&4" are simply the trainee's last four logged flights in
-  // chronological order, so the progressive total after 3&4 is just their
-  // overall total to date, and after 1&2 it's that total minus the last two
-  // flights' hours. Only fills in each field once (never overwrites a value
-  // already there, whether carried over before or corrected by hand).
+  // Progressive total always mirrors the trainee's current total flight
+  // hours on the Flights tab - kept live (re-synced whenever a flight is
+  // added/edited), not a one-off carry-over the Training Captain could then
+  // edit out of step with the real record.
   useEffect(() => {
-    if (!canEdit || !data || !flights || flights.length === 0) return;
-    const chronological = [...flights].sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (!canEdit || !data || !flights) return;
     // Hours are only ever recorded to one decimal place, but summing
     // floating-point numbers in JS (e.g. 3.8 + 2.7) can land on something
     // like 6.499999999999999 - round back to 1dp so this reads the same as
     // every other total hours figure in the app.
     const round1 = (n) => Math.round(n * 10) / 10;
-    const totalHours = round1(chronological.reduce((sum, f) => sum + Number(f.hours), 0));
-    const last4 = chronological.slice(-4);
-    const last2Hours = round1(last4.slice(-2).reduce((sum, f) => sum + Number(f.hours), 0));
+    const totalHours = round1(flights.reduce((sum, f) => sum + Number(f.hours), 0));
 
     const patch = {};
-    if (!assessment.sectorDetails?.sectors34?.progressiveTotal) {
-      patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: totalHours };
+    if (assessment.sectorDetails?.sectors12?.progressiveTotal !== totalHours) {
+      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: totalHours };
     }
-    if (last4.length >= 2 && !assessment.sectorDetails?.sectors12?.progressiveTotal) {
-      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: round1(totalHours - last2Hours) };
+    if (assessment.sectorDetails?.sectors34?.progressiveTotal !== totalHours) {
+      patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: totalHours };
     }
     if (Object.keys(patch).length > 0) {
       save({ sectorDetails: { ...assessment.sectorDetails, ...patch } });

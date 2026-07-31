@@ -32,28 +32,44 @@ function itemKey(item) {
   return item.id;
 }
 
-// Pilot sector details are carried over live from Phase 4 (see the sync
-// effect in CtlForm below) - Check to Line documents the same sectors
-// Phase 4 already recorded, so this is read-only here rather than a
-// second, independently-editable copy that could drift out of step.
-function SectorFields({ label, value, progressiveLabel }) {
+// Check to Line is its own check flight(s) - a separate, later stage from
+// Phase 4 training (see the operator's explicit correction) - so route,
+// aircraft, date and flight time are this examiner's own entries. Only the
+// progressive total's starting point carries over, continuing the running
+// LOFT-hours tally on from wherever Phase 4 finished (see the sync effect
+// in CtlForm below).
+function SectorFields({ label, value, progressiveLabel, disabled, onChange }) {
   const v = value || {};
+  const update = (field, fieldValue) => onChange({ ...v, [field]: fieldValue });
+
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>{label}</div>
       <div className="grid2">
-        <div className="field"><label>Route</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.route || '—'}</div></div>
-        <div className="field"><label>Aircraft (type & rego)</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.aircraft || '—'}</div></div>
+        <div className="field">
+          <label>Route</label>
+          <input disabled={disabled} value={v.route || ''} onChange={(e) => update('route', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Aircraft (type & rego)</label>
+          <input disabled={disabled} value={v.aircraft || ''} onChange={(e) => update('aircraft', e.target.value)} />
+        </div>
       </div>
       <div className="grid2">
-        <div className="field"><label>Date</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.date ? formatDate(v.date) : '—'}</div></div>
-        <div className="field"><label>Flight time (this flight)</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.thisFlight ?? 0}h</div></div>
+        <div className="field">
+          <label>Date</label>
+          <input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Flight time (this flight)</label>
+          <input type="number" step="0.1" disabled={disabled} value={v.thisFlight || ''} onChange={(e) => update('thisFlight', e.target.value)} />
+        </div>
       </div>
       <div className="field">
         <label>Flight time ({progressiveLabel})</label>
         <div style={{ fontSize: 14, padding: '6px 0' }}>{v.progressiveTotal ?? 0}h</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Continues on from Phase 4's final total - not editable here.</div>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Carried over from Phase 4 - not editable here.</div>
     </div>
   );
 }
@@ -83,34 +99,44 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     } catch (err) { setError(err.message); }
   }
 
-  // Check to Line documents the exact same sectors Phase 4 already
-  // recorded - route/aircraft/date/flight time/progressive total carry
-  // over live from there instead of the examiner retyping the same figures
-  // (see SectorFields above). Pilots only - cabin attendants have no
-  // Phase 4.
+  function updateSector(key, value) {
+    save({ sectorDetails: { ...form.sectorDetails, [key]: value } });
+  }
+
+  // Check to Line is a separate check flight from Phase 4 training, not a
+  // re-documenting of the same sectors - route/aircraft/date/flight time
+  // here are this examiner's own entries. Only the progressive total
+  // continues the running LOFT-hours tally on from wherever Phase 4's
+  // final total left off, then amends as this form's own flight time is
+  // entered (same chaining as Phase4Form). Pilots only - cabin attendants
+  // have no Phase 4.
   const [phase4Data, setPhase4Data] = useState(null);
   useEffect(() => {
     if (isCabinAttendant) return;
     api.get(`/api/phase4/${traineeId}`).then(setPhase4Data).catch(() => {});
   }, [traineeId, isCabinAttendant]);
 
+  const round1 = (n) => Math.round(n * 10) / 10;
+  const ctlThisFlight12 = Number(form.sectorDetails?.sectors12?.thisFlight) || 0;
+  const ctlThisFlight34 = Number(form.sectorDetails?.sectors34?.thisFlight) || 0;
   useEffect(() => {
     if (isCabinAttendant || !canEdit || !data || !phase4Data?.assessment) return;
-    const source = phase4Data.assessment.sectorDetails || {};
-    const fields = ['route', 'aircraft', 'date', 'thisFlight', 'progressiveTotal'];
+    const baseline = Number(phase4Data.assessment.sectorDetails?.sectors34?.progressiveTotal) || 0;
+    const progressive12 = round1(baseline + ctlThisFlight12);
+    const progressive34 = round1(progressive12 + ctlThisFlight34);
+
     const patch = {};
-    for (const key of ['sectors12', 'sectors34']) {
-      const src = source[key];
-      if (!src) continue;
-      const current = form.sectorDetails?.[key] || {};
-      const changed = fields.some((f) => (current[f] ?? null) !== (src[f] ?? null));
-      if (changed) patch[key] = { ...src };
+    if (form.sectorDetails?.sectors12?.progressiveTotal !== progressive12) {
+      patch.sectors12 = { ...form.sectorDetails?.sectors12, progressiveTotal: progressive12 };
+    }
+    if (form.sectorDetails?.sectors34?.progressiveTotal !== progressive34) {
+      patch.sectors34 = { ...form.sectorDetails?.sectors34, progressiveTotal: progressive34 };
     }
     if (Object.keys(patch).length > 0) {
       save({ sectorDetails: { ...form.sectorDetails, ...patch } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase4Data, data, canEdit, isCabinAttendant]);
+  }, [phase4Data, data, canEdit, isCabinAttendant, ctlThisFlight12, ctlThisFlight34]);
 
   // Cabin attendant items stay a simple boolean pass/fail tick.
   async function setCaItem(item, value) {
@@ -240,11 +266,15 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
                   label="Sectors 1 & 2"
                   progressiveLabel="progr. total"
                   value={form.sectorDetails?.sectors12}
+                  disabled={locked}
+                  onChange={(v) => updateSector('sectors12', v)}
                 />
                 <SectorFields
                   label="Sectors 3 & 4"
                   progressiveLabel="total LOFT"
                   value={form.sectorDetails?.sectors34}
+                  disabled={locked}
+                  onChange={(v) => updateSector('sectors34', v)}
                 />
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 0.875rem' }}>

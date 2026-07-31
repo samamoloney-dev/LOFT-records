@@ -291,10 +291,14 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
     } catch (err) { setError(err.message); }
   }
 
+  // completedAt drives the next-expiry calculation (crew.js), so it must
+  // reflect the date the check was actually conducted (details.date) - not
+  // whatever moment the result happened to get signed off, which can be
+  // days later and would otherwise push the next due date out incorrectly.
   async function setResult(check, result) {
     setError(null);
     try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: new Date().toISOString() });
+      const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: check.details?.date || new Date().toISOString() });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
       // Only "reopening a saved check later" keeps the survey tucked behind
       // the toggle - completing it just now is exactly when the assessor

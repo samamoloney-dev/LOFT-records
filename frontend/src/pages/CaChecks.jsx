@@ -15,7 +15,9 @@ import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 
-const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+// Cabin attendants only ever fly Fokker 100 or Dash 8 - Metro 23 is a
+// pilot-only fleet (there's no CA_METRO), so it never belongs in this list.
+const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8'];
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
@@ -80,10 +82,14 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     } catch (err) { setError(err.message); }
   }
 
+  // completedAt drives the next-expiry calculation (crew.js), so it must
+  // reflect the date the check was actually conducted (details.date) - not
+  // whatever moment the result happened to get signed off, which can be
+  // days later and would otherwise push the next due date out incorrectly.
   async function setResult(check, result) {
     setError(null);
     try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: new Date().toISOString() });
+      const updated = await api.patch(`/api/checks/${check.id}`, { result, completedAt: check.details?.date || new Date().toISOString() });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }
   }
@@ -151,8 +157,20 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
           </div>
         </div>
         <div className="card">
-          <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Cabin Attendant Line Check</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}</div>
+          <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>{d.name} — Cabin Attendant Line Check</div>
+          <div className="grid2">
+            <div className="field">
+              <label>Aircraft type</label>
+              <select disabled={!!selected.completedAt} value={d.actype || ''} onChange={(e) => patchDetails(selected, { actype: e.target.value })}>
+                <option value="">—</option>
+                {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Date check conducted</label>
+              <input type="date" disabled={!!selected.completedAt} value={d.date || ''} onChange={(e) => patchDetails(selected, { date: e.target.value })} />
+            </div>
+          </div>
         </div>
 
         <div className="card">

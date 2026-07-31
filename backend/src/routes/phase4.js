@@ -44,7 +44,9 @@ const upsertSchema = z.object({
   ntsScores: z.record(z.any()).optional(),
   comments: z.string().nullable().optional(),
   trainingCaptainSignature: z.string().nullable().optional(),
+  trainingCaptainSignatureAt: z.string().nullable().optional(),
   applicantSignature: z.string().nullable().optional(),
+  applicantSignatureAt: z.string().nullable().optional(),
 });
 
 router.put('/:traineeId', async (req, res) => {
@@ -59,14 +61,16 @@ router.put('/:traineeId', async (req, res) => {
   // Training Captain's - mirroring the phase-completions signature rule.
   if (req.user.role === 'TRAINEE') {
     if (req.user.trainee?.id !== trainee.id) return res.status(403).json({ error: 'Forbidden' });
-    if (d.trainingCaptainSignature !== undefined) return res.status(403).json({ error: 'Forbidden' });
+    if (d.trainingCaptainSignature !== undefined || d.trainingCaptainSignatureAt !== undefined) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
   }
 
   const { rows } = await pool.query(
     `INSERT INTO phase4_assessments
        (trainee_id, sector_details, item_results, category_remarks, nts_scores, comments,
-        training_captain_signature, applicant_signature)
-     VALUES ($1, COALESCE($2, '{}'::jsonb), COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8)
+        training_captain_signature, training_captain_signature_at, applicant_signature, applicant_signature_at)
+     VALUES ($1, COALESCE($2, '{}'::jsonb), COALESCE($3, '{}'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{}'::jsonb), $6, $7, $8, $9, $10)
      ON CONFLICT (trainee_id) DO UPDATE SET
        sector_details = COALESCE($2, phase4_assessments.sector_details),
        item_results = COALESCE($3, phase4_assessments.item_results),
@@ -74,7 +78,9 @@ router.put('/:traineeId', async (req, res) => {
        nts_scores = COALESCE($5, phase4_assessments.nts_scores),
        comments = COALESCE($6, phase4_assessments.comments),
        training_captain_signature = COALESCE($7, phase4_assessments.training_captain_signature),
-       applicant_signature = COALESCE($8, phase4_assessments.applicant_signature)
+       training_captain_signature_at = COALESCE($8, phase4_assessments.training_captain_signature_at),
+       applicant_signature = COALESCE($9, phase4_assessments.applicant_signature),
+       applicant_signature_at = COALESCE($10, phase4_assessments.applicant_signature_at)
      RETURNING *`,
     [
       trainee.id,
@@ -84,7 +90,9 @@ router.put('/:traineeId', async (req, res) => {
       d.ntsScores ? JSON.stringify(d.ntsScores) : null,
       d.comments ?? null,
       d.trainingCaptainSignature ?? null,
+      d.trainingCaptainSignatureAt ?? null,
       d.applicantSignature ?? null,
+      d.applicantSignatureAt ?? null,
     ],
   );
 

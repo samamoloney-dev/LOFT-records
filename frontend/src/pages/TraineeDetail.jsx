@@ -412,7 +412,7 @@ export function TraineeDetail() {
       {tab === 'discussion' && <SyllabusItemsList trainee={trainee} section="DISCUSSION" />}
       {tab === 'groundSchool' && <GroundSchoolPanel trainee={trainee} />}
       {tab === 'flights' && <FlightsTab traineeId={id} trainee={trainee} flights={flights} onFlightsChange={setFlights} ctlCompleted={ctlCompleted} />}
-      {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} />}
+      {tab === 'phase4' && !isCabinAttendant && <Phase4Form traineeId={id} flights={flights} />}
       {tab === 'phase' && !isCabinAttendant && <PhaseCompletionPanel trainee={trainee} onTraineeChange={load} />}
       {tab === 'ctl' && <CtlForm traineeId={id} traineeType={trainee.type} fleet={trainee.fleet} onCompleted={load} />}
       {tab === 'clearance' && <ClearanceTab member={{ id: trainee.id, type: trainee.type, archived: trainee.archived }} apiBase={`/api/trainees/${id}`} />}

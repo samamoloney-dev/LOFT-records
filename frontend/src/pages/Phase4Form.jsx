@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
+import { PinSignature } from '../components/PinSignature';
 
 const STATUSES = [
   { value: 'SATISFACTORY', label: '✓' },
@@ -54,7 +55,7 @@ function SectorFields({ label, value, disabled, onChange }) {
   );
 }
 
-export function Phase4Form({ traineeId }) {
+export function Phase4Form({ traineeId, flights }) {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -64,10 +65,7 @@ export function Phase4Form({ traineeId }) {
   }
   useEffect(load, [traineeId]);
 
-  if (error) return <div className="error-text">{error}</div>;
-  if (!data) return null;
-
-  const assessment = data.assessment || { sectorDetails: {}, itemResults: {}, categoryRemarks: {}, ntsScores: {}, comments: '' };
+  const assessment = data?.assessment || { sectorDetails: {}, itemResults: {}, categoryRemarks: {}, ntsScores: {}, comments: '' };
   const isTrainee = user.role === 'TRAINEE';
   const canEdit = CAN_EDIT_ROLES.includes(user.role) && !assessment.completedAt;
   const canSignApplicant = isTrainee ? user.traineeId === traineeId && !assessment.completedAt : !assessment.completedAt;
@@ -84,6 +82,36 @@ export function Phase4Form({ traineeId }) {
   function updateSector(key, value) {
     save({ sectorDetails: { ...assessment.sectorDetails, [key]: value } });
   }
+
+  // Carries the running flight-time total over from the trainee's own LOFT
+  // Flights tab instead of the Training Captain re-typing it here - "1&2"
+  // and "3&4" are simply the trainee's last four logged flights in
+  // chronological order, so the progressive total after 3&4 is just their
+  // overall total to date, and after 1&2 it's that total minus the last two
+  // flights' hours. Only fills in each field once (never overwrites a value
+  // already there, whether carried over before or corrected by hand).
+  useEffect(() => {
+    if (!canEdit || !data || !flights || flights.length === 0) return;
+    const chronological = [...flights].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const totalHours = chronological.reduce((sum, f) => sum + Number(f.hours), 0);
+    const last4 = chronological.slice(-4);
+    const last2Hours = last4.slice(-2).reduce((sum, f) => sum + Number(f.hours), 0);
+
+    const patch = {};
+    if (!assessment.sectorDetails?.sectors34?.progressiveTotal) {
+      patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: totalHours };
+    }
+    if (last4.length >= 2 && !assessment.sectorDetails?.sectors12?.progressiveTotal) {
+      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: totalHours - last2Hours };
+    }
+    if (Object.keys(patch).length > 0) {
+      save({ sectorDetails: { ...assessment.sectorDetails, ...patch } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flights, data, canEdit]);
+
+  if (error) return <div className="error-text">{error}</div>;
+  if (!data) return null;
 
   function updateItemResult(item, field, value) {
     const key = itemKey(item);
@@ -201,24 +229,16 @@ export function Phase4Form({ traineeId }) {
           checked for totality and accuracy and he/she is recommended for a Check to Line Flight Test.
         </div>
         <div className="grid2">
-          <div className="field">
-            <label>Training Captain signature</label>
-            <input
-              disabled={!canEdit}
-              value={assessment.trainingCaptainSignature || ''}
-              onChange={(e) => setData((d) => ({ ...d, assessment: { ...d.assessment, trainingCaptainSignature: e.target.value } }))}
-              onBlur={() => save({ trainingCaptainSignature: assessment.trainingCaptainSignature })}
-            />
-          </div>
-          <div className="field">
-            <label>Applicant signature</label>
-            <input
-              disabled={!canSignApplicant}
-              value={assessment.applicantSignature || ''}
-              onChange={(e) => setData((d) => ({ ...d, assessment: { ...d.assessment, applicantSignature: e.target.value } }))}
-              onBlur={() => save({ applicantSignature: assessment.applicantSignature })}
-            />
-          </div>
+          <PinSignature
+            label="Training Captain signature" personType="user" personId={user.id}
+            signedName={assessment.trainingCaptainSignature} signedAt={assessment.trainingCaptainSignatureAt} disabled={!canEdit}
+            onSigned={(name, at) => save({ trainingCaptainSignature: name, trainingCaptainSignatureAt: at })}
+          />
+          <PinSignature
+            label="Applicant signature" personType="trainee" personId={traineeId}
+            signedName={assessment.applicantSignature} signedAt={assessment.applicantSignatureAt} disabled={!canSignApplicant}
+            onSigned={(name, at) => save({ applicantSignature: name, applicantSignatureAt: at })}
+          />
         </div>
         {canComplete && <button className="primary" onClick={complete}>Complete Phase 4</button>}
       </div>

@@ -50,7 +50,7 @@ function SectorFields({ label, value, disabled, onChange }) {
       <div className="field">
         <label>Flight time (progressive total)</label>
         <div style={{ fontSize: 14, padding: '6px 0' }}>{v.progressiveTotal ?? 0}h</div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Carried over from the Flights tab - not editable here.</div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Flights tab total plus flight time entered above - not editable here.</div>
       </div>
     </div>
   );
@@ -84,31 +84,38 @@ export function Phase4Form({ traineeId, flights }) {
     save({ sectorDetails: { ...assessment.sectorDetails, [key]: value } });
   }
 
-  // Progressive total always mirrors the trainee's current total flight
-  // hours on the Flights tab - kept live (re-synced whenever a flight is
-  // added/edited), not a one-off carry-over the Training Captain could then
-  // edit out of step with the real record.
+  // Progressive total starts from the trainee's current total flight hours
+  // on the Flights tab, then amends as flight time is added for each sector
+  // pair - Sectors 1&2's total is the Flights-tab baseline plus whatever's
+  // entered as their "this flight" time, and Sectors 3&4's total carries on
+  // from there plus its own "this flight" time. Kept live (re-synced
+  // whenever a flight is added/edited or a "this flight" value changes),
+  // not manually editable.
+  const round1 = (n) => Math.round(n * 10) / 10;
+  const thisFlight12 = Number(assessment.sectorDetails?.sectors12?.thisFlight) || 0;
+  const thisFlight34 = Number(assessment.sectorDetails?.sectors34?.thisFlight) || 0;
   useEffect(() => {
     if (!canEdit || !data || !flights) return;
     // Hours are only ever recorded to one decimal place, but summing
     // floating-point numbers in JS (e.g. 3.8 + 2.7) can land on something
     // like 6.499999999999999 - round back to 1dp so this reads the same as
     // every other total hours figure in the app.
-    const round1 = (n) => Math.round(n * 10) / 10;
-    const totalHours = round1(flights.reduce((sum, f) => sum + Number(f.hours), 0));
+    const baseline = round1(flights.reduce((sum, f) => sum + Number(f.hours), 0));
+    const progressive12 = round1(baseline + thisFlight12);
+    const progressive34 = round1(progressive12 + thisFlight34);
 
     const patch = {};
-    if (assessment.sectorDetails?.sectors12?.progressiveTotal !== totalHours) {
-      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: totalHours };
+    if (assessment.sectorDetails?.sectors12?.progressiveTotal !== progressive12) {
+      patch.sectors12 = { ...assessment.sectorDetails?.sectors12, progressiveTotal: progressive12 };
     }
-    if (assessment.sectorDetails?.sectors34?.progressiveTotal !== totalHours) {
-      patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: totalHours };
+    if (assessment.sectorDetails?.sectors34?.progressiveTotal !== progressive34) {
+      patch.sectors34 = { ...assessment.sectorDetails?.sectors34, progressiveTotal: progressive34 };
     }
     if (Object.keys(patch).length > 0) {
       save({ sectorDetails: { ...assessment.sectorDetails, ...patch } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flights, data, canEdit]);
+  }, [flights, data, canEdit, thisFlight12, thisFlight34]);
 
   if (error) return <div className="error-text">{error}</div>;
   if (!data) return null;

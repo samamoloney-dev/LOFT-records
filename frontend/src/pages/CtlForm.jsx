@@ -32,37 +32,28 @@ function itemKey(item) {
   return item.id;
 }
 
-function SectorFields({ label, value, progressiveLabel, disabled, onChange }) {
+// Pilot sector details are carried over live from Phase 4 (see the sync
+// effect in CtlForm below) - Check to Line documents the same sectors
+// Phase 4 already recorded, so this is read-only here rather than a
+// second, independently-editable copy that could drift out of step.
+function SectorFields({ label, value, progressiveLabel }) {
   const v = value || {};
-  const update = (field, fieldValue) => onChange({ ...v, [field]: fieldValue });
-
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>{label}</div>
       <div className="grid2">
-        <div className="field">
-          <label>Route</label>
-          <input disabled={disabled} value={v.route || ''} onChange={(e) => update('route', e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Aircraft (type & rego)</label>
-          <input disabled={disabled} value={v.aircraft || ''} onChange={(e) => update('aircraft', e.target.value)} />
-        </div>
+        <div className="field"><label>Route</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.route || '—'}</div></div>
+        <div className="field"><label>Aircraft (type & rego)</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.aircraft || '—'}</div></div>
       </div>
       <div className="grid2">
-        <div className="field">
-          <label>Date</label>
-          <input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Flight time (this flight)</label>
-          <input type="number" step="0.1" disabled={disabled} value={v.thisFlight || ''} onChange={(e) => update('thisFlight', e.target.value)} />
-        </div>
+        <div className="field"><label>Date</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.date ? formatDate(v.date) : '—'}</div></div>
+        <div className="field"><label>Flight time (this flight)</label><div style={{ fontSize: 14, padding: '6px 0' }}>{v.thisFlight ?? 0}h</div></div>
       </div>
       <div className="field">
         <label>Flight time ({progressiveLabel})</label>
-        <input type="number" step="0.1" disabled={disabled} value={v.progressiveTotal || ''} onChange={(e) => update('progressiveTotal', e.target.value)} />
+        <div style={{ fontSize: 14, padding: '6px 0' }}>{v.progressiveTotal ?? 0}h</div>
       </div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Carried over from Phase 4 - not editable here.</div>
     </div>
   );
 }
@@ -92,6 +83,35 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     } catch (err) { setError(err.message); }
   }
 
+  // Check to Line documents the exact same sectors Phase 4 already
+  // recorded - route/aircraft/date/flight time/progressive total carry
+  // over live from there instead of the examiner retyping the same figures
+  // (see SectorFields above). Pilots only - cabin attendants have no
+  // Phase 4.
+  const [phase4Data, setPhase4Data] = useState(null);
+  useEffect(() => {
+    if (isCabinAttendant) return;
+    api.get(`/api/phase4/${traineeId}`).then(setPhase4Data).catch(() => {});
+  }, [traineeId, isCabinAttendant]);
+
+  useEffect(() => {
+    if (isCabinAttendant || !canEdit || !data || !phase4Data?.assessment) return;
+    const source = phase4Data.assessment.sectorDetails || {};
+    const fields = ['route', 'aircraft', 'date', 'thisFlight', 'progressiveTotal'];
+    const patch = {};
+    for (const key of ['sectors12', 'sectors34']) {
+      const src = source[key];
+      if (!src) continue;
+      const current = form.sectorDetails?.[key] || {};
+      const changed = fields.some((f) => (current[f] ?? null) !== (src[f] ?? null));
+      if (changed) patch[key] = { ...src };
+    }
+    if (Object.keys(patch).length > 0) {
+      save({ sectorDetails: { ...form.sectorDetails, ...patch } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase4Data, data, canEdit, isCabinAttendant]);
+
   // Cabin attendant items stay a simple boolean pass/fail tick.
   async function setCaItem(item, value) {
     const next = { ...form.assessmentItems };
@@ -108,10 +128,6 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   async function setItemText(item, value) {
     const key = itemKey(item);
     await save({ assessmentItems: { ...form.assessmentItems, [key]: value } });
-  }
-
-  function updateSector(key, value) {
-    save({ sectorDetails: { ...form.sectorDetails, [key]: value } });
   }
 
   function updateNts(marker, value) {
@@ -224,15 +240,11 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
                   label="Sectors 1 & 2"
                   progressiveLabel="progr. total"
                   value={form.sectorDetails?.sectors12}
-                  disabled={locked}
-                  onChange={(v) => updateSector('sectors12', v)}
                 />
                 <SectorFields
                   label="Sectors 3 & 4"
                   progressiveLabel="total LOFT"
                   value={form.sectorDetails?.sectors34}
-                  disabled={locked}
-                  onChange={(v) => updateSector('sectors34', v)}
                 />
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 0.875rem' }}>

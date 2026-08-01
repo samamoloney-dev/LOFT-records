@@ -3,6 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet } from '../lib/format';
 import { crewLinkForItem } from '../lib/checkNav';
+import { PrintButton } from '../components/PrintButton';
+import { openPrintWindow } from '../lib/print';
+import { buildCurrencyOverviewHtml } from '../lib/printBuilders';
 
 const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3, in_training: 4 };
 
@@ -172,10 +175,17 @@ export function CurrencyOverview() {
     filteredRows.sort((a, b) => new Date(a.plannedDate) - new Date(b.plannedDate));
   }
 
+  function printReport() {
+    openPrintWindow('Currency Overview', buildCurrencyOverviewHtml(filteredRows));
+  }
+
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
+        </div>
+        <PrintButton onPrint={printReport} />
       </div>
       <FilterBar options={FLEET_FILTERS} value={fleetFilter} onChange={setFleetFilter} />
       <FilterBar options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />

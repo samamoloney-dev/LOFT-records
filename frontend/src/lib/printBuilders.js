@@ -600,3 +600,44 @@ export function buildCrewFileSummary(member, competencies) {
     ${section('Competencies', competencyRows)}
   `;
 }
+
+// Currency Overview's own print (CurrencyOverview.jsx) - a roster-wide
+// snapshot grouped into exactly the three bands that matter for an
+// at-a-glance audit: Overdue (folding in "not yet completed" - both need
+// action right now), Due Soon, and Current. "In training" rows are left
+// out entirely - they're deliberately suppressed/non-urgent on screen too,
+// so they'd just be noise here. Takes whatever rows the screen is
+// currently showing (respects the fleet/status/rostered filters already
+// applied there), rather than always dumping the entire roster regardless
+// of what the admin was actually looking at.
+function currencyReportRow(r) {
+  const notes = r.overdueReason || (r.plannedDate ? `Planned ${formatDate(r.plannedDate)}` : '') || (r.inLoft ? 'In LOFT' : '');
+  return `<tr><td>${r.name}</td><td>${r.fleet}</td><td>${r.item}</td><td>${r.dueDate ? formatDate(r.dueDate) : '—'}</td><td>${notes}</td></tr>`;
+}
+
+function currencyReportSection(title, rows) {
+  if (rows.length === 0) return '';
+  return `
+    <div class="form-section">
+      <h2>${title} (${rows.length})</h2>
+      <table>
+        <tr><th>Name</th><th>Fleet</th><th>Item</th><th>Due date</th><th>Notes</th></tr>
+        ${rows.map(currencyReportRow).join('')}
+      </table>
+    </div>`;
+}
+
+export function buildCurrencyOverviewHtml(rows) {
+  const overdue = rows.filter((r) => r.status === 'overdue' || r.status === 'not_completed');
+  const dueSoon = rows.filter((r) => r.status === 'due_soon');
+  const current = rows.filter((r) => r.status === 'ok');
+  return `
+    <div class="compact">
+      <h1>Currency Overview</h1>
+      <div class="meta">${rows.length} item${rows.length === 1 ? '' : 's'} · ${overdue.length} overdue, ${dueSoon.length} due soon, ${current.length} current</div>
+      ${currencyReportSection('Overdue / Not Yet Completed', overdue)}
+      ${currencyReportSection('Due Soon', dueSoon)}
+      ${currencyReportSection('Current', current)}
+    </div>
+  `;
+}

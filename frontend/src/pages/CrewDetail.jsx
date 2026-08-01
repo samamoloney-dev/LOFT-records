@@ -264,29 +264,29 @@ function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved, disab
   );
 }
 
-// HOTC/HOFO/Flight Ops Admin only - a typed note explaining why a check is
-// currently overdue (e.g. "Awaiting simulator availability", "On extended
-// leave"), independent of whether a date's been booked in yet. Only shown
-// once a check is actually overdue - reuses the same crew_planned_checks
-// row PlannedDateEditor writes to (see crew.js), buffered locally and
-// committed onBlur like the other free-text fields in this app.
+// HOTC/HOFO/Flight Ops Admin only - a fixed-choice note explaining why a
+// check is currently overdue, independent of whether a date's been booked
+// in yet. Only shown once a check is actually overdue - reuses the same
+// crew_planned_checks row PlannedDateEditor writes to (see crew.js).
+// Mirrors backend/src/routes/crew.js's OVERDUE_REASONS enum.
+const OVERDUE_REASONS = ['In LOFT', 'Sick Leave', 'Personal Leave', 'Failed Check'];
 function ReasonEditor({ crewMemberId, checkKey, reason, onSaved, disabled }) {
-  const [local, setLocal] = useState(reason || '');
-  useEffect(() => { setLocal(reason || ''); }, [reason]);
-
-  async function commit() {
-    if (local === (reason || '')) return;
-    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { reason: local || null });
+  async function commit(value) {
+    if (value === (reason || '')) return;
+    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { reason: value || null });
     onSaved(updated);
   }
 
   return (
     <div style={{ marginTop: 6 }}>
       <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Reason overdue</label>
-      <input
-        value={local} disabled={disabled} onChange={(e) => setLocal(e.target.value)} onBlur={commit}
-        placeholder="e.g. awaiting simulator slot" style={{ fontSize: 11, padding: '4px 6px', width: 180 }}
-      />
+      <select
+        value={reason || ''} disabled={disabled} onChange={(e) => commit(e.target.value)}
+        style={{ fontSize: 11, padding: '4px 6px', width: 180 }}
+      >
+        <option value="">—</option>
+        {OVERDUE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+      </select>
     </div>
   );
 }

@@ -190,7 +190,7 @@ export function CurrencyOverview() {
               {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)} (${expiryText(r.dueDate)})` : ''}
             </div>
             {r.plannedDate && <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>}
-            {r.overdueReason && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Reason: {r.overdueReason}</div>}
+            {r.overdueReason && <span className="badge warn" style={{ marginTop: 4, display: 'inline-block' }}>{r.overdueReason}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {r.inLoft && r.status === 'overdue' && (

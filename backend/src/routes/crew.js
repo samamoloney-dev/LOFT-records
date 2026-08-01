@@ -762,10 +762,13 @@ router.patch('/:id', async (req, res) => {
   res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
+// Mirrors frontend/src/pages/CrewDetail.jsx's OVERDUE_REASONS - a fixed
+// dropdown rather than free text, per the operator's explicit request.
+const OVERDUE_REASONS = ['In LOFT', 'Sick Leave', 'Personal Leave', 'Failed Check'];
 const plannedCheckSchema = z.object({
   plannedDate: z.string().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
-  reason: z.string().nullable().optional(),
+  reason: z.enum(OVERDUE_REASONS).nullable().optional(),
 });
 
 router.put('/:id/planned-checks/:checkKey', async (req, res) => {

@@ -307,15 +307,21 @@ function isUrgent(status) {
 // and allItemsFor (Currency Overview's "show me everyone" view) - both
 // agree on the same underlying item list, just with a different filter
 // applied afterwards.
-// Refresher Training isn't required until a pilot's first Line Check (365
-// days after their Check to Line/line_check_anchor_date) - a freshly
-// promoted pilot with no Refresher Training date set yet shouldn't show as
-// already needing it. Mirrors pilotLineCheckDue's own anchor logic; only
-// kicks in when nothing has actually been entered against it yet (a real
-// completed/due date always wins).
-function withRefresherDefaultDue(member, name, dueDate) {
-  if (name === 'Refresher Training' && !dueDate && member.type === 'PILOT' && member.lineCheckAnchorDate) {
-    return addDays(new Date(member.lineCheckAnchorDate), 365);
+// Refresher Training runs on exactly the same clock as the pilot Line
+// Check itself - 365 days from Check to Line, then 365 days from whichever
+// Line Check was most recently completed, per the operator's explicit
+// rule. Previously this only ever computed a single fixed anchor+365
+// default and never re-based after a subsequent Line Check, so a pilot who
+// came out of LOFT and had already had one or more real Line Checks since
+// would show Refresher Training as overdue/not-yet-completed off a long-
+// stale date instead of their actual next anniversary. Reuses the Line
+// Check's own already-correct due date (currency.lineCheck.dueDate, see
+// pilotLineCheckDue/nextDueRolling above) rather than recomputing the same
+// rule twice. Only kicks in when nothing has actually been entered against
+// Refresher Training itself yet - a real completed/due date always wins.
+function withRefresherDefaultDue(member, name, dueDate, lineCheckDueDate) {
+  if (name === 'Refresher Training' && !dueDate && member.type === 'PILOT' && lineCheckDueDate) {
+    return new Date(lineCheckDueDate);
   }
   return dueDate;
 }
@@ -355,7 +361,7 @@ async function itemsFor(member, currency, inLoft) {
   const fromCompetencies = competencies
     .filter((c) => !c.na)
     .map((c) => {
-      const dueDate = withRefresherDefaultDue(member, c.name, c.due_date);
+      const dueDate = withRefresherDefaultDue(member, c.name, c.due_date, currency.lineCheck?.dueDate);
       // See newHireGraceActive above - Refresher Training is the other half
       // of the operator's "PC and Refresher Training" new-hire grace period.
       // Also suppressed for anyone still genuinely in LOFT (see isInLoft) -
@@ -962,7 +968,19 @@ router.get('/:id/competencies', async (req, res) => {
      ORDER BY ct.sort_order ASC, ct.created_at ASC`,
     [member.id, member.type, member.fleets],
   );
-  res.json(rows.map(rowToCamel).map((c) => ({ ...c, dueDate: withRefresherDefaultDue(member, c.name, c.dueDate) })));
+  // Refresher Training's default due date rides on the pilot Line Check's
+  // own due date (see withRefresherDefaultDue above) - compute it the same
+  // way withCurrency does, rather than duplicating currency's whole shape
+  // here.
+  let lineCheckDueDate = null;
+  if (member.type === 'PILOT') {
+    const [lineCheckCount, lastLineCheckChk] = await Promise.all([
+      completedPilotLineCheckCount(member.id),
+      lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
+    ]);
+    lineCheckDueDate = pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk);
+  }
+  res.json(rows.map(rowToCamel).map((c) => ({ ...c, dueDate: withRefresherDefaultDue(member, c.name, c.dueDate, lineCheckDueDate) })));
 });
 
 const competencyDatesSchema = z.object({

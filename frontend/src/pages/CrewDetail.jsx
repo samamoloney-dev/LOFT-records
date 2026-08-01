@@ -612,7 +612,7 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
         <div>
           <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} disabled={archived} />
-          {member.currency.emergencyProcedures.status === 'overdue' && (
+          {['overdue', 'not_completed'].includes(member.currency.emergencyProcedures.status) && (
             <ReasonEditor crewMemberId={member.id} checkKey="emergencyProcedures" reason={member.currency.emergencyProcedures.overdueReason} onSaved={onSaved} disabled={archived} />
           )}
         </div>
@@ -620,7 +620,7 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
           <div>
             <DueBadge label="IPC" info={member.currency.ipc} />
             <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} disabled={archived} />
-            {member.currency.ipc.status === 'overdue' && (
+            {['overdue', 'not_completed'].includes(member.currency.ipc.status) && (
               <ReasonEditor crewMemberId={member.id} checkKey="ipc" reason={member.currency.ipc.overdueReason} onSaved={onSaved} disabled={archived} />
             )}
           </div>
@@ -629,7 +629,7 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
           <div>
             <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
             <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} disabled={archived} />
-            {member.currency.proficiencyCheck.status === 'overdue' && (
+            {['overdue', 'not_completed'].includes(member.currency.proficiencyCheck.status) && (
               <ReasonEditor crewMemberId={member.id} checkKey="proficiencyCheck" reason={member.currency.proficiencyCheck.overdueReason} onSaved={onSaved} disabled={archived} />
             )}
           </div>
@@ -637,7 +637,7 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
         <div>
           <DueBadge label="Line Check" info={member.currency.lineCheck} />
           <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} disabled={archived} />
-          {member.currency.lineCheck.status === 'overdue' && (
+          {['overdue', 'not_completed'].includes(member.currency.lineCheck.status) && (
             <ReasonEditor crewMemberId={member.id} checkKey="lineCheck" reason={member.currency.lineCheck.overdueReason} onSaved={onSaved} disabled={archived} />
           )}
         </div>

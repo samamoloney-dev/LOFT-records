@@ -1,13 +1,13 @@
 databases:
   - name: loft-records-db
-    plan: free
+    plan: basic-1gb
     postgresMajorVersion: "16"
 
 services:
   - type: web
     name: loft-records-backend
     runtime: node
-    plan: free
+    plan: pro
     rootDir: backend
     buildCommand: npm install
     startCommand: npm run migrate && npm start

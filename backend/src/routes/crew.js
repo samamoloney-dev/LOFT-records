@@ -456,26 +456,31 @@ async function withCurrency(member) {
     // licence reissue on top of what a PC alone would test), so completing
     // one resets the PC's 365-day clock as well - not just a dedicated
     // PC-variant check. The reverse doesn't hold: a plain PC doesn't touch
-    // the IPC's own due date above.
-    const pc = latestOf(latestOf(pcChk, ipcChk), member.seedPcDate);
+    // the IPC's own due date above. Uses ipc (already seed-aware) rather
+    // than the raw ipcChk, so a pilot whose qualifying IPC was entered as a
+    // one-off seed date (e.g. onboarded before this app existed) still gets
+    // the same treatment as one completed through a real in-app check.
+    const pc = latestOf(latestOf(pcChk, ipc), member.seedPcDate);
     // See newHireGraceActive above - a flagged new hire who's never sat a
     // PC yet stays "in training" rather than "overdue" until 6 months past
     // their Check to Line, on top of the ground-school gate above.
     const pcSuppressed = !pc && newHireGraceActive(member);
-    // A pilot who's completed their qualifying IPC but has never yet sat a
-    // dedicated Proficiency Check - the gap right after finishing LOFT,
-    // before their first stand-alone PC - is due one exactly 6 calendar
-    // months after that IPC (addMonths, not a 182-day approximation - see
-    // addMonths' own comment: the fixed day-count version could land a day
-    // or two off the real anniversary and flag it overdue early), not the
-    // usual 365-day rolling clock, per the operator's explicit rule that
-    // the first PC is done 6 months after the IPC. This only covers that
-    // one "never had a real PC" gap; once a dedicated PC-variant check (or
-    // a seeded PC date) exists, the normal 365-day clock above (still
-    // anchored off either check type) takes over as before.
+    // A pilot out of LOFT who's completed their qualifying IPC but has
+    // never yet sat a dedicated Proficiency Check - the gap right after
+    // finishing LOFT, before their first stand-alone PC - is due one
+    // exactly 6 calendar months after that IPC (addMonths, not a 182-day
+    // approximation - see addMonths' own comment: the fixed day-count
+    // version could land a day or two off the real anniversary and flag it
+    // overdue early), not the usual 365-day rolling clock, per the
+    // operator's explicit rule that the first PC is done 6 months after
+    // the IPC. Checked against ipc (seed-aware, see pc above) rather than
+    // the raw ipcChk for the same reason. This only covers that one "never
+    // had a real PC" gap; once a dedicated PC-variant check (or a seeded PC
+    // date) exists, the normal 365-day clock above (still anchored off
+    // either check type) takes over as before.
     const pcNeverCompleted = !pcChk && !member.seedPcDate;
-    const pcDueDateIsFirstEstimate = pcNeverCompleted && !!ipcChk;
-    const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipcChk), 6) : nextDueRolling(pc);
+    const pcDueDateIsFirstEstimate = pcNeverCompleted && !!ipc;
+    const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipc), 6) : nextDueRolling(pc);
     // Not yet a fully current line pilot - IPC, Line Check and Refresher
     // Training (see itemsFor above) don't apply until LOFT is actually
     // finished, regardless of where ground school itself is up to

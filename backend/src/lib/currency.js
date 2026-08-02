@@ -47,31 +47,44 @@ function pilotLineCheckDue(anchorDate, completedCount) {
   return addDays(new Date(anchorDate), 365 * (completedCount + 1));
 }
 
-const DUE_SOON_DAYS = 60;
+// Three graduated advance-warning bands ahead of the real deadline, closest
+// first - per the operator's explicit request to distinguish how urgently
+// each should be alerted, rather than one flat "due soon" window covering
+// everything from 1 to 60 days out:
+//   1-10 days out  -> 'important'   (red)
+//   11-30 days out -> 'due_soon'    (amber) - keeps the pre-existing key/label
+//   31-45 days out -> 'approaching' (yellow, least alerting of the three)
+// Beyond 45 days (or the item's simply not due yet) is 'ok'. None of these
+// mean the check has lapsed - only 'overdue' does.
+const IMPORTANT_DAYS = 10;
+const DUE_SOON_DAYS = 30;
+const APPROACHING_DAYS = 45;
 
 // Classifies a due date relative to today.
 function statusFor(dueDate) {
   if (!dueDate) return 'overdue'; // never completed - treat as immediately due
   const today = new Date();
   if (today > dueDate) return 'overdue';
-  const soonThreshold = addDays(dueDate, -DUE_SOON_DAYS);
-  if (today >= soonThreshold) return 'due_soon';
+  if (today >= addDays(dueDate, -IMPORTANT_DAYS)) return 'important';
+  if (today >= addDays(dueDate, -DUE_SOON_DAYS)) return 'due_soon';
+  if (today >= addDays(dueDate, -APPROACHING_DAYS)) return 'approaching';
   return 'ok';
 }
-
-const COMPETENCY_SOON_DAYS = 30;
 
 // Competencies (Dangerous Goods etc.) have a straight due date rather than
 // a computed recurrency rule/grace window - mirrors the frontend's
 // lib/dueStatus.js competencyStatus, kept as its own small function here
 // (rather than a computed rule like statusFor above) since it needs to run
-// server-side for the crew list's urgentItems (see crew.js).
+// server-side for the crew list's urgentItems (see crew.js). Same
+// important/due_soon/approaching bands as statusFor, for consistency.
 function competencyStatus(dueDate) {
   if (!dueDate) return 'not_completed'; // never completed - distinct from a lapsed renewal
   const due = new Date(dueDate);
   const today = new Date();
   if (today > due) return 'overdue';
-  if (today >= addDays(due, -COMPETENCY_SOON_DAYS)) return 'due_soon';
+  if (today >= addDays(due, -IMPORTANT_DAYS)) return 'important';
+  if (today >= addDays(due, -DUE_SOON_DAYS)) return 'due_soon';
+  if (today >= addDays(due, -APPROACHING_DAYS)) return 'approaching';
   return 'ok';
 }
 

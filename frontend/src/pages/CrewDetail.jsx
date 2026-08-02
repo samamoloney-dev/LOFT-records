@@ -28,12 +28,13 @@ const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'
 const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 
 // Mirrors CurrencyOverview.jsx's STATUS_ORDER - overdue/not-yet-completed
-// first, then due soon, then current, with Not Applicable always last
-// since it isn't limiting anything.
-const COMPETENCY_STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3 };
+// first, then the three graduated advance-warning bands (closest deadline
+// first), then current, with Not Applicable always last since it isn't
+// limiting anything.
+const COMPETENCY_STATUS_ORDER = { overdue: 0, not_completed: 1, important: 2, due_soon: 3, approaching: 4, ok: 5 };
 function competencySortRank(c) {
-  if (c.na) return 4;
-  return COMPETENCY_STATUS_ORDER[competencyStatus(c.dueDate)] ?? 4;
+  if (c.na) return 6;
+  return COMPETENCY_STATUS_ORDER[competencyStatus(c.dueDate)] ?? 6;
 }
 
 // Not every crew member is required to hold every competency - see

@@ -19,6 +19,16 @@ router.use(requireRole(...ADMIN_ROLES));
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
+// None of these mean a check/competency has actually lapsed - 'ok' plus the
+// three graduated advance-warning bands (important/due_soon/approaching,
+// see backend/src/lib/currency.js's statusFor) are all just "not yet due,
+// at varying urgency". Only 'overdue'/'not_completed' should ever count
+// against a "current" headline stat.
+const NOT_YET_DUE_STATUSES = ['ok', 'important', 'due_soon', 'approaching'];
+// Everything that needs an actual look, closest-deadline-first through to
+// never-done - used for Needs Attention and the "Not Yet Rostered" filter.
+const URGENT_STATUSES = ['overdue', 'important', 'due_soon', 'approaching', 'not_completed'];
+
 // Mirrors frontend/src/lib/checkNav.js's crewLinkForItem - lets a Home
 // Dashboard row land straight on the specific check/tab rather than just
 // the crew profile root.
@@ -44,10 +54,10 @@ function fleetSnapshotFrom(members) {
     for (const fleet of m.fleets) {
       if (!stats[fleet]) continue;
       stats[fleet].total += m.allItems.length;
-      // due_soon is an advance warning ahead of a real deadline, not itself
-      // a problem, so it counts toward "current" here too - matches the
-      // Crew Current headline percentage's own definition above.
-      stats[fleet].current += m.allItems.filter((i) => i.status === 'ok' || i.status === 'due_soon').length;
+      // The advance-warning bands aren't themselves a problem, so they
+      // count toward "current" here too - matches the Crew Current
+      // headline percentage's own definition above.
+      stats[fleet].current += m.allItems.filter((i) => NOT_YET_DUE_STATUSES.includes(i.status)).length;
     }
   }
   return FLEET_VALUES.map((fleet) => ({
@@ -72,13 +82,17 @@ router.get('/summary', async (req, res) => {
   const allItems = members.flatMap((m) => m.allItems.map((item) => ({ ...item, member: m })));
 
   const overdueItems = allItems.filter((i) => i.status === 'overdue');
-  const dueSoonItems = allItems.filter((i) => i.status === 'due_soon');
+  // Combines all three graduated advance-warning bands into one "Due Soon"
+  // headline count - the KPI card stays a single number, even though each
+  // item's own badge (Currency Overview, Crew list, crew profile) shows its
+  // more specific important/due_soon/approaching band and colour.
+  const dueSoonItems = allItems.filter((i) => i.status === 'important' || i.status === 'due_soon' || i.status === 'approaching');
   const notCompletedItems = allItems.filter((i) => i.status === 'not_completed');
   // "Current" for this headline stat means "nothing's actually a problem" -
-  // due_soon is just an advance warning ahead of a real deadline, not itself
-  // an issue, so it counts toward 100% the same as ok. Only overdue/
+  // the advance-warning bands are just that, advance warning, not an issue
+  // yet, so they count toward 100% the same as ok. Only overdue/
   // not_completed should ever pull this below 100%.
-  const currentCount = allItems.filter((i) => i.status === 'ok' || i.status === 'due_soon').length;
+  const currentCount = allItems.filter((i) => NOT_YET_DUE_STATUSES.includes(i.status)).length;
 
   const [
     { rows: activeTraineesRows },
@@ -268,7 +282,7 @@ router.get('/summary', async (req, res) => {
   // active check record exists) - same fix as CurrencyOverview.jsx's own
   // Not Yet Rostered filter, which had the identical gap.
   const attentionCurrencyItems = allItems.filter((i) => (
-    (i.status === 'overdue' || i.status === 'due_soon' || i.status === 'not_completed') && !i.plannedDate && !i.issued && !isActiveLoftTrainee(i.member)
+    URGENT_STATUSES.includes(i.status) && !i.plannedDate && !i.issued && !isActiveLoftTrainee(i.member)
   ));
   const overdueAttention = attentionCurrencyItems
     .filter((i) => i.status === 'overdue')
@@ -276,8 +290,11 @@ router.get('/summary', async (req, res) => {
   const notCompletedAttention = attentionCurrencyItems
     .filter((i) => i.status === 'not_completed')
     .sort((a, b) => a.member.name.localeCompare(b.member.name));
+  // Important/due_soon/approaching all read the same "due in X days" way
+  // below (daysOverdue works off the real due date, not the band), so they
+  // share one list ordered closest-deadline-first.
   const dueSoonAttention = attentionCurrencyItems
-    .filter((i) => i.status === 'due_soon')
+    .filter((i) => i.status === 'important' || i.status === 'due_soon' || i.status === 'approaching')
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
   // "Needs a Clearance Form" - the operator's four milestones (ground

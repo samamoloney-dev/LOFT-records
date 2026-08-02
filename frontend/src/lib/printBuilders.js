@@ -560,7 +560,8 @@ export function buildLoftFlightHtml(f) {
 // GET /api/crew/:id/competencies) - a plain print-styled readout of the same
 // data, not the interactive DueBadge/CompetencyRow components.
 const CURRENCY_STATUS_LABELS = {
-  ok: 'Current', due_soon: 'Due soon', overdue: 'Overdue', not_completed: 'Not yet completed', in_training: 'In training',
+  ok: 'Current', important: 'Important', due_soon: 'Due Soon', approaching: 'Approaching',
+  overdue: 'Overdue', not_completed: 'Not yet completed', in_training: 'In training',
 };
 
 // Mirrors DueBadge.jsx's IN_TRAINING_TEXT - distinguishes why an item reads
@@ -611,11 +612,12 @@ export function buildCrewFileSummary(member, competencies) {
 }
 
 // Currency Overview's own print (CurrencyOverview.jsx) - a roster-wide
-// snapshot grouped into exactly the three bands that matter for an
-// at-a-glance audit: Overdue (folding in "not yet completed" - both need
-// action right now), Due Soon, and Current. "In training" rows are left
-// out entirely - they're deliberately suppressed/non-urgent on screen too,
-// so they'd just be noise here. Takes whatever rows the screen is
+// snapshot grouped into the bands that matter for an at-a-glance audit:
+// Overdue (folding in "not yet completed" - both need action right now),
+// then the three graduated advance-warning bands closest-deadline-first
+// (Important/Due Soon/Approaching), then Current. "In training" rows are
+// left out entirely - they're deliberately suppressed/non-urgent on screen
+// too, so they'd just be noise here. Takes whatever rows the screen is
 // currently showing (respects the fleet/status/rostered filters already
 // applied there), rather than always dumping the entire roster regardless
 // of what the admin was actually looking at.
@@ -638,14 +640,18 @@ function currencyReportSection(title, rows) {
 
 export function buildCurrencyOverviewHtml(rows) {
   const overdue = rows.filter((r) => r.status === 'overdue' || r.status === 'not_completed');
+  const important = rows.filter((r) => r.status === 'important');
   const dueSoon = rows.filter((r) => r.status === 'due_soon');
+  const approaching = rows.filter((r) => r.status === 'approaching');
   const current = rows.filter((r) => r.status === 'ok');
   return `
     <div class="compact">
       <h1>Currency Overview</h1>
-      <div class="meta">${rows.length} item${rows.length === 1 ? '' : 's'} · ${overdue.length} overdue, ${dueSoon.length} due soon, ${current.length} current</div>
+      <div class="meta">${rows.length} item${rows.length === 1 ? '' : 's'} · ${overdue.length} overdue, ${important.length} important, ${dueSoon.length} due soon, ${approaching.length} approaching, ${current.length} current</div>
       ${currencyReportSection('Overdue / Not Yet Completed', overdue)}
+      ${currencyReportSection('Important', important)}
       ${currencyReportSection('Due Soon', dueSoon)}
+      ${currencyReportSection('Approaching', approaching)}
       ${currencyReportSection('Current', current)}
     </div>
   `;

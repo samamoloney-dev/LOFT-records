@@ -7,23 +7,37 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow } from '../lib/print';
 import { buildCurrencyOverviewHtml } from '../lib/printBuilders';
 
-const STATUS_ORDER = { overdue: 0, not_completed: 1, due_soon: 2, ok: 3, in_training: 4 };
+// Overdue and not-yet-completed rank above the three graduated advance-
+// warning bands (important > due_soon > approaching - closest deadline
+// first), matching backend/src/lib/currency.js's statusFor bands.
+const STATUS_ORDER = { overdue: 0, not_completed: 1, important: 2, due_soon: 3, approaching: 4, ok: 5, in_training: 6 };
 
+// Overdue is bold on top of its red, so it still reads as more urgent than
+// Important even though both are red - per the operator's explicit request
+// that overdue "must be in BOLD RED as to be alerted". Approaching uses a
+// paler yellow, deliberately the least alerting of the three warning bands.
 const STATUS_STYLES = {
-  overdue: { background: '#fbe1e1', color: '#8f1d1d' },
+  overdue: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
+  important: { background: '#fbe1e1', color: '#9b2020' },
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
+  approaching: { background: '#fdf8d6', color: '#8a7f00' },
   not_completed: { background: '#e0e7ff', color: '#3730a3' },
   ok: { background: '#dff5e1', color: '#14632f' },
   in_training: { background: '#e5e7eb', color: '#4b5563' },
 };
 
-const STATUS_TEXT = { overdue: 'Overdue', due_soon: 'Due soon', not_completed: 'Not yet completed', ok: 'Current', in_training: 'In training' };
+const STATUS_TEXT = {
+  overdue: 'Overdue', important: 'Important', due_soon: 'Due Soon', approaching: 'Approaching',
+  not_completed: 'Not yet completed', ok: 'Current', in_training: 'In training',
+};
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'not_completed', label: 'Not Yet Completed' },
   { key: 'overdue', label: 'Overdue' },
+  { key: 'important', label: 'Important' },
   { key: 'due_soon', label: 'Due Soon' },
+  { key: 'approaching', label: 'Approaching' },
   { key: 'ok', label: 'Current' },
   { key: 'in_training', label: 'In Training' },
 ];
@@ -95,7 +109,7 @@ function expiryText(dueDate) {
 
 function StatusPill({ status }) {
   return (
-    <span style={{ ...STATUS_STYLES[status], display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...STATUS_STYLES[status] }}>
       {STATUS_TEXT[status]}
     </span>
   );
@@ -183,7 +197,7 @@ export function CurrencyOverview() {
   // "rostered" too, even with no separate planned date typed in on the
   // Planning tab - an admin who's already assigned an examiner has plainly
   // actioned it, so it shouldn't still read as "not yet rostered".
-  const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'due_soon'];
+  const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'important', 'due_soon', 'approaching'];
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
     .filter((r) => fleetFilter === 'all' || (fleetFilter === 'CABIN_ATTENDANTS' ? r.fleets.some((f) => CABIN_FLEETS.includes(f)) : r.fleets.includes(fleetFilter)))

@@ -210,7 +210,11 @@ export function Dashboard() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: '1.5rem' }}>
         <SummaryCard label="Overdue" value={summary.overdue} color="red" onClick={() => navigate('/currency?filter=overdue')} />
-        <SummaryCard label="Due Soon" value={summary.dueSoon} color="amber" onClick={() => navigate('/currency?filter=due_soon')} />
+        {/* summary.dueSoon combines all three graduated advance-warning bands
+            (important/due_soon/approaching - see dashboard.js), so it can't
+            deep-link to a single Currency Overview status tab the way the
+            other cards do - opens unfiltered instead. */}
+        <SummaryCard label="Due Soon" value={summary.dueSoon} color="amber" onClick={() => navigate('/currency')} />
         <SummaryCard label="Not Yet Completed" value={summary.notCompleted} color="gray" onClick={() => navigate('/currency?filter=not_completed')} />
         <SummaryCard label="Not Yet Rostered" value={summary.notYetRostered} color="gray" onClick={() => navigate('/currency?rostered=not_rostered')} />
         <SummaryCard label="In Training" value={summary.inTraining} color="blue" onClick={() => navigate('/trainees')} />

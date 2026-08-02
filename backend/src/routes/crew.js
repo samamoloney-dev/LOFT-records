@@ -336,7 +336,7 @@ async function activeCompetencies(crewMemberId, crewType, crewFleets) {
 // Reused by the Crew roster row, Currency Overview, and the crew profile's
 // own Expiry tab highlight, so all three agree on the same definition.
 function isUrgent(status) {
-  return status === 'overdue' || status === 'due_soon' || status === 'not_completed';
+  return status === 'overdue' || status === 'important' || status === 'due_soon' || status === 'approaching' || status === 'not_completed';
 }
 
 // Shared by urgentItemsFor (below, filtered to just what needs attention)

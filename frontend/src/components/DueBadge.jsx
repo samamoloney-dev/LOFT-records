@@ -1,16 +1,27 @@
 import { formatDate } from '../lib/format';
 
+// Mirrors CurrencyOverview.jsx's STATUS_STYLES - overdue is bold on top of
+// its red so it still reads as more urgent than Important despite both
+// being red, per the operator's explicit "overdue must be in BOLD RED"
+// request. Approaching is a paler yellow, deliberately the least alerting
+// of the three graduated advance-warning bands (see backend/src/lib/
+// currency.js's statusFor: important 1-10 days, due_soon 11-30, approaching
+// 31-45).
 const STYLES = {
   ok: { background: '#dff5e1', color: '#14632f' },
+  important: { background: '#fbe1e1', color: '#9b2020' },
   due_soon: { background: '#fdf2d0', color: '#8a6100' },
-  overdue: { background: '#fbe1e1', color: '#8f1d1d' },
+  approaching: { background: '#fdf8d6', color: '#8a7f00' },
+  overdue: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
   not_completed: { background: '#e0e7ff', color: '#3730a3' },
   in_training: { background: '#e5e7eb', color: '#4b5563' },
 };
 
 const LABELS = {
   ok: 'Current',
-  due_soon: 'Due soon',
+  important: 'Important',
+  due_soon: 'Due Soon',
+  approaching: 'Approaching',
   overdue: 'Overdue',
   not_completed: 'Not yet completed',
   in_training: 'In training',
@@ -50,7 +61,7 @@ export function DueBadge({ label, info }) {
       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
       <span
         className="badge"
-        style={{ ...STYLES[info.status], display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}
+        style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...STYLES[info.status] }}
       >{text}</span>
       {info.completedDate && (
         <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>Completed {formatDate(info.completedDate)}</div>

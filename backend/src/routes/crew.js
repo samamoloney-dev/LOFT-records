@@ -6,7 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
-const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays } = require('../lib/currency');
+const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays, addMonths } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
@@ -464,16 +464,18 @@ async function withCurrency(member) {
     const pcSuppressed = !pc && newHireGraceActive(member);
     // A pilot who's completed their qualifying IPC but has never yet sat a
     // dedicated Proficiency Check - the gap right after finishing LOFT,
-    // before their first stand-alone PC - is due one 6 months after that
-    // IPC, not the usual 365-day rolling clock, per the operator's explicit
-    // rule that the first PC is done 6 months after the IPC. This only
-    // covers that one "never had a real PC" gap; once a dedicated
-    // PC-variant check (or a seeded PC date) exists, the normal 365-day
-    // clock above (still anchored off either check type) takes over as
-    // before.
+    // before their first stand-alone PC - is due one exactly 6 calendar
+    // months after that IPC (addMonths, not a 182-day approximation - see
+    // addMonths' own comment: the fixed day-count version could land a day
+    // or two off the real anniversary and flag it overdue early), not the
+    // usual 365-day rolling clock, per the operator's explicit rule that
+    // the first PC is done 6 months after the IPC. This only covers that
+    // one "never had a real PC" gap; once a dedicated PC-variant check (or
+    // a seeded PC date) exists, the normal 365-day clock above (still
+    // anchored off either check type) takes over as before.
     const pcNeverCompleted = !pcChk && !member.seedPcDate;
     const pcDueDateIsFirstEstimate = pcNeverCompleted && !!ipcChk;
-    const pcDueDate = pcDueDateIsFirstEstimate ? nextDueRolling(ipcChk, NEW_HIRE_GRACE_DAYS) : nextDueRolling(pc);
+    const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipcChk), 6) : nextDueRolling(pc);
     // Not yet a fully current line pilot - IPC, Line Check and Refresher
     // Training (see itemsFor above) don't apply until LOFT is actually
     // finished, regardless of where ground school itself is up to

@@ -28,8 +28,19 @@ const STATUS_FILTERS = [
   { key: 'in_training', label: 'In Training' },
 ];
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
-const FLEET_FILTERS = [{ key: 'all', label: 'All fleets' }, ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) }))];
+const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
+// Cabin Dash 8 and Cabin Fokker 100 share a single "Cabin Attendants" tab
+// here rather than two separate fleet tabs - per the operator's request,
+// cabin crew are tracked together regardless of which aircraft they're
+// current on. Fleet Currency Snapshot on the Home dashboard still deep-links
+// with the raw CA_DASH_8/CA_FOKKER_100 values (see requestedFleet below),
+// so both still land on this one tab.
+const CABIN_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
+const FLEET_FILTERS = [
+  { key: 'all', label: 'All fleets' },
+  ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) })),
+  { key: 'CABIN_ATTENDANTS', label: 'Cabin Attendants' },
+];
 
 // "Not yet rostered" used to just be text baked into the Home Dashboard's
 // Needs Attention rows - promoted to a real filter here so the whole
@@ -138,7 +149,8 @@ export function CurrencyOverview() {
   const [statusFilter, setStatusFilter] = useState(
     STATUS_FILTERS.some((f) => f.key === requestedFilter) ? requestedFilter : 'all',
   );
-  const requestedFleet = searchParams.get('fleet');
+  const rawRequestedFleet = searchParams.get('fleet');
+  const requestedFleet = CABIN_FLEETS.includes(rawRequestedFleet) ? 'CABIN_ATTENDANTS' : rawRequestedFleet;
   const [fleetFilter, setFleetFilter] = useState(
     FLEET_FILTERS.some((f) => f.key === requestedFleet) ? requestedFleet : 'all',
   );
@@ -174,7 +186,7 @@ export function CurrencyOverview() {
   const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'due_soon'];
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
-    .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter))
+    .filter((r) => fleetFilter === 'all' || (fleetFilter === 'CABIN_ATTENDANTS' ? r.fleets.some((f) => CABIN_FLEETS.includes(f)) : r.fleets.includes(fleetFilter)))
     .filter((r) => {
       if (rosteredFilter === 'all') return true;
       if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate && !r.issued;

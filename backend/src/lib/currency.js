@@ -10,6 +10,22 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
+// Calendar-month arithmetic (e.g. 15 Jan -> 15 Jul), as opposed to addDays'
+// fixed day-count approximation - a 182-day add drifts a day or two off
+// the actual six-month anniversary depending which months it spans, which
+// is enough to flag something overdue a day early. Clamps to the target
+// month's last day if the source day doesn't exist there (e.g. 31 Jan + 1
+// month -> 28/29 Feb, not an overflowed 2/3 Mar).
+function addMonths(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDayOfTargetMonth));
+  return d;
+}
+
 // EP (pilot and cabin attendant), IPC, cabin attendant Line Check, and the
 // pilot Proficiency Check: due 365 days after the most recent completed
 // check of that type. days defaults to 365 but is overridable for longer
@@ -59,4 +75,4 @@ function competencyStatus(dueDate) {
   return 'ok';
 }
 
-module.exports = { addDays, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus };
+module.exports = { addDays, addMonths, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus };

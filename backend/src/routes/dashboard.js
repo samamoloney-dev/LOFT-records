@@ -262,9 +262,13 @@ router.get('/summary', async (req, res) => {
   // items that haven't already been rostered (see crew_planned_checks/
   // crew_competencies.planned_date, both already carried through onto each
   // item as plannedDate) - once something's booked in, it's in hand and
-  // doesn't need a dashboard nudge.
+  // doesn't need a dashboard nudge. A real check form already issued/
+  // assigned via the Checks tab counts as "in hand" too, even with no
+  // separate planned date typed in (see crew.js's `issued`, set once an
+  // active check record exists) - same fix as CurrencyOverview.jsx's own
+  // Not Yet Rostered filter, which had the identical gap.
   const attentionCurrencyItems = allItems.filter((i) => (
-    (i.status === 'overdue' || i.status === 'due_soon' || i.status === 'not_completed') && !i.plannedDate && !isActiveLoftTrainee(i.member)
+    (i.status === 'overdue' || i.status === 'due_soon' || i.status === 'not_completed') && !i.plannedDate && !i.issued && !isActiveLoftTrainee(i.member)
   ));
   const overdueAttention = attentionCurrencyItems
     .filter((i) => i.status === 'overdue')

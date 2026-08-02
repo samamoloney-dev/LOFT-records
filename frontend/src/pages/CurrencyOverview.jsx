@@ -106,6 +106,14 @@ function allRows(member) {
     dueDate: item.dueDate,
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
+    // Set once a real (not yet completed) check record actually exists for
+    // this item - see DueBadge.jsx's "Check Form Issued" note on the crew
+    // profile, which this page previously had no equivalent of. Distinct
+    // from plannedDate (a purely informational note typed on the Planning
+    // tab): an admin can assign/issue a check via the Checks tab without
+    // ever separately entering a planned date, and that candidate is
+    // clearly no longer "not yet rostered" even though plannedDate is null.
+    issued: item.issued,
     status: item.status,
     // A typed note explaining why this is overdue (see crew.js's
     // ReasonEditor/overdueReason) - only ever set on the recurrent
@@ -158,21 +166,33 @@ export function CurrencyOverview() {
   // "Not Yet Rostered" only ever means something for items that actually
   // need action - current/in-training rows have no rostering concept, so
   // they're excluded here even with no planned date, rather than
-  // cluttering this filter with things that don't need booking in.
+  // cluttering this filter with things that don't need booking in. A real
+  // check form already issued/assigned via the Checks tab counts as
+  // "rostered" too, even with no separate planned date typed in on the
+  // Planning tab - an admin who's already assigned an examiner has plainly
+  // actioned it, so it shouldn't still read as "not yet rostered".
   const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'due_soon'];
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
     .filter((r) => fleetFilter === 'all' || r.fleets.includes(fleetFilter))
     .filter((r) => {
       if (rosteredFilter === 'all') return true;
-      if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate;
-      return !!r.plannedDate;
+      if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate && !r.issued;
+      return !!r.plannedDate || !!r.issued;
     });
   // Once specifically looking at what's already booked in, the planned date
   // itself (closest first) is more useful than the usual overdue-first
   // ordering - that's the whole point of checking what's coming up next.
+  // Rows with no planned date (issued but never separately dated) have
+  // nothing to sort on, so they fall to the end rather than all clustering
+  // at the epoch via new Date(null).
   if (rosteredFilter === 'rostered') {
-    filteredRows.sort((a, b) => new Date(a.plannedDate) - new Date(b.plannedDate));
+    filteredRows.sort((a, b) => {
+      if (!a.plannedDate && !b.plannedDate) return 0;
+      if (!a.plannedDate) return 1;
+      if (!b.plannedDate) return -1;
+      return new Date(a.plannedDate) - new Date(b.plannedDate);
+    });
   }
 
   function printReport() {
@@ -199,7 +219,11 @@ export function CurrencyOverview() {
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               {r.fleet} · {r.item}{r.completedDate ? ` · Completed ${formatDate(r.completedDate)}` : ''}{r.dueDate ? ` · Due ${formatDate(r.dueDate)} (${expiryText(r.dueDate)})` : ''}
             </div>
-            {r.plannedDate && <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>}
+            {r.issued ? (
+              <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Check Form Issued</div>
+            ) : r.plannedDate && (
+              <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>
+            )}
             {r.overdueReason && <span className="badge warn" style={{ marginTop: 4, display: 'inline-block' }}>{r.overdueReason}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

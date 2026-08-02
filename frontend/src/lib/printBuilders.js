@@ -563,6 +563,15 @@ const CURRENCY_STATUS_LABELS = {
   ok: 'Current', due_soon: 'Due soon', overdue: 'Overdue', not_completed: 'Not yet completed', in_training: 'In training',
 };
 
+// Mirrors DueBadge.jsx's IN_TRAINING_TEXT - distinguishes why an item reads
+// "in_training" (see crew.js's trainingGateReason) rather than always
+// assuming ground school is the reason.
+const IN_TRAINING_TEXT = {
+  ground_school: 'Ground school not yet complete',
+  in_loft: 'Not yet due - still completing LOFT training',
+  new_hire_grace: 'Not yet due - new hire grace period',
+};
+
 // member.currency.X is already status-computed server-side (see
 // backend/src/routes/crew.js withCurrency, and DueBadge.jsx which reads
 // info.status directly) - grace periods, new-hire suppression and the
@@ -570,7 +579,7 @@ const CURRENCY_STATUS_LABELS = {
 // field rather than re-deriving a status from the due date alone.
 function currencyLabel(info) {
   if (!info) return '';
-  if (!info.dueDate) return info.status === 'in_training' ? 'Ground school not yet complete' : 'Not yet current';
+  if (!info.dueDate) return info.status === 'in_training' ? (IN_TRAINING_TEXT[info.trainingGate] || 'Ground school not yet complete') : 'Not yet current';
   return `${CURRENCY_STATUS_LABELS[info.status] || info.status}${info.dueDate ? ` (due ${formatDate(info.dueDate)})` : ''}`;
 }
 

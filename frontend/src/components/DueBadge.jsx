@@ -16,9 +16,19 @@ const LABELS = {
   in_training: 'In training',
 };
 
+// Distinguishes *why* an item reads "in_training" (see crew.js's
+// trainingGateReason) - a trainee who's finished ground school but is
+// still mid-LOFT shouldn't read "ground school not yet complete", since
+// that's simply no longer true for them.
+const IN_TRAINING_TEXT = {
+  ground_school: 'Ground school not yet complete',
+  in_loft: 'Not yet due - still completing LOFT training',
+  new_hire_grace: 'Not yet due - new hire grace period',
+};
+
 // Small colour-coded pill for a single recurrency item's next-due date.
-// `info` is the { dueDate, status, completedDate, plannedDate, issued, note }
-// shape returned by the backend's currency object (see
+// `info` is the { dueDate, status, trainingGate, completedDate, plannedDate,
+// issued, note } shape returned by the backend's currency object (see
 // backend/src/routes/crew.js withCurrency). plannedDate is purely
 // informational - an admin's note that a check is booked for a date,
 // distinct from the computed due date. issued is set once that plan has
@@ -34,7 +44,7 @@ export function DueBadge({ label, info }) {
   if (!info) return null;
   const text = info.dueDate
     ? `${LABELS[info.status]} · due ${formatDate(info.dueDate)}`
-    : info.status === 'in_training' ? 'Ground school not yet complete' : 'Not yet current';
+    : info.status === 'in_training' ? (IN_TRAINING_TEXT[info.trainingGate] || 'Ground school not yet complete') : 'Not yet current';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>

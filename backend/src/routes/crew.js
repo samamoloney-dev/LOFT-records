@@ -176,7 +176,13 @@ async function isInLoft(traineeId) {
   return rows.length > 0 && !rows[0].archived;
 }
 
-function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete, issued, note) {
+// trainingGate is null/false once nothing's holding this item back, or one
+// of 'ground_school' / 'in_loft' / 'new_hire_grace' identifying *why* it's
+// not due yet - see trainingGateReason below. Kept distinct from a plain
+// boolean so the frontend can show the actual reason (e.g. someone who's
+// finished ground school but is still mid-LOFT shouldn't read "ground
+// school not yet complete").
+function dueInfo(dueDate, completedDate, planned, trainingGate, issued, note) {
   const completed = completedDate ? new Date(completedDate).toISOString() : null;
   const plannedDate = planned?.plannedDate ? new Date(planned.plannedDate).toISOString() : null;
   const plannedAssignedTo = planned?.assignedToName
@@ -188,9 +194,20 @@ function dueInfo(dueDate, completedDate, planned, groundSchoolIncomplete, issued
   // whether a date's actually been booked in yet.
   const overdueReason = planned?.reason || null;
   if (!dueDate) {
-    return { dueDate: null, status: groundSchoolIncomplete ? 'in_training' : 'overdue', completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
+    return { dueDate: null, status: trainingGate ? 'in_training' : 'overdue', trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
   }
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
+}
+
+// Picks which of the (possibly several) training gates above actually
+// applies, in priority order, so dueInfo's status/trainingGate reflects the
+// real reason rather than always defaulting to the ground-school message -
+// e.g. someone who's finished ground school but hasn't finished LOFT yet
+// (isInLoft) is "still in LOFT training", not "ground school incomplete".
+function trainingGateReason(groundSchoolIncomplete, inLoft, extra) {
+  if (groundSchoolIncomplete) return 'ground_school';
+  if (inLoft) return 'in_loft';
+  return extra || null;
 }
 
 // HOTC/HOFO/Flight Ops Admin can note a planned date for an upcoming check
@@ -437,15 +454,21 @@ async function withCurrency(member) {
     // Training (see itemsFor above) don't apply until LOFT is actually
     // finished, regardless of where ground school itself is up to
     // (groundSchoolIncomplete only covers the earlier phase), per the
-    // operator's explicit request. EP and PC are deliberately left out of
-    // this gate: EP training happens early in LOFT and should still show as
-    // applicable, and PC's own "not yet due" handling is the
-    // pcDueDate/pcSuppressed logic above.
-    const inTraining = groundSchoolIncomplete || inLoft;
+    // operator's explicit request. EP is deliberately left out of this gate
+    // - EP training happens early in LOFT and should still show as
+    // applicable. PC used to be left out too (relying solely on the
+    // pcDueDate/pcSuppressed logic below), but that only covers a pilot
+    // explicitly flagged new_hire_pilot - a LOFT trainee with no such flag
+    // (the normal case) had nothing suppressing PC at all, so it read
+    // "overdue" the moment nextDueRolling(null) came back empty, despite
+    // never having sat an IPC yet to even start that clock. PC now shares
+    // the same in-LOFT gate as IPC/Line Check.
+    const loftGateReason = trainingGateReason(groundSchoolIncomplete, inLoft);
+    const pcGateReason = trainingGateReason(groundSchoolIncomplete, inLoft, pcSuppressed ? 'new_hire_grace' : null);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete, epIssued),
-      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, inTraining, ipcIssued),
-      proficiencyCheck: dueInfo(pcDueDate, pc, planned.proficiencyCheck, groundSchoolIncomplete || pcSuppressed, pcIssued, pcDueDateIsFirstEstimate ? 'No Proficiency Check completed yet' : null),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
+      ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, loftGateReason, ipcIssued),
+      proficiencyCheck: dueInfo(pcDueDate, pc, planned.proficiencyCheck, pcGateReason, pcIssued, pcDueDateIsFirstEstimate ? 'No Proficiency Check completed yet' : null),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet. If there's no
       // anchor at all (e.g. a crew profile onboarded without one) but a
@@ -454,7 +477,7 @@ async function withCurrency(member) {
       // to a rolling 365 days from the last completion instead (same rule
       // EP/IPC/PC already use), rather than leaving them stuck reading
       // "never completed" forever despite a real completed check on file.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, inTraining, lineCheckIssued),
+      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, loftGateReason, lineCheckIssued),
     };
   } else {
     const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete] = await Promise.all([
@@ -467,8 +490,8 @@ async function withCurrency(member) {
     const ep = latestOf(epChk, member.seedEpDate);
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
-      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete, epIssued),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, groundSchoolIncomplete || inLoft, lineCheckIssued),
+      emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, trainingGateReason(groundSchoolIncomplete, inLoft), lineCheckIssued),
     };
   }
 

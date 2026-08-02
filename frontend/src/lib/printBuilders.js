@@ -392,15 +392,23 @@ function upgradeTickTableRows(allItems, savedItems) {
   return rows;
 }
 
-function upgradeFlightSection(f, i, stage) {
+// Cabin attendant Training/Check Cabin Attendant candidates don't fly a
+// route or log airborne time the way a pilot's flight log does, so Route/
+// Method/Airborne time/Topic are skipped entirely for those two variants -
+// mirrors UpgradeRecordForm.jsx's own FlightRow, which hides the same
+// fields on-screen for the same reason.
+function upgradeFlightSection(f, i, stage, isCabinAttendant) {
   let extra = '';
-  if (f.topic) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Topic:</b> ${f.topic}</div>`;
+  if (!isCabinAttendant && f.topic) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Topic:</b> ${f.topic}</div>`;
   if (f.comments) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Comments:</b> ${f.comments}</div>`;
   if (stage.key === 'TRAINING' && f.areasOfImprovement) extra += `<div style="padding:6px 10px 0;font-size:11px;"><b>Areas of improvement:</b> ${f.areasOfImprovement}</div>`;
   if (stage.key === 'TRAINING' && f.nextSortie) extra += `<div style="padding:6px 10px 6px;font-size:11px;"><b>Next sortie:</b> ${f.nextSortie}</div>`;
+  const fields = isCabinAttendant
+    ? [['Trainer', f.trainerName || '']]
+    : [['Trainer', f.trainerName || ''], ['Route', f.route], ['Method', f.method === 'AIRCRAFT' ? 'Aircraft' : f.method === 'SIMULATOR' ? 'Simulator' : ''], ['Airborne time', f.airborneTime]];
   return `<div class="form-section">
     <h2>Flight ${i + 1}${f.date ? ` — ${formatDate(f.date)}` : ''}</h2>
-    ${fieldGrid([['Trainer', f.trainerName || ''], ['Route', f.route], ['Method', f.method === 'AIRCRAFT' ? 'Aircraft' : f.method === 'SIMULATOR' ? 'Simulator' : ''], ['Airborne time', f.airborneTime]])}
+    ${fieldGrid(fields)}
     ${extra}
   </div>`;
 }
@@ -435,7 +443,7 @@ export function buildUpgradeRecordHtml(check, context) {
     if (rows.length === 0) continue;
     body += `<div class="page-break"></div>`;
     body += formTitleRow(`${label} (continued) — ${stage.label}`);
-    body += rows.map((f, i) => upgradeFlightSection(f, i, stage)).join('');
+    body += rows.map((f, i) => upgradeFlightSection(f, i, stage, variant === 'TRAINING_CABIN_ATTENDANT' || variant === 'CHECK_CABIN_ATTENDANT')).join('');
     if (stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2) {
       body += `<div class="disclaimer">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[0]}</div>`;
       body += `<div style="padding:6px 10px;font-size:11px;">${TRAINING_CAPTAIN_RECOMMENDATION_TEXT[1]}</div>`;

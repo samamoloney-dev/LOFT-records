@@ -252,8 +252,11 @@ const FLIGHT_METHODS = [
 // the paperwork and signs the final recommendation) - per the operator's
 // explicit request, more than one person can do the training across a
 // single candidate's flights, so this isn't locked to the record-level
-// assignee.
-function FlightRow({ flight, disabled, trainerOptions, onChange, onRemove }) {
+// assignee. isCabinAttendant (Training/Check Cabin Attendant variants only)
+// hides Route/Method/Airborne time/Topic - a cabin attendant sortie doesn't
+// have a flight-log route or airborne time the way a pilot's does, per the
+// operator's explicit request.
+function FlightRow({ flight, disabled, trainerOptions, isCabinAttendant, onChange, onRemove }) {
   const stageConfig = FLIGHT_STAGES.find((s) => s.key === flight.stage);
   const [local, setLocal] = useState(flight);
   useEffect(() => { setLocal(flight); }, [flight.id]);
@@ -285,27 +288,33 @@ function FlightRow({ flight, disabled, trainerOptions, onChange, onRemove }) {
           {trainerOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
-      <div className="grid2">
-        <div className="field" style={{ margin: 0 }}><label>Date</label><input type="date" value={local.date} disabled={disabled} onChange={(e) => set('date', e.target.value)} onBlur={commit} /></div>
-        <div className="field" style={{ margin: 0 }}><label>Route</label><input value={local.route} disabled={disabled} onChange={(e) => set('route', e.target.value)} onBlur={commit} /></div>
-      </div>
-      <div className="grid2">
-        <div className="field" style={{ margin: 0 }}>
-          <label>Method</label>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {FLIGHT_METHODS.map((m) => (
-              <button key={m.key} type="button" className={`tick-btn ${local.method === m.key ? 'active-pass' : ''}`} style={{ width: 'auto', padding: '0 12px' }} disabled={disabled} onClick={() => setMethod(m.key)}>{m.label}</button>
-            ))}
+      {isCabinAttendant ? (
+        <div className="field" style={{ margin: 0, marginBottom: 10 }}><label>Date</label><input type="date" value={local.date} disabled={disabled} onChange={(e) => set('date', e.target.value)} onBlur={commit} /></div>
+      ) : (
+        <>
+          <div className="grid2">
+            <div className="field" style={{ margin: 0 }}><label>Date</label><input type="date" value={local.date} disabled={disabled} onChange={(e) => set('date', e.target.value)} onBlur={commit} /></div>
+            <div className="field" style={{ margin: 0 }}><label>Route</label><input value={local.route} disabled={disabled} onChange={(e) => set('route', e.target.value)} onBlur={commit} /></div>
           </div>
-        </div>
-        <div className="field" style={{ margin: 0 }}><label>Airborne time</label><input value={local.airborneTime} disabled={disabled} onChange={(e) => set('airborneTime', e.target.value)} onBlur={commit} /></div>
-      </div>
-      <div className="field"><label>Topic</label><input value={local.topic} disabled={disabled} onChange={(e) => set('topic', e.target.value)} onBlur={commit} /></div>
-      <div className="field"><label>Comments</label><input value={local.comments} disabled={disabled} onChange={(e) => set('comments', e.target.value)} onBlur={commit} /></div>
+          <div className="grid2">
+            <div className="field" style={{ margin: 0 }}>
+              <label>Method</label>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {FLIGHT_METHODS.map((m) => (
+                  <button key={m.key} type="button" className={`tick-btn ${local.method === m.key ? 'active-pass' : ''}`} style={{ width: 'auto', padding: '0 12px' }} disabled={disabled} onClick={() => setMethod(m.key)}>{m.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="field" style={{ margin: 0 }}><label>Airborne time</label><input value={local.airborneTime} disabled={disabled} onChange={(e) => set('airborneTime', e.target.value)} onBlur={commit} /></div>
+          </div>
+          <div className="field"><label>Topic</label><input value={local.topic} disabled={disabled} onChange={(e) => set('topic', e.target.value)} onBlur={commit} /></div>
+        </>
+      )}
+      <div className="field"><label>Comments</label><AutoTextarea value={local.comments} disabled={disabled} onChange={(e) => set('comments', e.target.value)} onBlur={commit} minHeight={70} /></div>
       {flight.stage === 'TRAINING' && (
         <div className="grid2">
-          <div className="field" style={{ margin: 0 }}><label>Areas of improvement</label><input value={local.areasOfImprovement} disabled={disabled} onChange={(e) => set('areasOfImprovement', e.target.value)} onBlur={commit} /></div>
-          <div className="field" style={{ margin: 0 }}><label>Next sortie</label><input value={local.nextSortie} disabled={disabled} onChange={(e) => set('nextSortie', e.target.value)} onBlur={commit} /></div>
+          <div className="field" style={{ margin: 0 }}><label>Areas of improvement</label><AutoTextarea value={local.areasOfImprovement} disabled={disabled} onChange={(e) => set('areasOfImprovement', e.target.value)} onBlur={commit} minHeight={70} /></div>
+          <div className="field" style={{ margin: 0 }}><label>Next sortie</label><AutoTextarea value={local.nextSortie} disabled={disabled} onChange={(e) => set('nextSortie', e.target.value)} onBlur={commit} minHeight={70} /></div>
         </div>
       )}
     </div>
@@ -617,7 +626,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
                 </div>
                 {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No flights logged yet.</div>}
                 {rows.map((f) => (
-                  <FlightRow key={f.id} flight={f} disabled={locked} trainerOptions={flightTrainerOptions} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
+                  <FlightRow key={f.id} flight={f} disabled={locked} trainerOptions={flightTrainerOptions} isCabinAttendant={variantConfig.crewType === 'CABIN_ATTENDANT'} onChange={(patch) => updateFlight(selected, f.id, patch)} onRemove={() => removeFlight(selected, f.id)} />
                 ))}
               </div>
               {stage.key === 'TRAINING' && variant === 'TRAINING_CAPTAIN' && rows.length >= 2 && (

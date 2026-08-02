@@ -176,6 +176,25 @@ async function isInLoft(traineeId) {
   return rows.length > 0 && !rows[0].archived;
 }
 
+// An existing crew member sent back to LOFT for an upgrade or fleet
+// conversion (see trainees.js POST / - sourceCrewMemberId) gets a trainee
+// record that points *at* them (trainees.source_crew_member_id) - the
+// reverse of the usual crew_members.trainee_id link. That merge only
+// happens once Check to Line completes (see trainees.js promote-to-crew),
+// so until then this crew profile's own trainee_id stays whatever it
+// already was (usually null) and the ground-school/in-LOFT gating below
+// would otherwise be blind to the upgrade entirely - e.g. an FO's Line
+// Check reading overdue while they're mid-Captain-upgrade in LOFT, since
+// that Line Check is about to be superseded by their new Check to Line
+// anyway. Reported live for Mathew Joubert (FO-to-Captain upgrade).
+async function activeUpgradeTraineeId(crewMemberId) {
+  const { rows } = await pool.query(
+    'SELECT id FROM trainees WHERE source_crew_member_id = $1 AND archived = false ORDER BY created_at DESC LIMIT 1',
+    [crewMemberId],
+  );
+  return rows[0]?.id || null;
+}
+
 // trainingGate is null/false once nothing's holding this item back, or one
 // of 'ground_school' / 'in_loft' / 'new_hire_grace' identifying *why* it's
 // not due yet - see trainingGateReason below. Kept distinct from a plain
@@ -410,7 +429,12 @@ async function allItemsFor(member, currency, inLoft) {
 }
 
 async function withCurrency(member) {
-  const [planned, inLoft] = await Promise.all([plannedDatesFor(member.id), isInLoft(member.traineeId)]);
+  const [planned, upgradeTraineeId] = await Promise.all([plannedDatesFor(member.id), activeUpgradeTraineeId(member.id)]);
+  // See activeUpgradeTraineeId above - falls back to an in-progress upgrade
+  // trainee record when this crew profile has no direct trainee_id link of
+  // its own (the normal case once someone's already on the Crew roster).
+  const effectiveTraineeId = member.traineeId || upgradeTraineeId;
+  const inLoft = await isInLoft(effectiveTraineeId);
   let currency;
 
   if (member.type === 'PILOT') {
@@ -420,7 +444,7 @@ async function withCurrency(member) {
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
       completedPilotLineCheckCount(member.id),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
-      hasIncompleteGroundSchool(member.traineeId),
+      hasIncompleteGroundSchool(effectiveTraineeId),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
       hasInProgressCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       hasInProgressCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
@@ -485,7 +509,7 @@ async function withCurrency(member) {
       lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
       hasInProgressCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
-      hasIncompleteGroundSchool(member.traineeId),
+      hasIncompleteGroundSchool(effectiveTraineeId),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);

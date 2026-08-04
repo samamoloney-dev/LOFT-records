@@ -114,8 +114,12 @@ function PlannedCompetenciesSection() {
       </div>
       {error && <div className="error-text">{error}</div>}
       {rows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing planned yet.</div>}
+      {/* Deep-links straight to the Expiration tab, per the operator's
+          explicit request - overrides CrewDetail's own default (Clearance
+          Form), since a planned competency date is exactly what that tab
+          shows. */}
       {rows.map((r, i) => (
-        <div key={i} className="card row" onClick={() => navigate(`/crew/${r.crewMemberId}`)}>
+        <div key={i} className="card row" onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{r.crewMemberName}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.fleets.map(formatFleet).join(', ')} · {r.name}</div>

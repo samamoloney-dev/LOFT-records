@@ -663,7 +663,11 @@ export function CrewDetail() {
   const [searchParams] = useSearchParams();
   const [member, setMember] = useState(null);
   const [error, setError] = useState(null);
-  const [topTab, setTopTab] = useState(searchParams.get('top') || 'currency');
+  // Opening a crew profile with no explicit ?top= (e.g. clicking a name on
+  // the Crew list) lands on Clearance Form by default, per the operator's
+  // explicit request - falls back to Check Forms for non-admin roles, who
+  // can't see that tab at all (see topTabs below).
+  const [topTab, setTopTab] = useState(searchParams.get('top') || (isAdmin ? 'clearance' : 'currency'));
   const initialSubTab = searchParams.get('sub');
   const [competencies, setCompetencies] = useState([]);
   const [competencyError, setCompetencyError] = useState(null);

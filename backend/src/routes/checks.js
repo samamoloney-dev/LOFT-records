@@ -37,6 +37,17 @@ function canAccessCheckType(user, checkType) {
     // already treats that tick as full EP authority.
     return canAccessChecks(user) || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
   }
+  if (checkType === 'PILOT_LINE_CHECK') {
+    // Check Captain is the role whose entire purpose is conducting Line
+    // Checks, but CC isn't one of the blanket-access CHECK_ROLES (that list
+    // is HOTC/HOFO/Alternate/Examiner only) - without this, a Check Captain
+    // ticked for Line Check on their staff profile (Staff tab checkAccess)
+    // could appear in the assessor picker but be rejected the moment they
+    // actually tried to open/complete the check, since canAccessChecks alone
+    // never recognised the tick. Reported live for Garry Underwood. Mirrors
+    // the EMERGENCY_PROCEDURES tick-based branch above.
+    return canAccessChecks(user) || (user.checkAccess || []).includes('LINE_CHECK');
+  }
   if (checkType === 'UPGRADE_RECORD') {
     return isAdmin(user) || UPGRADE_CHECKER_ROLES.includes(user.role);
   }

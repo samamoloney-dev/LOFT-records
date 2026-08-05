@@ -778,12 +778,12 @@ const updateSchema = z.object({
   // request (narrower than the rest of this route, which also allows
   // Alternate) - enforced below rather than in the schema itself.
   newHirePilot: z.boolean().optional(),
-  // IPC/PC Spacing report (Planning tab) - a documented justification for
-  // an out-of-band gap between this pilot's last IPC and last PC, per the
-  // operator's own "Override / Comment" spreadsheet column (see
-  // lib/currency.js ipcPcSpacingStatus). Pilots only, but not worth
+  // IPC/PC Spacing report (Planning tab) - a freeform forward-planning note
+  // against this pilot's IPC/PC recurrency (e.g. "simulator slot booked with
+  // 3rd party"), surfaced alongside their real due-date/compliance status
+  // (see planning.js's GET /ipc-pc-spacing). Pilots only, but not worth
   // enforcing server-side - a stray value on a CA record is harmless since
-  // nothing reads it outside the spacing report, which only queries pilots.
+  // nothing reads it outside that report, which only queries pilots.
   pcIpcOverrideComment: z.string().nullable().optional(),
 });
 

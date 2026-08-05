@@ -6,7 +6,6 @@ const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { listCrewWithCurrency } = require('./crew');
-const { ipcPcSpacingStatus, addDays } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -75,92 +74,43 @@ const SPACING_FLEET_ORDER = ['FOKKER_100', 'DASH_8', 'METRO_23'];
 const SPACING_RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function daysUntil(date) {
-  if (!date) return null;
-  return Math.round((new Date(date).getTime() - Date.now()) / DAY_MS);
-}
-
-function earlierOf(a, b) {
-  if (!a) return b;
-  if (!b) return a;
-  return new Date(a).getTime() <= new Date(b).getTime() ? a : b;
-}
-
-// Replicates the operator's own "All Pilots IPC/PC dates, expiry and
-// expected" spreadsheet (IPC-PC tab only - the Rules/SIM-CALC/Plan Rules
-// tabs are either just documentation or spreadsheet-internal scratch work),
-// computed live from each pilot's crew profile instead of hand-maintained.
-// Column-by-column mapping back to that spreadsheet (reverse-engineered
-// from its actual cell formulas):
-//   Last IPC/Last PC       -> ipcPcRaw from crew.js withCurrency (seed-aware,
-//                              but Last PC does NOT fall back to IPC - see
-//                              lastPcOnly's own comment in crew.js)
-//   IPC/PC Expiry          -> currency.ipc/proficiencyCheck.dueDate (already
-//                              computed - EDATE(check,12) in the sheet is
-//                              exactly nextDueRolling's 365-day rule here)
-//   PC vs IPC Spacing/
-//   Spacing Status/
-//   Over-Under Run         -> ipcPcSpacingStatus (currency.js) - see that
-//                              function's own comment for the exact bands
-//   Override/Comment       -> crew_members.pc_ipc_override_comment, edited
-//                              via the existing PATCH /api/crew/:id
-//   Booked IPC/PC          -> whether an examiner is actually assigned to
-//                              the planned check (plannedAssignedTo), not
-//                              just a date on it - "Booked" in the sheet
-//                              means confirmed, not merely estimated
-//   Date IPC/PC            -> the planned date if one's been entered, else
-//                              the computed due-date estimate (mirrors the
-//                              sheet using a formula-driven estimate until
-//                              a real booking is entered over the top)
-//   Gap/Days to Run/
-//   Closest Check          -> derived from Date IPC/PC exactly as the
-//                              sheet's own formulas do (S/T/V columns)
-//   Rostered               -> booked flag of whichever of IPC/PC is closer
-//   Last Check + 365       -> addDays(earlier of Last IPC/Last PC, 365) -
-//                              the regulatory ceiling the sheet's W column
-//                              computes the same way
-//   (trailing warning)     -> whether the currently planned Closest Check
-//                              would land after that 365-day ceiling
+// IPC/PC Spacing (Planning tab) - a forward-planning view of the pilot
+// roster's recurrency, deliberately kept to what's actually load-bearing:
+//
+// - Compliance itself is untouched from anywhere else in the app: an IPC
+//   is due 12 months after the last one (CASR Part 61.880's recency
+//   requirement), and a Proficiency Check is due 12 months after the last
+//   one under the operator's own CASR Part 121 training-and-checking
+//   system approval. Both are already computed exactly this way by
+//   crew.js's withCurrency (currency.ipc/proficiencyCheck) and shown
+//   identically everywhere else in the app (Currency Overview, the crew
+//   profile, the Home dashboard) - this route just reuses those objects
+//   wholesale rather than recomputing due-date/status logic a second time,
+//   so this report can never quietly disagree with the rest of the app
+//   about whether someone is actually overdue.
+// - Spacing the two checks ~6 months apart is the operator's own
+//   scheduling preference (so a pilot is seen roughly twice a year rather
+//   than once each), not a CASR requirement - there's no regulatory
+//   minimum or maximum gap between an IPC and a PC. spacingDays is
+//   reported purely as a forward-planning aid, not a compliance signal.
 router.get('/ipc-pc-spacing', async (req, res) => {
   const pilots = await listCrewWithCurrency({ type: 'PILOT' });
 
   const rows = pilots.map((m) => {
     const { lastIpc, lastPc } = m.ipcPcRaw || {};
-    const ipcExpiry = m.currency.ipc?.dueDate || null;
-    const pcExpiry = m.currency.proficiencyCheck?.dueDate || null;
-    const spacing = ipcPcSpacingStatus(lastIpc, lastPc, !!m.pcIpcOverrideComment);
-
-    const bookedIpc = !!m.currency.ipc?.plannedAssignedTo;
-    const bookedPc = !!m.currency.proficiencyCheck?.plannedAssignedTo;
-    const dateIpc = m.currency.ipc?.plannedDate || ipcExpiry;
-    const datePc = m.currency.proficiencyCheck?.plannedDate || pcExpiry;
-
-    const gapDays = (dateIpc && datePc)
-      ? Math.round(Math.abs(new Date(datePc).getTime() - new Date(dateIpc).getTime()) / DAY_MS)
+    const spacingDays = (lastIpc && lastPc)
+      ? Math.round(Math.abs(new Date(lastPc).getTime() - new Date(lastIpc).getTime()) / DAY_MS)
       : null;
-
-    const futureDaysToRun = [daysUntil(dateIpc), daysUntil(datePc)].filter((d) => d !== null && d >= 0);
-    const daysToRun = futureDaysToRun.length ? Math.min(...futureDaysToRun) : null;
-
-    const closestCheck = earlierOf(dateIpc, datePc);
-    const rostered = closestCheck === dateIpc ? bookedIpc : bookedPc;
-
-    const lastCheckPlus365 = (lastIpc || lastPc) ? addDays(new Date(earlierOf(lastIpc, lastPc)), 365).toISOString() : null;
-    const breach = !!(closestCheck && lastCheckPlus365 && new Date(closestCheck) > new Date(lastCheckPlus365));
 
     return {
       crewMemberId: m.id,
       name: m.name,
       fleet: m.fleets[0] || null,
       role: m.role,
-      lastIpc, ipcExpiry, ipcDaysRemaining: daysUntil(ipcExpiry),
-      lastPc, pcExpiry, pcDaysRemaining: daysUntil(pcExpiry),
-      spacingDays: spacing?.spacingDays ?? null,
-      spacingStatus: spacing?.status ?? null,
-      overUnderRunDays: spacing?.overUnderRunDays ?? null,
-      overrideComment: m.pcIpcOverrideComment || null,
-      bookedIpc, bookedPc, dateIpc, datePc, gapDays, daysToRun, rostered,
-      closestCheck, lastCheckPlus365, breach,
+      ipc: m.currency.ipc,
+      pc: m.currency.proficiencyCheck,
+      spacingDays,
+      note: m.pcIpcOverrideComment || null,
     };
   });
 

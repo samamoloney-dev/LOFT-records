@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate, formatFleet, formatTraineeRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { DueBadge } from '../components/DueBadge';
 
 // Maps a crew_planned_checks check_key to the CHECK_ACCESS_TYPES value
 // AssignedToPicker/isEligibleForCheck expect (see
@@ -217,34 +218,33 @@ function OtherPlanningItemsSection() {
   );
 }
 
-// Colours mirror STATUS_STYLES on CurrencyOverview.jsx - green/amber/red for
-// ok/overridden/alert - so this reads consistently with the rest of the app.
-const SPACING_STATUS_STYLES = {
-  ok: { background: '#d7f0d7', color: '#1e5c1e' },
-  overridden: { background: '#fdf2d0', color: '#8a6100' },
-  alert: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
-};
-const SPACING_STATUS_LABELS = { ok: 'OK', overridden: 'OVERRIDDEN', alert: 'ALERT' };
-
-function SpacingStatusPill({ status }) {
-  if (!status) return <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>-</span>;
-  return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...SPACING_STATUS_STYLES[status] }}>
-      {SPACING_STATUS_LABELS[status] || status}
-    </span>
-  );
+// A check is only actually non-compliant once it lapses past its own CASR
+// recency limit (IPC: Part 61.880, 12 months from the last IPC; PC: 12
+// months from the last one, under the operator's Part 121
+// training-and-checking approval) - that's exactly what DueBadge's
+// 'overdue' status already means everywhere else in the app, so this reuses
+// the same signal rather than inventing a second one.
+function isBreached(item) {
+  return item?.status === 'overdue';
 }
 
-function fmtDays(n) {
-  if (n === null || n === undefined) return '-';
-  return n > 0 ? `+${n}` : `${n}`;
+// Whether the next occurrence of a check has actually been organised, not
+// just estimated - a planned date with no assigned examiner is a tentative
+// plan, not a booking.
+function organisedLabel(item) {
+  if (!item) return null;
+  if (item.plannedAssignedTo) return { text: `Booked with ${item.plannedAssignedTo.name}`, color: '#14632f' };
+  if (item.plannedDate) return { text: 'Date planned - no examiner assigned yet', color: '#8a6100' };
+  return { text: 'Not yet booked or rostered', color: 'var(--text-secondary)' };
 }
 
-// Replicates the operator's own "All Pilots IPC/PC dates, expiry and
-// expected" spreadsheet (IPC-PC tab), computed live from crew profiles
-// instead of hand-maintained - see backend/src/routes/planning.js's
-// GET /ipc-pc-spacing for the full column-by-column mapping back to that
-// sheet's own formulas.
+// Replicates the operator's own IPC/PC forward-planning spreadsheet, but
+// simplified to what's actually decision-relevant: real CASR compliance
+// (reusing the same due-date/status the rest of the app already computes -
+// see crew.js withCurrency), whether the next check has actually been
+// booked/rostered (not just estimated), and the gap against the operator's
+// own ~6-month scheduling target - see backend/src/routes/planning.js's
+// GET /ipc-pc-spacing for the full reasoning.
 function IpcPcSpacingSection() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -263,51 +263,58 @@ function IpcPcSpacingSection() {
   }
   useEffect(load, []);
 
-  async function saveComment(row, value) {
+  async function saveNote(row, value) {
     setSavingId(row.crewMemberId);
     setError(null);
     try {
       await api.patch(`/api/crew/${row.crewMemberId}`, { pcIpcOverrideComment: value || null });
-      setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId ? { ...r, overrideComment: value || null } : r)));
+      setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId ? { ...r, note: value || null } : r)));
     } catch (err) { setError(err.message); }
     setSavingId(null);
   }
 
-  // Section headers group by fleet + rank exactly like the spreadsheet's
-  // "Fleet/Rank" column (e.g. "Fokker 100 - Captain") - rows already arrive
-  // sorted this way from the backend.
+  const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc));
+
+  // Section headers group by fleet + rank (e.g. "Fokker 100 - Captain") -
+  // rows already arrive sorted this way from the backend.
   let lastGroup = null;
 
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        IPC/PC recurrency spacing across the pilot roster - spacing status, dates and booking status are computed live from each
-        pilot's crew profile. The Comment field can justify an out-of-band gap (promotes ALERT to OVERRIDDEN).
+        Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency), and a
+        Proficiency Check is due 12 months after the last one under the operator's CASR Part 121 training-and-checking system - both
+        shown below exactly as they are on each pilot's own profile. Spacing the two roughly 6 months apart is this operator's own
+        scheduling target for smoother forward planning - it is not itself a CASA requirement, so it's shown as a plain note, not a
+        red/amber/green status.
       </div>
+
+      {breaches.length > 0 && (
+        <div className="card" style={{ background: '#f8caca', color: '#7a1414', marginBottom: '0.75rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {breaches.length} pilot{breaches.length > 1 ? 's' : ''} currently non-compliant</div>
+          {breaches.map((r) => (
+            <div key={r.crewMemberId} style={{ fontSize: 13 }}>
+              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
+              {' - '}
+              {[isBreached(r.ipc) && 'IPC overdue', isBreached(r.pc) && 'PC overdue'].filter(Boolean).join(', ')}
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <div className="error-text">{error}</div>}
       {loading && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading...</div>}
       {!loading && rows.length === 0 && !error && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No pilots on file.</div>}
       {!loading && rows.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1400 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-strong)' }}>
                 <th style={{ padding: '6px 8px' }}>Name</th>
-                <th style={{ padding: '6px 8px' }}>Last IPC</th>
-                <th style={{ padding: '6px 8px' }}>IPC Expiry</th>
-                <th style={{ padding: '6px 8px' }}>Last PC</th>
-                <th style={{ padding: '6px 8px' }}>PC Expiry</th>
-                <th style={{ padding: '6px 8px' }}>Spacing (days)</th>
-                <th style={{ padding: '6px 8px' }}>Status</th>
-                <th style={{ padding: '6px 8px' }}>Over/Under</th>
-                <th style={{ padding: '6px 8px' }}>Comment</th>
-                <th style={{ padding: '6px 8px' }}>Booked IPC</th>
-                <th style={{ padding: '6px 8px' }}>Booked PC</th>
-                <th style={{ padding: '6px 8px' }}>Gap</th>
-                <th style={{ padding: '6px 8px' }}>Days to Run</th>
-                <th style={{ padding: '6px 8px' }}>Rostered</th>
-                <th style={{ padding: '6px 8px' }}>Closest Check</th>
-                <th style={{ padding: '6px 8px' }}>Last Check + 365</th>
+                <th style={{ padding: '6px 8px' }}>IPC</th>
+                <th style={{ padding: '6px 8px' }}>PC</th>
+                <th style={{ padding: '6px 8px' }}>Spacing</th>
+                <th style={{ padding: '6px 8px' }}>Planning note</th>
               </tr>
             </thead>
             <tbody>
@@ -315,41 +322,42 @@ function IpcPcSpacingSection() {
                 const group = `${formatFleet(r.fleet)} - ${formatTraineeRole(r.role)}`;
                 const showGroupHeader = group !== lastGroup;
                 lastGroup = group;
+                const ipcOrganised = organisedLabel(r.ipc);
+                const pcOrganised = organisedLabel(r.pc);
                 return (
                   <Fragment key={r.crewMemberId}>
                     {showGroupHeader && (
-                      <tr key={`${group}-header`}>
-                        <td colSpan={16} style={{ padding: '10px 8px 4px', fontWeight: 600, fontSize: 12.5, color: 'var(--text-secondary)' }}>{group}</td>
+                      <tr>
+                        <td colSpan={5} style={{ padding: '10px 8px 4px', fontWeight: 600, fontSize: 12.5, color: 'var(--text-secondary)' }}>{group}</td>
                       </tr>
                     )}
-                    <tr key={r.crewMemberId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                      <td style={{ padding: '6px 8px' }}>
+                    <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
                         <span style={{ cursor: 'pointer', color: 'var(--text-accent)' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
                       </td>
-                      <td style={{ padding: '6px 8px' }}>{formatDate(r.lastIpc) || '-'}</td>
-                      <td style={{ padding: '6px 8px' }}>{formatDate(r.ipcExpiry) || '-'}</td>
-                      <td style={{ padding: '6px 8px' }}>{formatDate(r.lastPc) || '-'}</td>
-                      <td style={{ padding: '6px 8px' }}>{formatDate(r.pcExpiry) || '-'}</td>
-                      <td style={{ padding: '6px 8px' }}>{r.spacingDays ?? '-'}</td>
-                      <td style={{ padding: '6px 8px' }}><SpacingStatusPill status={r.spacingStatus} /></td>
-                      <td style={{ padding: '6px 8px' }}>{fmtDays(r.overUnderRunDays)}</td>
-                      <td style={{ padding: '6px 8px', minWidth: 160 }}>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
+                        <DueBadge label="IPC" info={r.ipc} />
+                        {ipcOrganised && <div style={{ fontSize: 10.5, color: ipcOrganised.color, marginTop: 4 }}>{ipcOrganised.text}</div>}
+                      </td>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
+                        <DueBadge label="PC" info={r.pc} />
+                        {pcOrganised && <div style={{ fontSize: 10.5, color: pcOrganised.color, marginTop: 4 }}>{pcOrganised.text}</div>}
+                      </td>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 160 }}>
+                        {r.spacingDays === null ? (
+                          <span style={{ color: 'var(--text-secondary)' }}>-</span>
+                        ) : (
+                          <span>{(r.spacingDays / 30.44).toFixed(1)} months apart<br /><span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>target ~6 months</span></span>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 180 }}>
                         <input
-                          defaultValue={r.overrideComment || ''}
-                          placeholder="Justify a gap..."
+                          defaultValue={r.note || ''}
+                          placeholder="e.g. simulator slot booked with 3rd party"
                           disabled={savingId === r.crewMemberId}
-                          onBlur={(e) => { if (e.target.value !== (r.overrideComment || '')) saveComment(r, e.target.value); }}
+                          onBlur={(e) => { if (e.target.value !== (r.note || '')) saveNote(r, e.target.value); }}
                           style={{ width: '100%', fontSize: 12 }}
                         />
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.bookedIpc ? '✓' : ''}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.bookedPc ? '✓' : ''}</td>
-                      <td style={{ padding: '6px 8px' }}>{r.gapDays ?? '-'}</td>
-                      <td style={{ padding: '6px 8px' }}>{r.daysToRun ?? '-'}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.rostered ? '✓' : ''}</td>
-                      <td style={{ padding: '6px 8px' }}>{formatDate(r.closestCheck) || '-'}</td>
-                      <td style={{ padding: '6px 8px', color: r.breach ? '#b91c1c' : 'inherit', fontWeight: r.breach ? 600 : 400 }}>
-                        {formatDate(r.lastCheckPlus365) || '-'}{r.breach ? ' ⚠' : ''}
                       </td>
                     </tr>
                   </Fragment>

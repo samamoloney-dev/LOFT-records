@@ -239,12 +239,15 @@ function organisedLabel(item) {
 }
 
 // Replicates the operator's own IPC/PC forward-planning spreadsheet, but
-// simplified to what's actually decision-relevant: real CASR compliance
-// (reusing the same due-date/status the rest of the app already computes -
-// see crew.js withCurrency), whether the next check has actually been
-// booked/rostered (not just estimated), and the gap against the operator's
-// own ~6-month scheduling target - see backend/src/routes/planning.js's
-// GET /ipc-pc-spacing for the full reasoning.
+// simplified to what's actually decision-relevant: real CASR compliance -
+// both each check's own recency (reusing the same due-date/status the rest
+// of the app already computes) and the CASR 121.575(1)(b) 8-month cap on
+// the gap between the last two (this operator's IPC also satisfies the
+// Part 121 proficiency check requirement, so that gap is exactly the
+// lastIpc/lastPc spacing tracked here) - plus whether the next check has
+// actually been booked/rostered, not just estimated. See
+// backend/src/routes/planning.js's GET /ipc-pc-spacing for the full
+// reasoning, including what this deliberately doesn't attempt to model.
 function IpcPcSpacingSection() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -273,7 +276,7 @@ function IpcPcSpacingSection() {
     setSavingId(null);
   }
 
-  const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc));
+  const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc) || r.chainBreach);
 
   // Section headers group by fleet + rank (e.g. "Fokker 100 - Captain") -
   // rows already arrive sorted this way from the backend.
@@ -282,11 +285,11 @@ function IpcPcSpacingSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency), and a
-        Proficiency Check is due 12 months after the last one under the operator's CASR Part 121 training-and-checking system - both
-        shown below exactly as they are on each pilot's own profile. Spacing the two roughly 6 months apart is this operator's own
-        scheduling target for smoother forward planning - it is not itself a CASA requirement, so it's shown as a plain note, not a
-        red/amber/green status.
+        Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency). Separately,
+        CASR 121.575(1)(b) caps the gap between successive Part 121 proficiency checks at 8 months - since a completed IPC also
+        satisfies that requirement here, the same 8-month cap applies to the gap between a pilot's last IPC and last PC, shown below as
+        a genuine compliance flag. Aiming for roughly 6 months apart (comfortably inside that 8-month ceiling) is this operator's own
+        safety margin for forward planning, not itself a separate CASR figure.
       </div>
 
       {breaches.length > 0 && (
@@ -296,7 +299,7 @@ function IpcPcSpacingSection() {
             <div key={r.crewMemberId} style={{ fontSize: 13 }}>
               <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
               {' - '}
-              {[isBreached(r.ipc) && 'IPC overdue', isBreached(r.pc) && 'PC overdue'].filter(Boolean).join(', ')}
+              {[isBreached(r.ipc) && 'IPC overdue', isBreached(r.pc) && 'PC overdue', r.chainBreach && 'IPC/PC gap exceeded 8 months (CASR 121.575)'].filter(Boolean).join(', ')}
             </div>
           ))}
         </div>
@@ -343,11 +346,16 @@ function IpcPcSpacingSection() {
                         <DueBadge label="PC" info={r.pc} />
                         {pcOrganised && <div style={{ fontSize: 10.5, color: pcOrganised.color, marginTop: 4 }}>{pcOrganised.text}</div>}
                       </td>
-                      <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 160 }}>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 170 }}>
                         {r.spacingDays === null ? (
                           <span style={{ color: 'var(--text-secondary)' }}>-</span>
+                        ) : r.chainBreach ? (
+                          <span style={{ color: '#7a1414', fontWeight: 700 }}>
+                            ⚠ {(r.spacingDays / 30.44).toFixed(1)} months apart<br />
+                            <span style={{ fontSize: 10.5, fontWeight: 400 }}>exceeds the 8-month CASR 121.575 limit</span>
+                          </span>
                         ) : (
-                          <span>{(r.spacingDays / 30.44).toFixed(1)} months apart<br /><span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>target ~6 months</span></span>
+                          <span>{(r.spacingDays / 30.44).toFixed(1)} months apart<br /><span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>target ~6 months (8-month limit)</span></span>
                         )}
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 180 }}>

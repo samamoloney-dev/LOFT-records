@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { listCrewWithCurrency } = require('./crew');
+const { addMonths } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -75,24 +76,34 @@ const SPACING_RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // IPC/PC Spacing (Planning tab) - a forward-planning view of the pilot
-// roster's recurrency, deliberately kept to what's actually load-bearing:
+// roster's recurrency:
 //
-// - Compliance itself is untouched from anywhere else in the app: an IPC
-//   is due 12 months after the last one (CASR Part 61.880's recency
-//   requirement), and a Proficiency Check is due 12 months after the last
-//   one under the operator's own CASR Part 121 training-and-checking
-//   system approval. Both are already computed exactly this way by
-//   crew.js's withCurrency (currency.ipc/proficiencyCheck) and shown
-//   identically everywhere else in the app (Currency Overview, the crew
-//   profile, the Home dashboard) - this route just reuses those objects
-//   wholesale rather than recomputing due-date/status logic a second time,
-//   so this report can never quietly disagree with the rest of the app
-//   about whether someone is actually overdue.
-// - Spacing the two checks ~6 months apart is the operator's own
-//   scheduling preference (so a pilot is seen roughly twice a year rather
-//   than once each), not a CASR requirement - there's no regulatory
-//   minimum or maximum gap between an IPC and a PC. spacingDays is
-//   reported purely as a forward-planning aid, not a compliance signal.
+// - Each check's own currency is untouched from anywhere else in the app:
+//   an IPC is due 12 months after the last one (CASR Part 61.880's recency
+//   requirement). Shown exactly as computed by crew.js's withCurrency
+//   (currency.ipc/proficiencyCheck) - the same object every other page in
+//   the app (Currency Overview, the crew profile, the Home dashboard)
+//   reads, so this report can never quietly disagree with the rest of the
+//   app about whether an individual check is overdue.
+// - The gap between the two IS a genuine second compliance requirement,
+//   separate from either check's own 12-month recency: CASR 121.575(1)(b)
+//   caps a Part 121 proficiency check's validity at 8 months from
+//   completion (not 12 - the 12-month allowance in (iii) only applies once
+//   a pilot already has a documented history of checks within the
+//   preceding year). This operator's own check-form practice treats a
+//   completed IPC as also satisfying that Part 121 proficiency check
+//   requirement (per the operator - "an IPC will reset the PC currency"),
+//   so the relevant 8-month clock for 121.575 purposes is the gap between
+//   the last two of *either* check type - exactly what lastIpc/lastPc
+//   track here. chainBreachDate is the date by which the later of the two
+//   needed to happen to stay within that 8 months; chainBreach is whether
+//   it didn't. This is intentionally a two-check model (last IPC vs last
+//   PC only) - it doesn't attempt 121.575(1)(b)(iii)'s further 12-month
+//   anti-gaming cap on a longer documented history of checks, which needs
+//   more history than this report tracks.
+// - Beyond compliance, spacing the two ~6 months apart (rather than
+//   right up against the 8-month ceiling) is this operator's own safety
+//   margin for forward planning, not itself a separate CASR figure.
 router.get('/ipc-pc-spacing', async (req, res) => {
   const pilots = await listCrewWithCurrency({ type: 'PILOT' });
 
@@ -102,14 +113,27 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       ? Math.round(Math.abs(new Date(lastPc).getTime() - new Date(lastIpc).getTime()) / DAY_MS)
       : null;
 
+    let chainBreach = false;
+    let chainBreachDate = null;
+    if (lastIpc && lastPc) {
+      const ipcTime = new Date(lastIpc).getTime();
+      const pcTime = new Date(lastPc).getTime();
+      const earlierTime = Math.min(ipcTime, pcTime);
+      const laterTime = Math.max(ipcTime, pcTime);
+      chainBreachDate = addMonths(new Date(earlierTime), 8);
+      chainBreach = laterTime > chainBreachDate.getTime();
+    }
+
     return {
       crewMemberId: m.id,
       name: m.name,
       fleet: m.fleets[0] || null,
       role: m.role,
+      spacingDays,
+      chainBreach,
+      chainBreachDate: chainBreachDate ? chainBreachDate.toISOString() : null,
       ipc: m.currency.ipc,
       pc: m.currency.proficiencyCheck,
-      spacingDays,
       note: m.pcIpcOverrideComment || null,
     };
   });

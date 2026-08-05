@@ -88,4 +88,40 @@ function competencyStatus(dueDate) {
   return 'ok';
 }
 
-module.exports = { addDays, addMonths, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus };
+// IPC/PC Spacing (Planning tab) - the gap in days between a pilot's last
+// IPC and last PC, classified per the operator's own three-band rule
+// (reverse-engineered from their spreadsheet's Spacing Status column):
+//   150-210 days                    -> 'ok'         (green - the preferred
+//                                                     +-1 month window
+//                                                     around a 6-month cycle)
+//   121-149 or 211-242 days         -> 'overridden' (amber - still within
+//                                                     the 8-month/365-day
+//                                                     ceiling, +-2 months)
+//   <121 or >242 days               -> 'alert'      (red - breaches the
+//                                                     acceptable recurrency
+//                                                     spacing limit)
+// A non-empty override comment promotes anything short of 'ok' straight to
+// 'overridden' (a documented justification), even if the raw day-gap would
+// otherwise read 'alert' - this exactly mirrors the spreadsheet's own
+// formula, which checks the comment before the numeric bands.
+const SPACING_OK_MIN = 150;
+const SPACING_OK_MAX = 210;
+const SPACING_OVERRIDDEN_MIN = 121;
+const SPACING_OVERRIDDEN_MAX = 242;
+const SPACING_TARGET_DAYS = 180;
+
+function ipcPcSpacingStatus(lastIpc, lastPc, hasOverrideComment) {
+  if (!lastIpc || !lastPc) return null;
+  const spacingDays = Math.round(Math.abs(new Date(lastPc).getTime() - new Date(lastIpc).getTime()) / DAY_MS);
+  let status;
+  if (spacingDays >= SPACING_OK_MIN && spacingDays <= SPACING_OK_MAX) status = 'ok';
+  else if (hasOverrideComment) status = 'overridden';
+  else if (
+    (spacingDays >= SPACING_OVERRIDDEN_MIN && spacingDays < SPACING_OK_MIN)
+    || (spacingDays > SPACING_OK_MAX && spacingDays <= SPACING_OVERRIDDEN_MAX)
+  ) status = 'overridden';
+  else status = 'alert';
+  return { spacingDays, status, overUnderRunDays: spacingDays - SPACING_TARGET_DAYS };
+}
+
+module.exports = { addDays, addMonths, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, ipcPcSpacingStatus };

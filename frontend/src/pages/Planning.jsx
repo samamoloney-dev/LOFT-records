@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { formatDate, formatFleet } from '../lib/format';
+import { formatDate, formatFleet, formatTraineeRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 
 // Maps a crew_planned_checks check_key to the CHECK_ACCESS_TYPES value
@@ -217,9 +217,148 @@ function OtherPlanningItemsSection() {
   );
 }
 
+// Colours mirror STATUS_STYLES on CurrencyOverview.jsx - green/amber/red for
+// ok/overridden/alert - so this reads consistently with the rest of the app.
+const SPACING_STATUS_STYLES = {
+  ok: { background: '#d7f0d7', color: '#1e5c1e' },
+  overridden: { background: '#fdf2d0', color: '#8a6100' },
+  alert: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
+};
+const SPACING_STATUS_LABELS = { ok: 'OK', overridden: 'OVERRIDDEN', alert: 'ALERT' };
+
+function SpacingStatusPill({ status }) {
+  if (!status) return <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>-</span>;
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...SPACING_STATUS_STYLES[status] }}>
+      {SPACING_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
+function fmtDays(n) {
+  if (n === null || n === undefined) return '-';
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+// Replicates the operator's own "All Pilots IPC/PC dates, expiry and
+// expected" spreadsheet (IPC-PC tab), computed live from crew profiles
+// instead of hand-maintained - see backend/src/routes/planning.js's
+// GET /ipc-pc-spacing for the full column-by-column mapping back to that
+// sheet's own formulas.
+function IpcPcSpacingSection() {
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const navigate = useNavigate();
+
+  function load() {
+    api.get('/api/planning/ipc-pc-spacing').then(setRows).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function saveComment(row, value) {
+    setSavingId(row.crewMemberId);
+    setError(null);
+    try {
+      await api.patch(`/api/crew/${row.crewMemberId}`, { pcIpcOverrideComment: value || null });
+      setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId ? { ...r, overrideComment: value || null } : r)));
+    } catch (err) { setError(err.message); }
+    setSavingId(null);
+  }
+
+  // Section headers group by fleet + rank exactly like the spreadsheet's
+  // "Fleet/Rank" column (e.g. "Fokker 100 - Captain") - rows already arrive
+  // sorted this way from the backend.
+  let lastGroup = null;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+        IPC/PC recurrency spacing across the pilot roster - spacing status, dates and booking status are computed live from each
+        pilot's crew profile. The Comment field can justify an out-of-band gap (promotes ALERT to OVERRIDDEN).
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {rows.length === 0 && !error && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No pilots on file.</div>}
+      {rows.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1400 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-strong)' }}>
+                <th style={{ padding: '6px 8px' }}>Name</th>
+                <th style={{ padding: '6px 8px' }}>Last IPC</th>
+                <th style={{ padding: '6px 8px' }}>IPC Expiry</th>
+                <th style={{ padding: '6px 8px' }}>Last PC</th>
+                <th style={{ padding: '6px 8px' }}>PC Expiry</th>
+                <th style={{ padding: '6px 8px' }}>Spacing (days)</th>
+                <th style={{ padding: '6px 8px' }}>Status</th>
+                <th style={{ padding: '6px 8px' }}>Over/Under</th>
+                <th style={{ padding: '6px 8px' }}>Comment</th>
+                <th style={{ padding: '6px 8px' }}>Booked IPC</th>
+                <th style={{ padding: '6px 8px' }}>Booked PC</th>
+                <th style={{ padding: '6px 8px' }}>Gap</th>
+                <th style={{ padding: '6px 8px' }}>Days to Run</th>
+                <th style={{ padding: '6px 8px' }}>Rostered</th>
+                <th style={{ padding: '6px 8px' }}>Closest Check</th>
+                <th style={{ padding: '6px 8px' }}>Last Check + 365</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const group = `${formatFleet(r.fleet)} - ${formatTraineeRole(r.role)}`;
+                const showGroupHeader = group !== lastGroup;
+                lastGroup = group;
+                return (
+                  <Fragment key={r.crewMemberId}>
+                    {showGroupHeader && (
+                      <tr key={`${group}-header`}>
+                        <td colSpan={16} style={{ padding: '10px 8px 4px', fontWeight: 600, fontSize: 12.5, color: 'var(--text-secondary)' }}>{group}</td>
+                      </tr>
+                    )}
+                    <tr key={r.crewMemberId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '6px 8px' }}>
+                        <span style={{ cursor: 'pointer', color: 'var(--text-accent)' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
+                      </td>
+                      <td style={{ padding: '6px 8px' }}>{formatDate(r.lastIpc) || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{formatDate(r.ipcExpiry) || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{formatDate(r.lastPc) || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{formatDate(r.pcExpiry) || '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{r.spacingDays ?? '-'}</td>
+                      <td style={{ padding: '6px 8px' }}><SpacingStatusPill status={r.spacingStatus} /></td>
+                      <td style={{ padding: '6px 8px' }}>{fmtDays(r.overUnderRunDays)}</td>
+                      <td style={{ padding: '6px 8px', minWidth: 160 }}>
+                        <input
+                          defaultValue={r.overrideComment || ''}
+                          placeholder="Justify a gap..."
+                          disabled={savingId === r.crewMemberId}
+                          onBlur={(e) => { if (e.target.value !== (r.overrideComment || '')) saveComment(r, e.target.value); }}
+                          style={{ width: '100%', fontSize: 12 }}
+                        />
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.bookedIpc ? '✓' : ''}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.bookedPc ? '✓' : ''}</td>
+                      <td style={{ padding: '6px 8px' }}>{r.gapDays ?? '-'}</td>
+                      <td style={{ padding: '6px 8px' }}>{r.daysToRun ?? '-'}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{r.rostered ? '✓' : ''}</td>
+                      <td style={{ padding: '6px 8px' }}>{formatDate(r.closestCheck) || '-'}</td>
+                      <td style={{ padding: '6px 8px', color: r.breach ? '#b91c1c' : 'inherit', fontWeight: r.breach ? 600 : 400 }}>
+                        {formatDate(r.lastCheckPlus365) || '-'}{r.breach ? ' ⚠' : ''}
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PLANNING_TABS = [
   { key: 'checks', label: 'Planned Checks' },
   { key: 'competencies', label: 'Planned Competencies' },
+  { key: 'ipcPcSpacing', label: 'IPC/PC Spacing' },
   { key: 'other', label: 'Other Planning Items' },
 ];
 
@@ -244,6 +383,7 @@ export function Planning() {
       </div>
       {tab === 'checks' && <PlannedChecksSection />}
       {tab === 'competencies' && <PlannedCompetenciesSection />}
+      {tab === 'ipcPcSpacing' && <IpcPcSpacingSection />}
       {tab === 'other' && <OtherPlanningItemsSection />}
     </div>
   );

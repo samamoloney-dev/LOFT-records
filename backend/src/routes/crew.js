@@ -436,6 +436,9 @@ async function withCurrency(member) {
   const effectiveTraineeId = member.traineeId || upgradeTraineeId;
   const inLoft = await isInLoft(effectiveTraineeId);
   let currency;
+  // Only set for pilots - see lastPcOnly below and planning.js's IPC/PC
+  // Spacing report, the sole consumer.
+  let ipcPcRaw = null;
 
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete, epIssued, ipcIssued, pcIssued, lineCheckIssued] = await Promise.all([
@@ -481,6 +484,13 @@ async function withCurrency(member) {
     const pcNeverCompleted = !pcChk && !member.seedPcDate;
     const pcDueDateIsFirstEstimate = pcNeverCompleted && !!ipc;
     const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipc), 6) : nextDueRolling(pc);
+    // The true last-PC-only completion (unlike pc above, which falls back to
+    // ipc for due-date rolling purposes) - null until a dedicated PC-variant
+    // check or seed date actually exists. Surfaced on the member for the
+    // IPC/PC Spacing report (see planning.js), which needs the real gap
+    // between two distinct checks, not a due-date estimate.
+    const lastPcOnly = latestOf(pcChk, member.seedPcDate);
+    ipcPcRaw = { lastIpc: ipc, lastPc: lastPcOnly };
     // Not yet a fully current line pilot - IPC, Line Check and Refresher
     // Training (see itemsFor above) don't apply until LOFT is actually
     // finished, regardless of where ground school itself is up to
@@ -536,6 +546,7 @@ async function withCurrency(member) {
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
     allItems: await allItemsFor(member, currency, inLoft),
+    ipcPcRaw,
   };
 }
 
@@ -767,6 +778,13 @@ const updateSchema = z.object({
   // request (narrower than the rest of this route, which also allows
   // Alternate) - enforced below rather than in the schema itself.
   newHirePilot: z.boolean().optional(),
+  // IPC/PC Spacing report (Planning tab) - a documented justification for
+  // an out-of-band gap between this pilot's last IPC and last PC, per the
+  // operator's own "Override / Comment" spreadsheet column (see
+  // lib/currency.js ipcPcSpacingStatus). Pilots only, but not worth
+  // enforcing server-side - a stray value on a CA record is harmless since
+  // nothing reads it outside the spacing report, which only queries pilots.
+  pcIpcOverrideComment: z.string().nullable().optional(),
 });
 
 const COLUMN_MAP = {
@@ -780,6 +798,7 @@ const COLUMN_MAP = {
   captainInTraining: 'captain_in_training',
   licencePhoto: 'licence_photo',
   newHirePilot: 'new_hire_pilot',
+  pcIpcOverrideComment: 'pc_ipc_override_comment',
 };
 const CAST_MAP = { fleets: '::fleet[]' };
 const NEW_HIRE_TOGGLE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];

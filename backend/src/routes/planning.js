@@ -5,6 +5,8 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { listCrewWithCurrency } = require('./crew');
+const { ipcPcSpacingStatus, addDays } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -64,6 +66,113 @@ router.get('/planned-competencies', async (req, res) => {
     const r = rowToCamel(row);
     return { ...r, fleets: parsePgArray(r.fleets), crewMemberName: `${r.firstName} ${r.lastName}` };
   }));
+});
+
+// Fleet-then-rank grouping, matching Crew.jsx's own "Fleet & Rank" sort
+// mode - pilots only (this report has no cabin attendant equivalent), so
+// the cabin fleets that list also carries aren't needed here.
+const SPACING_FLEET_ORDER = ['FOKKER_100', 'DASH_8', 'METRO_23'];
+const SPACING_RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function daysUntil(date) {
+  if (!date) return null;
+  return Math.round((new Date(date).getTime() - Date.now()) / DAY_MS);
+}
+
+function earlierOf(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return new Date(a).getTime() <= new Date(b).getTime() ? a : b;
+}
+
+// Replicates the operator's own "All Pilots IPC/PC dates, expiry and
+// expected" spreadsheet (IPC-PC tab only - the Rules/SIM-CALC/Plan Rules
+// tabs are either just documentation or spreadsheet-internal scratch work),
+// computed live from each pilot's crew profile instead of hand-maintained.
+// Column-by-column mapping back to that spreadsheet (reverse-engineered
+// from its actual cell formulas):
+//   Last IPC/Last PC       -> ipcPcRaw from crew.js withCurrency (seed-aware,
+//                              but Last PC does NOT fall back to IPC - see
+//                              lastPcOnly's own comment in crew.js)
+//   IPC/PC Expiry          -> currency.ipc/proficiencyCheck.dueDate (already
+//                              computed - EDATE(check,12) in the sheet is
+//                              exactly nextDueRolling's 365-day rule here)
+//   PC vs IPC Spacing/
+//   Spacing Status/
+//   Over-Under Run         -> ipcPcSpacingStatus (currency.js) - see that
+//                              function's own comment for the exact bands
+//   Override/Comment       -> crew_members.pc_ipc_override_comment, edited
+//                              via the existing PATCH /api/crew/:id
+//   Booked IPC/PC          -> whether an examiner is actually assigned to
+//                              the planned check (plannedAssignedTo), not
+//                              just a date on it - "Booked" in the sheet
+//                              means confirmed, not merely estimated
+//   Date IPC/PC            -> the planned date if one's been entered, else
+//                              the computed due-date estimate (mirrors the
+//                              sheet using a formula-driven estimate until
+//                              a real booking is entered over the top)
+//   Gap/Days to Run/
+//   Closest Check          -> derived from Date IPC/PC exactly as the
+//                              sheet's own formulas do (S/T/V columns)
+//   Rostered               -> booked flag of whichever of IPC/PC is closer
+//   Last Check + 365       -> addDays(earlier of Last IPC/Last PC, 365) -
+//                              the regulatory ceiling the sheet's W column
+//                              computes the same way
+//   (trailing warning)     -> whether the currently planned Closest Check
+//                              would land after that 365-day ceiling
+router.get('/ipc-pc-spacing', async (req, res) => {
+  const pilots = await listCrewWithCurrency({ type: 'PILOT' });
+
+  const rows = pilots.map((m) => {
+    const { lastIpc, lastPc } = m.ipcPcRaw || {};
+    const ipcExpiry = m.currency.ipc?.dueDate || null;
+    const pcExpiry = m.currency.proficiencyCheck?.dueDate || null;
+    const spacing = ipcPcSpacingStatus(lastIpc, lastPc, !!m.pcIpcOverrideComment);
+
+    const bookedIpc = !!m.currency.ipc?.plannedAssignedTo;
+    const bookedPc = !!m.currency.proficiencyCheck?.plannedAssignedTo;
+    const dateIpc = m.currency.ipc?.plannedDate || ipcExpiry;
+    const datePc = m.currency.proficiencyCheck?.plannedDate || pcExpiry;
+
+    const gapDays = (dateIpc && datePc)
+      ? Math.round(Math.abs(new Date(datePc).getTime() - new Date(dateIpc).getTime()) / DAY_MS)
+      : null;
+
+    const futureDaysToRun = [daysUntil(dateIpc), daysUntil(datePc)].filter((d) => d !== null && d >= 0);
+    const daysToRun = futureDaysToRun.length ? Math.min(...futureDaysToRun) : null;
+
+    const closestCheck = earlierOf(dateIpc, datePc);
+    const rostered = closestCheck === dateIpc ? bookedIpc : bookedPc;
+
+    const lastCheckPlus365 = (lastIpc || lastPc) ? addDays(new Date(earlierOf(lastIpc, lastPc)), 365).toISOString() : null;
+    const breach = !!(closestCheck && lastCheckPlus365 && new Date(closestCheck) > new Date(lastCheckPlus365));
+
+    return {
+      crewMemberId: m.id,
+      name: m.name,
+      fleet: m.fleets[0] || null,
+      role: m.role,
+      lastIpc, ipcExpiry, ipcDaysRemaining: daysUntil(ipcExpiry),
+      lastPc, pcExpiry, pcDaysRemaining: daysUntil(pcExpiry),
+      spacingDays: spacing?.spacingDays ?? null,
+      spacingStatus: spacing?.status ?? null,
+      overUnderRunDays: spacing?.overUnderRunDays ?? null,
+      overrideComment: m.pcIpcOverrideComment || null,
+      bookedIpc, bookedPc, dateIpc, datePc, gapDays, daysToRun, rostered,
+      closestCheck, lastCheckPlus365, breach,
+    };
+  });
+
+  rows.sort((a, b) => {
+    const fleetDiff = SPACING_FLEET_ORDER.indexOf(a.fleet) - SPACING_FLEET_ORDER.indexOf(b.fleet);
+    if (fleetDiff !== 0) return fleetDiff;
+    const rankDiff = (SPACING_RANK_ORDER[a.role] ?? 99) - (SPACING_RANK_ORDER[b.role] ?? 99);
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+
+  res.json(rows);
 });
 
 // Freeform planning items not tied to a specific recurrent check type or

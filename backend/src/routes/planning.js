@@ -132,6 +132,26 @@ function nextChainDeadline(earlierDate, laterDate) {
   return earlierPlusTwelve.getTime() < laterPlusEight.getTime() ? earlierPlusTwelve : laterPlusEight;
 }
 
+// CASR 61.880(3)(e) - the IPC's OWN standalone recency (separate from the
+// 121.575 chain above, which governs the PC-equivalent obligation the same
+// flight also happens to satisfy). Its wording is deliberately NOT the same
+// day-precise "period beginning on the completion day" language 121.575
+// uses - it's "the period ... to the end of the 12th month after the month
+// in which the holder successfully completes the check", i.e. validity
+// runs to the END of the calendar month, 12 months later, not to the same
+// day-of-month. E.g. an IPC completed 8 December 2025 remains valid under
+// Part 61 until 31 December 2026, not 8 December 2026. Deliberately kept
+// local to this route rather than added to lib/currency.js's addMonths -
+// the operator was explicit this must NOT change the crew-wide currency
+// calculation (Currency Overview/crew profile/dashboard all keep using the
+// existing, more conservative day-count rule for IPC due dates as before).
+// This is purely an additional, more precise hard-rule safeguard specific
+// to this planning tool.
+function endOfMonthAfter(date, monthsAhead) {
+  const d = new Date(date.getTime());
+  return new Date(d.getFullYear(), d.getMonth() + monthsAhead + 1, 0);
+}
+
 router.get('/ipc-pc-spacing', async (req, res) => {
   const pilots = await listCrewWithCurrency({ type: 'PILOT' });
 
@@ -159,6 +179,15 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       nextDeadline = addMonths(new Date(lastIpc || lastPc), 8);
     }
 
+    // CASR 61.880(3)(e) hard rule - see endOfMonthAfter's own comment.
+    // Independent of nextDeadline/chainBreach above (which are entirely
+    // about 121.575's PC-chain obligation) and independent of
+    // currency.ipc.status (the existing, unaffected crew-wide calculation) -
+    // this is a third, additional safeguard specific to the IPC's own Part
+    // 61 recency.
+    const ipcHardDeadline = lastIpc ? endOfMonthAfter(new Date(lastIpc), 12) : null;
+    const ipcHardBreach = !!(ipcHardDeadline && new Date() > ipcHardDeadline);
+
     return {
       crewMemberId: m.id,
       name: m.name,
@@ -170,6 +199,8 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       chainBreach,
       chainBreachDate: chainBreachDate ? chainBreachDate.toISOString() : null,
       nextDeadline: nextDeadline ? nextDeadline.toISOString() : null,
+      ipcHardDeadline: ipcHardDeadline ? ipcHardDeadline.toISOString() : null,
+      ipcHardBreach,
       ipc: m.currency.ipc,
       pc: m.currency.proficiencyCheck,
       note: m.pcIpcOverrideComment || null,

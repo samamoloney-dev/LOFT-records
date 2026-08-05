@@ -357,8 +357,10 @@ function IpcPcSpacingSection() {
     setSavingPlanKey(null);
   }
 
-  const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc) || r.chainBreach);
-  const plannedBreaches = rows.filter((r) => exceedsLimit(r.ipc, r.nextDeadline) || exceedsLimit(r.pc, r.nextDeadline));
+  const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc) || r.chainBreach || r.ipcHardBreach);
+  const plannedBreaches = rows.filter((r) => (
+    exceedsLimit(r.ipc, r.nextDeadline) || exceedsLimit(r.pc, r.nextDeadline) || exceedsLimit(r.ipc, r.ipcHardDeadline)
+  ));
 
   // Section headers group by fleet + rank (e.g. "Fokker 100 - Captain") -
   // rows already arrive sorted this way from the backend.
@@ -367,15 +369,18 @@ function IpcPcSpacingSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-        Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency). Separately,
-        CASR 121.575(1)(b) caps how long a gap between successive Part 121 proficiency checks can be - since a completed IPC also
-        satisfies that requirement here, this applies to the gap between a pilot's last IPC and last PC. That cap is usually earlier
-        than 8 months - it's calculated per pilot below (shown as the deadline in any warning), since spacing checks more than ~4 months
-        apart pulls it in based on the older of the two. Aim for roughly 6 months apart using the date fields below - if a date you enter
-        would fall after that computed deadline, it's flagged immediately so you're never caught out by unexpected sim planning. Once a
-        date's actually confirmed on the schedule, click "Mark rostered" - separate from just having a planned date or an assigned
-        examiner, since either of those can exist before it's really booked in. Use the Planning note to record why a check needed to be
-        pushed earlier or later than the 6-month target.
+        Forward planning for pilot IPC/PC recurrency, covering two separate CASA rules with different arithmetic. CASR 61.880 is a hard
+        rule for the IPC itself: it stays valid until the END of the calendar month, 12 months after the month it was completed in - not
+        the same day next year (an IPC done 8/12, for example, is valid to 31/12 the following year). CASR 121.575(1)(b) covers the gap
+        between successive Part 121 proficiency checks - since a completed IPC also satisfies that requirement here, this applies to the
+        gap between a pilot's last IPC and last PC - and unlike Part 61, it's exact-day arithmetic, not month-end. That cap is usually
+        earlier than 8 months - it's calculated per pilot below (shown as the deadline in any warning), since spacing checks more than
+        ~4 months apart pulls it in based on the older of the two. Aim for roughly 6 months apart using the date fields below - if a date
+        you enter would breach either rule, it's flagged immediately, labelled with which one, so you're never caught out by unexpected
+        sim planning. None of this changes the crew currency dates shown elsewhere in the app (Currency Overview, the crew profile) -
+        this is an additional safeguard on top of them. Once a date's actually confirmed on the schedule, click "Mark rostered" -
+        separate from just having a planned date or an assigned examiner, since either of those can exist before it's really booked in.
+        Use the Planning note to record why a check needed to be pushed earlier or later than the 6-month target.
       </div>
 
       {breaches.length > 0 && (
@@ -385,7 +390,12 @@ function IpcPcSpacingSection() {
             <div key={r.crewMemberId} style={{ fontSize: 13 }}>
               <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
               {' - '}
-              {[isBreached(r.ipc) && 'IPC overdue', isBreached(r.pc) && 'PC overdue', r.chainBreach && 'IPC/PC gap exceeded 8 months (CASR 121.575)'].filter(Boolean).join(', ')}
+              {[
+                isBreached(r.ipc) && 'IPC overdue',
+                isBreached(r.pc) && 'PC overdue',
+                r.chainBreach && 'IPC/PC gap exceeded 8 months (CASR 121.575)',
+                r.ipcHardBreach && `IPC lapsed - CASR 61.880 (valid to end of ${formatDate(r.ipcHardDeadline)})`,
+              ].filter(Boolean).join(', ')}
             </div>
           ))}
         </div>
@@ -393,15 +403,20 @@ function IpcPcSpacingSection() {
 
       {plannedBreaches.length > 0 && (
         <div className="card" style={{ background: '#fdf2d0', color: '#8a6100', marginBottom: '0.75rem' }}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {plannedBreaches.length} pilot{plannedBreaches.length > 1 ? 's' : ''} planned beyond the CASR 121.575 limit</div>
-          {plannedBreaches.map((r) => (
-            <div key={r.crewMemberId} style={{ fontSize: 13 }}>
-              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
-              {' - '}
-              {[exceedsLimit(r.ipc, r.nextDeadline) && 'planned IPC', exceedsLimit(r.pc, r.nextDeadline) && 'planned PC'].filter(Boolean).join(', ')}
-              {' would land after '}{formatDate(r.nextDeadline)}
-            </div>
-          ))}
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {plannedBreaches.length} pilot{plannedBreaches.length > 1 ? 's' : ''} planned beyond a CASR deadline</div>
+          {plannedBreaches.map((r) => {
+            const issues = [
+              exceedsLimit(r.ipc, r.nextDeadline) && `planned IPC would land after ${formatDate(r.nextDeadline)} (CASR 121.575)`,
+              exceedsLimit(r.pc, r.nextDeadline) && `planned PC would land after ${formatDate(r.nextDeadline)} (CASR 121.575)`,
+              exceedsLimit(r.ipc, r.ipcHardDeadline) && `planned IPC would land after ${formatDate(r.ipcHardDeadline)} (CASR 61.880)`,
+            ].filter(Boolean);
+            return (
+              <div key={r.crewMemberId} style={{ fontSize: 13 }}>
+                <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
+                {' - '}{issues.join('; ')}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -441,6 +456,9 @@ function IpcPcSpacingSection() {
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 150 }}>
                         <DueBadge label="IPC" info={r.ipc} />
                         {ipcOrganised && <div style={{ fontSize: 10.5, color: ipcOrganised.color, marginTop: 4 }}>{ipcOrganised.text}</div>}
+                        {r.ipcHardDeadline && !exceedsLimit(r.ipc, r.ipcHardDeadline) && (
+                          <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 4 }}>IPC valid to {formatDate(r.ipcHardDeadline)} (CASR 61.880)</div>
+                        )}
                         <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 6 }}>Plan next for</div>
                         <input
                           type="date"
@@ -453,7 +471,10 @@ function IpcPcSpacingSection() {
                           style={{ width: '100%', fontSize: 11, marginTop: 6 }}
                         />
                         {exceedsLimit(r.ipc, r.nextDeadline) && (
-                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit (CASR 121.575)</div>
+                        )}
+                        {exceedsLimit(r.ipc, r.ipcHardDeadline) && (
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds IPC hard limit (CASR 61.880) - valid to {formatDate(r.ipcHardDeadline)}</div>
                         )}
                         <div>
                           <RosteredButton item={r.ipc} onToggle={() => toggleRostered(r, 'ipc')} saving={savingPlanKey === `${r.crewMemberId}-ipc-rostered`} />
@@ -474,7 +495,7 @@ function IpcPcSpacingSection() {
                           style={{ width: '100%', fontSize: 11, marginTop: 6 }}
                         />
                         {exceedsLimit(r.pc, r.nextDeadline) && (
-                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit (CASR 121.575)</div>
                         )}
                         <div>
                           <RosteredButton item={r.pc} onToggle={() => toggleRostered(r, 'pc')} saving={savingPlanKey === `${r.crewMemberId}-pc-rostered`} />

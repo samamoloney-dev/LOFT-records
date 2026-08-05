@@ -239,9 +239,13 @@ function organisedLabel(item) {
 }
 
 // The hard rule the operator explicitly asked for: whether a planned date
-// for this pilot's next check falls after nextDeadline (8 months on from
-// their most recent actual check - see planning.js's GET /ipc-pc-spacing).
-// A pilot planned past this point would have a real gap in valid Part 121
+// for this pilot's next check falls after nextDeadline - the CASR
+// 121.575(1)(b) deadline computed server-side from their most recent two
+// checks (see planning.js's GET /ipc-pc-spacing). This is NOT always 8
+// months out - clause (iii) of that regulation often pulls it earlier,
+// based on the OLDER of the two checks, whenever they're spaced more than
+// ~4 months apart (the normal case at this operator's ~6-month cadence).
+// A pilot planned past this date would have a real gap in valid Part 121
 // proficiency check coverage before the planned date is even reached.
 function exceedsLimit(item, nextDeadline) {
   return !!(item?.plannedDate && nextDeadline && new Date(item.plannedDate) > new Date(nextDeadline));
@@ -255,13 +259,13 @@ const PLANNED_CHECK_KEY = { ipc: 'ipc', pc: 'proficiencyCheck' };
 // Replicates the operator's own IPC/PC forward-planning spreadsheet, but
 // simplified to what's actually decision-relevant: real CASR compliance -
 // both each check's own recency (reusing the same due-date/status the rest
-// of the app already computes) and the CASR 121.575(1)(b) 8-month cap on
-// the gap between the last two (this operator's IPC also satisfies the
-// Part 121 proficiency check requirement, so that gap is exactly the
-// lastIpc/lastPc spacing tracked here) - plus whether the next check has
-// actually been booked/rostered, not just estimated. See
-// backend/src/routes/planning.js's GET /ipc-pc-spacing for the full
-// reasoning, including what this deliberately doesn't attempt to model.
+// of the app already computes) and CASR 121.575(1)(b)'s cap on the gap
+// between the last two (this operator's IPC also satisfies the Part 121
+// proficiency check requirement, so that gap is exactly the lastIpc/lastPc
+// spacing tracked here) - plus whether the next check has actually been
+// booked/rostered, not just estimated. See backend/src/routes/planning.js's
+// GET /ipc-pc-spacing for the full reasoning, including what this
+// deliberately doesn't attempt to model.
 function IpcPcSpacingSection() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -320,11 +324,12 @@ function IpcPcSpacingSection() {
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
         Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency). Separately,
-        CASR 121.575(1)(b) caps the gap between successive Part 121 proficiency checks at 8 months - since a completed IPC also
-        satisfies that requirement here, the same 8-month cap applies to the gap between a pilot's last IPC and last PC. Aim for roughly
-        6 months apart (comfortably inside that 8-month ceiling) using the date fields below - if a date you enter would exceed the
-        8-month limit, it's flagged immediately so you're never caught out by unexpected sim planning. Use the Planning note to record
-        why a check needed to be pushed earlier or later than the 6-month target.
+        CASR 121.575(1)(b) caps how long a gap between successive Part 121 proficiency checks can be - since a completed IPC also
+        satisfies that requirement here, this applies to the gap between a pilot's last IPC and last PC. That cap is usually earlier
+        than 8 months - it's calculated per pilot below (shown as the deadline in any warning), since spacing checks more than ~4 months
+        apart pulls it in based on the older of the two. Aim for roughly 6 months apart using the date fields below - if a date you enter
+        would fall after that computed deadline, it's flagged immediately so you're never caught out by unexpected sim planning. Use the
+        Planning note to record why a check needed to be pushed earlier or later than the 6-month target.
       </div>
 
       {breaches.length > 0 && (
@@ -342,7 +347,7 @@ function IpcPcSpacingSection() {
 
       {plannedBreaches.length > 0 && (
         <div className="card" style={{ background: '#fdf2d0', color: '#8a6100', marginBottom: '0.75rem' }}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {plannedBreaches.length} pilot{plannedBreaches.length > 1 ? 's' : ''} planned beyond the 8-month limit</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {plannedBreaches.length} pilot{plannedBreaches.length > 1 ? 's' : ''} planned beyond the CASR 121.575 limit</div>
           {plannedBreaches.map((r) => (
             <div key={r.crewMemberId} style={{ fontSize: 13 }}>
               <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
@@ -402,7 +407,7 @@ function IpcPcSpacingSection() {
                           style={{ width: '100%', fontSize: 11, marginTop: 6 }}
                         />
                         {exceedsLimit(r.ipc, r.nextDeadline) && (
-                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds 8-month limit</div>
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
                         )}
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 150 }}>
@@ -420,7 +425,7 @@ function IpcPcSpacingSection() {
                           style={{ width: '100%', fontSize: 11, marginTop: 6 }}
                         />
                         {exceedsLimit(r.pc, r.nextDeadline) && (
-                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds 8-month limit</div>
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
                         )}
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 170 }}>
@@ -432,7 +437,12 @@ function IpcPcSpacingSection() {
                             <span style={{ fontSize: 10.5, fontWeight: 400 }}>exceeds the 8-month CASR 121.575 limit</span>
                           </span>
                         ) : (
-                          <span>{(r.spacingDays / 30.44).toFixed(1)} months apart<br /><span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>target ~6 months (8-month limit)</span></span>
+                          <span>
+                            {(r.spacingDays / 30.44).toFixed(1)} months apart<br />
+                            <span style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                              target ~6 months{r.nextDeadline && <> - next due by {formatDate(r.nextDeadline)}</>}
+                            </span>
+                          </span>
                         )}
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 180 }}>

@@ -87,30 +87,51 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 //   app about whether an individual check is overdue.
 // - The gap between the two IS a genuine second compliance requirement,
 //   separate from either check's own 12-month recency: CASR 121.575(1)(b)
-//   caps a Part 121 proficiency check's validity at 8 months from
-//   completion (not 12 - the 12-month allowance in (iii) only applies once
-//   a pilot already has a documented history of checks within the
-//   preceding year). This operator's own check-form practice treats a
-//   completed IPC as also satisfying that Part 121 proficiency check
-//   requirement (per the operator - "an IPC will reset the PC currency"),
-//   so the relevant 8-month clock for 121.575 purposes is the gap between
-//   the last two of *either* check type - exactly what lastIpc/lastPc
-//   track here. chainBreachDate is the date by which the later of the two
-//   needed to happen to stay within that 8 months; chainBreach is whether
-//   it didn't. This is intentionally a two-check model (last IPC vs last
-//   PC only) - it doesn't attempt 121.575(1)(b)(iii)'s further 12-month
-//   anti-gaming cap on a longer documented history of checks, which needs
-//   more history than this report tracks.
+//   sets a Part 121 proficiency check's validity as the EARLIEST of three
+//   conditions - (i) another check being completed, (ii) 8 months after
+//   this check's own completion, and (iii) if a previous check was
+//   completed within the 12 months before this one, 12 months after that
+//   PREVIOUS check (not this one). This operator's own check-form practice
+//   treats a completed IPC as also satisfying the Part 121 proficiency
+//   check requirement ("an IPC will reset the PC currency"), so the
+//   relevant chain for 121.575 purposes is the last two checks of *either*
+//   type - exactly what lastIpc/lastPc track here.
+//   Critically, (iii) is not a rare edge case - whenever the gap between
+//   the two checks exceeds ~4 months (true for this operator's whole
+//   roster, which targets ~6 months apart), (iii)'s "12 months after the
+//   OLDER check" lands earlier than (ii)'s "8 months after the newer one",
+//   so (iii) is normally the binding constraint, not (ii). E.g. IPC
+//   8/12/2025, PC 16/7/2026: the true deadline for the next check is
+//   8/12/2026 (IPC + 12 months, clause iii), not 16/3/2027 (PC + 8 months,
+//   clause ii) - nextDeadline below computes min(bothClauses), not just
+//   clause (ii) alone (an earlier version of this route wrongly did only
+//   the latter).
+// - chainBreachDate/chainBreach test the OLDER check's own basic 8-month
+//   window (clause ii only, since we don't track whatever check came
+//   before it) - was the newer check completed after the older one had
+//   already lapsed. This is intentionally a two-check model; it doesn't
+//   reach further back than lastIpc/lastPc.
 // - Beyond compliance, spacing the two ~6 months apart (rather than
-//   right up against the 8-month ceiling) is this operator's own safety
-//   margin for forward planning, not itself a separate CASR figure.
-// - nextDeadline is the forward-looking twin of chainBreachDate: the date
-//   by which whichever check comes next (IPC or PC) needs to happen to
-//   keep the chain unbroken, i.e. 8 months on from the most recent of the
-//   two. Exposed so the frontend can warn the moment a planned date is
+//   right up against the ceiling) is this operator's own safety margin for
+//   forward planning, not itself a separate CASR figure.
+// - nextDeadline is the forward-looking figure: the date by which whichever
+//   check comes next (IPC or PC) needs to happen to keep the chain
+//   unbroken. Exposed so the frontend can warn the moment a planned date is
 //   entered that falls after it, per the operator's explicit request for a
 //   hard "you'll have a shortfall" rule at planning time, not just a report
 //   after the fact.
+function nextChainDeadline(earlierDate, laterDate) {
+  const laterPlusEight = addMonths(new Date(laterDate), 8);
+  const twelveMonthsBeforeLater = addMonths(new Date(laterDate), -12);
+  // Clause (iii) only applies when the earlier check actually falls within
+  // the 12 months immediately before the later one - always true at this
+  // operator's ~6-month cadence, but not guaranteed (e.g. a pilot who's
+  // gone quiet for over a year between checks).
+  if (new Date(earlierDate).getTime() <= twelveMonthsBeforeLater.getTime()) return laterPlusEight;
+  const earlierPlusTwelve = addMonths(new Date(earlierDate), 12);
+  return earlierPlusTwelve.getTime() < laterPlusEight.getTime() ? earlierPlusTwelve : laterPlusEight;
+}
+
 router.get('/ipc-pc-spacing', async (req, res) => {
   const pilots = await listCrewWithCurrency({ type: 'PILOT' });
 
@@ -130,10 +151,11 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       const laterTime = Math.max(ipcTime, pcTime);
       chainBreachDate = addMonths(new Date(earlierTime), 8);
       chainBreach = laterTime > chainBreachDate.getTime();
-      nextDeadline = addMonths(new Date(laterTime), 8);
+      nextDeadline = nextChainDeadline(new Date(earlierTime), new Date(laterTime));
     } else if (lastIpc || lastPc) {
       // Only one check type on file yet (e.g. a new hire's qualifying IPC,
-      // no dedicated PC completed) - that single check is the anchor.
+      // no dedicated PC completed) - no previous check to trigger clause
+      // (iii), so the plain 8-month rule (clause ii) is all that applies.
       nextDeadline = addMonths(new Date(lastIpc || lastPc), 8);
     }
 

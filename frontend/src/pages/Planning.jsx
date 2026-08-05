@@ -247,12 +247,19 @@ function fmtDays(n) {
 // sheet's own formulas.
 function IpcPcSpacingSection() {
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const navigate = useNavigate();
 
+  // Computing currency for the whole pilot roster in one go (every check
+  // type, every pilot) is genuinely slow on a cold connection - a couple of
+  // seconds is normal, not a hang. Without its own loading state this would
+  // flash "No pilots on file" for that whole stretch, which reads as the
+  // roster being empty rather than still loading.
   function load() {
-    api.get('/api/planning/ipc-pc-spacing').then(setRows).catch((e) => setError(e.message));
+    setLoading(true);
+    api.get('/api/planning/ipc-pc-spacing').then(setRows).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }
   useEffect(load, []);
 
@@ -278,8 +285,9 @@ function IpcPcSpacingSection() {
         pilot's crew profile. The Comment field can justify an out-of-band gap (promotes ALERT to OVERRIDDEN).
       </div>
       {error && <div className="error-text">{error}</div>}
-      {rows.length === 0 && !error && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No pilots on file.</div>}
-      {rows.length > 0 && (
+      {loading && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading...</div>}
+      {!loading && rows.length === 0 && !error && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No pilots on file.</div>}
+      {!loading && rows.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 1400 }}>
             <thead>

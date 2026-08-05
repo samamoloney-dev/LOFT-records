@@ -212,10 +212,15 @@ function dueInfo(dueDate, completedDate, planned, trainingGate, issued, note) {
   // plannedDate/plannedAssignedTo above, and can exist independently of
   // whether a date's actually been booked in yet.
   const overdueReason = planned?.reason || null;
+  // A manual confirmation that this planned check is actually on the
+  // roster, not just planned/booked - see the IPC/PC Spacing tab's
+  // "Rostered" button (planning.js). Deliberately separate from
+  // plannedDate/plannedAssignedTo, which can exist without this being true.
+  const rostered = !!planned?.rostered;
   if (!dueDate) {
-    return { dueDate: null, status: trainingGate ? 'in_training' : 'overdue', trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
+    return { dueDate: null, status: trainingGate ? 'in_training' : 'overdue', trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason, rostered };
   }
-  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason };
+  return { dueDate: dueDate.toISOString(), status: statusFor(dueDate), trainingGate: trainingGate || null, completedDate: completed, plannedDate, plannedAssignedTo, issued: !!issued, note: note || null, overdueReason, rostered };
 }
 
 // Picks which of the (possibly several) training gates above actually
@@ -277,7 +282,7 @@ function assessorDetailsFor(checkType, assignedToId, assignee) {
 
 async function plannedDatesFor(crewMemberId) {
   const { rows } = await pool.query(
-    'SELECT check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason FROM crew_planned_checks WHERE crew_member_id = $1',
+    'SELECT check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason, rostered FROM crew_planned_checks WHERE crew_member_id = $1',
     [crewMemberId],
   );
   return Object.fromEntries(rows.map((r) => [r.check_key, {
@@ -287,6 +292,7 @@ async function plannedDatesFor(crewMemberId) {
     assignedToArn: r.assigned_to_arn,
     assignedToRole: r.assigned_to_role,
     reason: r.reason,
+    rostered: r.rostered,
   }]));
 }
 
@@ -848,6 +854,7 @@ const plannedCheckSchema = z.object({
   plannedDate: z.string().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
   reason: z.enum(OVERDUE_REASONS).nullable().optional(),
+  rostered: z.boolean().optional(),
 });
 
 router.put('/:id/planned-checks/:checkKey', async (req, res) => {
@@ -868,14 +875,22 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const hasPlannedDate = Object.prototype.hasOwnProperty.call(req.body, 'plannedDate');
   const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');
   const hasReason = Object.prototype.hasOwnProperty.call(req.body, 'reason');
+  const hasRostered = Object.prototype.hasOwnProperty.call(req.body, 'rostered');
 
   const { rows: existingRows } = await pool.query(
-    'SELECT planned_date, reason FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2',
+    'SELECT planned_date, reason, rostered FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2',
     [member.id, req.params.checkKey],
   );
   const existing = existingRows[0];
   const finalPlannedDate = hasPlannedDate ? (parsed.data.plannedDate || null) : (existing?.planned_date || null);
   const finalReason = hasReason ? (parsed.data.reason || null) : (existing?.reason || null);
+  // A newly-saved planned date invalidates any earlier "rostered"
+  // confirmation - that confirmation was for the old date, and this route
+  // only ever sees a genuine plannedDate change (the frontend's date input
+  // only calls this when the value actually changed), so it's never falsely
+  // cleared by a same-value resave.
+  const finalRostered = hasRostered ? !!parsed.data.rostered : (hasPlannedDate ? false : !!existing?.rostered);
+  if (finalRostered && !finalPlannedDate) return res.status(400).json({ error: 'Set a planned date before marking this rostered' });
 
   if (!finalPlannedDate && !finalReason) {
     await pool.query('DELETE FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2', [member.id, req.params.checkKey]);
@@ -884,21 +899,23 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
       ? await resolveAssignee(parsed.data.assignedTo)
       : { assignedToName: null, assignedToArn: null, assignedToRole: null };
     await pool.query(
-      `INSERT INTO crew_planned_checks (crew_member_id, check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $9)
+      `INSERT INTO crew_planned_checks (crew_member_id, check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason, rostered)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $9, $10)
        ON CONFLICT (crew_member_id, check_key) DO UPDATE SET
          planned_date = $3,
          assigned_to = CASE WHEN $8 THEN $4::uuid ELSE crew_planned_checks.assigned_to END,
          assigned_to_name = CASE WHEN $8 THEN $5 ELSE crew_planned_checks.assigned_to_name END,
          assigned_to_arn = CASE WHEN $8 THEN $6 ELSE crew_planned_checks.assigned_to_arn END,
          assigned_to_role = CASE WHEN $8 THEN $7 ELSE crew_planned_checks.assigned_to_role END,
-         reason = $9`,
+         reason = $9,
+         rostered = $10`,
       [
         member.id, req.params.checkKey, finalPlannedDate,
         hasAssignedTo ? (parsed.data.assignedTo || null) : null,
         assignee.assignedToName, assignee.assignedToArn, assignee.assignedToRole,
         hasAssignedTo,
         finalReason,
+        finalRostered,
       ],
     );
   }

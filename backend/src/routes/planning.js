@@ -164,6 +164,8 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       name: m.name,
       fleet: m.fleets[0] || null,
       role: m.role,
+      lastIpc: lastIpc || null,
+      lastPc: lastPc || null,
       spacingDays,
       chainBreach,
       chainBreachDate: chainBreachDate ? chainBreachDate.toISOString() : null,

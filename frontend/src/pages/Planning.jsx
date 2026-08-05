@@ -256,6 +256,30 @@ function exceedsLimit(item, nextDeadline) {
 // already, but the Proficiency Check's own key is 'proficiencyCheck'.
 const PLANNED_CHECK_KEY = { ipc: 'ipc', pc: 'proficiencyCheck' };
 
+// Manual "actually on the roster" toggle - deliberately not derived from
+// plannedDate/plannedAssignedTo like Currency Overview's own "Rostered"
+// filter (which just means "has a planned date or issued check"). A date
+// with an examiner assigned is still only a plan until someone confirms
+// it's really on the schedule; needs a planned date to exist first (the
+// backend rejects otherwise), so this button is hidden until one is set.
+function RosteredButton({ item, onToggle, saving }) {
+  if (!item?.plannedDate) return <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 6 }}>Set a date to enable rostering</div>;
+  const isRostered = !!item.rostered;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={saving}
+      style={{
+        marginTop: 6, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+        border: isRostered ? '1px solid #1e5c1e' : '1px solid var(--border-strong)',
+        background: isRostered ? '#d7f0d7' : 'var(--surface-2)',
+        color: isRostered ? '#1e5c1e' : 'inherit',
+      }}
+    >{isRostered ? '✓ Rostered' : 'Mark rostered'}</button>
+  );
+}
+
 // Replicates the operator's own IPC/PC forward-planning spreadsheet, but
 // simplified to what's actually decision-relevant: real CASR compliance -
 // both each check's own recency (reusing the same due-date/status the rest
@@ -306,8 +330,28 @@ function IpcPcSpacingSection() {
     setError(null);
     try {
       await api.put(`/api/crew/${row.crewMemberId}/planned-checks/${PLANNED_CHECK_KEY[field]}`, { plannedDate: value || null });
+      // A changed planned date invalidates any earlier "rostered"
+      // confirmation server-side (see crew.js's PUT /planned-checks) -
+      // mirrored here so the button reflects that without a full reload.
       setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId
-        ? { ...r, [field]: { ...r[field], plannedDate: value ? new Date(value).toISOString() : null } }
+        ? { ...r, [field]: { ...r[field], plannedDate: value ? new Date(value).toISOString() : null, rostered: false } }
+        : r)));
+    } catch (err) { setError(err.message); }
+    setSavingPlanKey(null);
+  }
+
+  // Manual "actually on the roster" confirmation, per the operator's
+  // explicit request - distinct from having a planned date or an assigned
+  // examiner, both of which can exist without this being true yet.
+  async function toggleRostered(row, field) {
+    const key = `${row.crewMemberId}-${field}-rostered`;
+    const nextValue = !row[field]?.rostered;
+    setSavingPlanKey(key);
+    setError(null);
+    try {
+      await api.put(`/api/crew/${row.crewMemberId}/planned-checks/${PLANNED_CHECK_KEY[field]}`, { rostered: nextValue });
+      setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId
+        ? { ...r, [field]: { ...r[field], rostered: nextValue } }
         : r)));
     } catch (err) { setError(err.message); }
     setSavingPlanKey(null);
@@ -328,8 +372,10 @@ function IpcPcSpacingSection() {
         satisfies that requirement here, this applies to the gap between a pilot's last IPC and last PC. That cap is usually earlier
         than 8 months - it's calculated per pilot below (shown as the deadline in any warning), since spacing checks more than ~4 months
         apart pulls it in based on the older of the two. Aim for roughly 6 months apart using the date fields below - if a date you enter
-        would fall after that computed deadline, it's flagged immediately so you're never caught out by unexpected sim planning. Use the
-        Planning note to record why a check needed to be pushed earlier or later than the 6-month target.
+        would fall after that computed deadline, it's flagged immediately so you're never caught out by unexpected sim planning. Once a
+        date's actually confirmed on the schedule, click "Mark rostered" - separate from just having a planned date or an assigned
+        examiner, since either of those can exist before it's really booked in. Use the Planning note to record why a check needed to be
+        pushed earlier or later than the 6-month target.
       </div>
 
       {breaches.length > 0 && (
@@ -409,6 +455,9 @@ function IpcPcSpacingSection() {
                         {exceedsLimit(r.ipc, r.nextDeadline) && (
                           <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
                         )}
+                        <div>
+                          <RosteredButton item={r.ipc} onToggle={() => toggleRostered(r, 'ipc')} saving={savingPlanKey === `${r.crewMemberId}-ipc-rostered`} />
+                        </div>
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 150 }}>
                         <DueBadge label="PC" info={r.pc} />
@@ -427,6 +476,9 @@ function IpcPcSpacingSection() {
                         {exceedsLimit(r.pc, r.nextDeadline) && (
                           <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds projected limit</div>
                         )}
+                        <div>
+                          <RosteredButton item={r.pc} onToggle={() => toggleRostered(r, 'pc')} saving={savingPlanKey === `${r.crewMemberId}-pc-rostered`} />
+                        </div>
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 170 }}>
                         {r.spacingDays === null ? (

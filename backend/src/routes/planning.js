@@ -104,6 +104,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // - Beyond compliance, spacing the two ~6 months apart (rather than
 //   right up against the 8-month ceiling) is this operator's own safety
 //   margin for forward planning, not itself a separate CASR figure.
+// - nextDeadline is the forward-looking twin of chainBreachDate: the date
+//   by which whichever check comes next (IPC or PC) needs to happen to
+//   keep the chain unbroken, i.e. 8 months on from the most recent of the
+//   two. Exposed so the frontend can warn the moment a planned date is
+//   entered that falls after it, per the operator's explicit request for a
+//   hard "you'll have a shortfall" rule at planning time, not just a report
+//   after the fact.
 router.get('/ipc-pc-spacing', async (req, res) => {
   const pilots = await listCrewWithCurrency({ type: 'PILOT' });
 
@@ -115,6 +122,7 @@ router.get('/ipc-pc-spacing', async (req, res) => {
 
     let chainBreach = false;
     let chainBreachDate = null;
+    let nextDeadline = null;
     if (lastIpc && lastPc) {
       const ipcTime = new Date(lastIpc).getTime();
       const pcTime = new Date(lastPc).getTime();
@@ -122,6 +130,11 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       const laterTime = Math.max(ipcTime, pcTime);
       chainBreachDate = addMonths(new Date(earlierTime), 8);
       chainBreach = laterTime > chainBreachDate.getTime();
+      nextDeadline = addMonths(new Date(laterTime), 8);
+    } else if (lastIpc || lastPc) {
+      // Only one check type on file yet (e.g. a new hire's qualifying IPC,
+      // no dedicated PC completed) - that single check is the anchor.
+      nextDeadline = addMonths(new Date(lastIpc || lastPc), 8);
     }
 
     return {
@@ -132,6 +145,7 @@ router.get('/ipc-pc-spacing', async (req, res) => {
       spacingDays,
       chainBreach,
       chainBreachDate: chainBreachDate ? chainBreachDate.toISOString() : null,
+      nextDeadline: nextDeadline ? nextDeadline.toISOString() : null,
       ipc: m.currency.ipc,
       pc: m.currency.proficiencyCheck,
       note: m.pcIpcOverrideComment || null,

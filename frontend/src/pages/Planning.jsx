@@ -238,6 +238,20 @@ function organisedLabel(item) {
   return { text: 'Not yet booked or rostered', color: 'var(--text-secondary)' };
 }
 
+// The hard rule the operator explicitly asked for: whether a planned date
+// for this pilot's next check falls after nextDeadline (8 months on from
+// their most recent actual check - see planning.js's GET /ipc-pc-spacing).
+// A pilot planned past this point would have a real gap in valid Part 121
+// proficiency check coverage before the planned date is even reached.
+function exceedsLimit(item, nextDeadline) {
+  return !!(item?.plannedDate && nextDeadline && new Date(item.plannedDate) > new Date(nextDeadline));
+}
+
+// Maps this tab's field names to the crew_planned_checks check_key the
+// PUT /api/crew/:id/planned-checks/:checkKey route expects - 'ipc' matches
+// already, but the Proficiency Check's own key is 'proficiencyCheck'.
+const PLANNED_CHECK_KEY = { ipc: 'ipc', pc: 'proficiencyCheck' };
+
 // Replicates the operator's own IPC/PC forward-planning spreadsheet, but
 // simplified to what's actually decision-relevant: real CASR compliance -
 // both each check's own recency (reusing the same due-date/status the rest
@@ -253,6 +267,7 @@ function IpcPcSpacingSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  const [savingPlanKey, setSavingPlanKey] = useState(null);
   const navigate = useNavigate();
 
   // Computing currency for the whole pilot roster in one go (every check
@@ -276,7 +291,26 @@ function IpcPcSpacingSection() {
     setSavingId(null);
   }
 
+  // Saves a planned date for this pilot's next IPC or PC via the same
+  // crew_planned_checks mechanism the Planned Checks tab and each crew
+  // profile's own Dates tab already use - one shared source of truth for
+  // what's actually planned, not a parallel system. Updates locally rather
+  // than a full reload so the hard-limit warning appears instantly.
+  async function savePlannedDate(row, field, value) {
+    const key = `${row.crewMemberId}-${field}`;
+    setSavingPlanKey(key);
+    setError(null);
+    try {
+      await api.put(`/api/crew/${row.crewMemberId}/planned-checks/${PLANNED_CHECK_KEY[field]}`, { plannedDate: value || null });
+      setRows((prev) => prev.map((r) => (r.crewMemberId === row.crewMemberId
+        ? { ...r, [field]: { ...r[field], plannedDate: value ? new Date(value).toISOString() : null } }
+        : r)));
+    } catch (err) { setError(err.message); }
+    setSavingPlanKey(null);
+  }
+
   const breaches = rows.filter((r) => isBreached(r.ipc) || isBreached(r.pc) || r.chainBreach);
+  const plannedBreaches = rows.filter((r) => exceedsLimit(r.ipc, r.nextDeadline) || exceedsLimit(r.pc, r.nextDeadline));
 
   // Section headers group by fleet + rank (e.g. "Fokker 100 - Captain") -
   // rows already arrive sorted this way from the backend.
@@ -287,9 +321,10 @@ function IpcPcSpacingSection() {
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
         Forward planning for pilot IPC/PC recurrency. An IPC is due 12 months after the last one (CASR Part 61 recency). Separately,
         CASR 121.575(1)(b) caps the gap between successive Part 121 proficiency checks at 8 months - since a completed IPC also
-        satisfies that requirement here, the same 8-month cap applies to the gap between a pilot's last IPC and last PC, shown below as
-        a genuine compliance flag. Aiming for roughly 6 months apart (comfortably inside that 8-month ceiling) is this operator's own
-        safety margin for forward planning, not itself a separate CASR figure.
+        satisfies that requirement here, the same 8-month cap applies to the gap between a pilot's last IPC and last PC. Aim for roughly
+        6 months apart (comfortably inside that 8-month ceiling) using the date fields below - if a date you enter would exceed the
+        8-month limit, it's flagged immediately so you're never caught out by unexpected sim planning. Use the Planning note to record
+        why a check needed to be pushed earlier or later than the 6-month target.
       </div>
 
       {breaches.length > 0 && (
@@ -300,6 +335,20 @@ function IpcPcSpacingSection() {
               <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
               {' - '}
               {[isBreached(r.ipc) && 'IPC overdue', isBreached(r.pc) && 'PC overdue', r.chainBreach && 'IPC/PC gap exceeded 8 months (CASR 121.575)'].filter(Boolean).join(', ')}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {plannedBreaches.length > 0 && (
+        <div className="card" style={{ background: '#fdf2d0', color: '#8a6100', marginBottom: '0.75rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ {plannedBreaches.length} pilot{plannedBreaches.length > 1 ? 's' : ''} planned beyond the 8-month limit</div>
+          {plannedBreaches.map((r) => (
+            <div key={r.crewMemberId} style={{ fontSize: 13 }}>
+              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
+              {' - '}
+              {[exceedsLimit(r.ipc, r.nextDeadline) && 'planned IPC', exceedsLimit(r.pc, r.nextDeadline) && 'planned PC'].filter(Boolean).join(', ')}
+              {' would land after '}{formatDate(r.nextDeadline)}
             </div>
           ))}
         </div>
@@ -338,13 +387,41 @@ function IpcPcSpacingSection() {
                       <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
                         <span style={{ cursor: 'pointer', color: 'var(--text-accent)' }} onClick={() => navigate(`/crew/${r.crewMemberId}?top=expiry`)}>{r.name}</span>
                       </td>
-                      <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 150 }}>
                         <DueBadge label="IPC" info={r.ipc} />
                         {ipcOrganised && <div style={{ fontSize: 10.5, color: ipcOrganised.color, marginTop: 4 }}>{ipcOrganised.text}</div>}
+                        <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 6 }}>Plan next for</div>
+                        <input
+                          type="date"
+                          defaultValue={r.ipc?.plannedDate ? r.ipc.plannedDate.slice(0, 10) : ''}
+                          disabled={savingPlanKey === `${r.crewMemberId}-ipc`}
+                          onBlur={(e) => {
+                            const current = r.ipc?.plannedDate ? r.ipc.plannedDate.slice(0, 10) : '';
+                            if (e.target.value !== current) savePlannedDate(r, 'ipc', e.target.value);
+                          }}
+                          style={{ width: '100%', fontSize: 11, marginTop: 6 }}
+                        />
+                        {exceedsLimit(r.ipc, r.nextDeadline) && (
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds 8-month limit</div>
+                        )}
                       </td>
-                      <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
+                      <td style={{ padding: '6px 8px', verticalAlign: 'top', minWidth: 150 }}>
                         <DueBadge label="PC" info={r.pc} />
                         {pcOrganised && <div style={{ fontSize: 10.5, color: pcOrganised.color, marginTop: 4 }}>{pcOrganised.text}</div>}
+                        <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 6 }}>Plan next for</div>
+                        <input
+                          type="date"
+                          defaultValue={r.pc?.plannedDate ? r.pc.plannedDate.slice(0, 10) : ''}
+                          disabled={savingPlanKey === `${r.crewMemberId}-pc`}
+                          onBlur={(e) => {
+                            const current = r.pc?.plannedDate ? r.pc.plannedDate.slice(0, 10) : '';
+                            if (e.target.value !== current) savePlannedDate(r, 'pc', e.target.value);
+                          }}
+                          style={{ width: '100%', fontSize: 11, marginTop: 6 }}
+                        />
+                        {exceedsLimit(r.pc, r.nextDeadline) && (
+                          <div style={{ fontSize: 10.5, color: '#7a1414', fontWeight: 700, marginTop: 4 }}>⚠ Exceeds 8-month limit</div>
+                        )}
                       </td>
                       <td style={{ padding: '6px 8px', verticalAlign: 'top', maxWidth: 170 }}>
                         {r.spacingDays === null ? (

@@ -71,11 +71,15 @@ export async function printCrewFile(member, competencies) {
     }
 
     if (member.captainInTraining) {
-      const citChecks = await safeGet(`/api/checks?checkType=CAPTAIN_IN_TRAINING&crewMemberId=${member.id}`);
+      const [citChecks, prelimItems, finalItems] = await Promise.all([
+        safeGet(`/api/checks?checkType=CAPTAIN_IN_TRAINING&crewMemberId=${member.id}`),
+        safeGet('/api/check-form-items?formKey=CAPTAIN_IN_TRAINING_PRELIMINARY&includeArchived=true'),
+        safeGet('/api/check-form-items?formKey=CAPTAIN_IN_TRAINING_FINAL&includeArchived=true'),
+      ]);
       const prelim = mostRecentCheck((citChecks || []).filter((c) => c.details?.variant === 'PRELIMINARY'));
       const final = mostRecentCheck((citChecks || []).filter((c) => c.details?.variant === 'FINAL'));
-      if (prelim) sections.push(buildCaptainInTrainingHtml(prelim, 'PRELIMINARY', member.name));
-      if (final) sections.push(buildCaptainInTrainingHtml(final, 'FINAL', member.name));
+      if (prelim) sections.push(buildCaptainInTrainingHtml(prelim, 'PRELIMINARY', prelimItems || [], member.name));
+      if (final) sections.push(buildCaptainInTrainingHtml(final, 'FINAL', finalItems || [], member.name));
     }
   } else {
     const [caChecks, caAllItems] = await Promise.all([

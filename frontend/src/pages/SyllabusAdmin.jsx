@@ -798,16 +798,24 @@ const CHECK_FORM_TABS = [
   // SA 507's FSM E5.2.3 required simulator training - Training Captain
   // upgrade only, see UpgradeRecordForm.jsx's Simulator tab.
   { key: 'UPGRADE_TRAINING_CAPTAIN_SIMULATOR', label: 'Training Captain Upgrade - Simulator Training' },
+  // Captain in Training Preliminary/Final Assessment (SA 567/568) - see
+  // CaptainInTrainingForm.jsx.
+  { key: 'CAPTAIN_IN_TRAINING_PRELIMINARY', label: 'Captain in Training - Preliminary Assessment' },
+  { key: 'CAPTAIN_IN_TRAINING_FINAL', label: 'Captain in Training - Final Assessment' },
 ];
 
-// Item kind is always a plain tick and there's no MOS reference for any of
-// these form keys - they don't need the general item-type/MOS fields the
-// aviation check forms use.
+// No MOS reference for any of these form keys - they don't need the
+// general MOS field the aviation check forms use. Most of these also never
+// expose an item-type selector at all (kind stays 'tick', irrelevant to
+// their own custom tick-only UI) - Captain in Training is the exception,
+// which gets its own three-way kind selector below instead.
 const NO_KIND_OR_MOS_FORMS = [
   'GROUND_INSTRUCTOR_COMPETENCY', 'PERSONNEL_AIR_COMPETENCY',
   ...Object.keys(UPGRADE_VARIANTS).map((v) => `UPGRADE_${v}`),
   'UPGRADE_TRAINING_CAPTAIN_SIMULATOR',
+  'CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL',
 ];
+const CIT_FORM_KEYS = ['CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL'];
 
 // Check to Line items vary per pilot fleet (the cabin attendant Check to
 // Line items are a fixed 6-item list, not admin-editable here).
@@ -818,7 +826,7 @@ const CTL_FLEET_TABS = [
 ];
 
 const emptyCheckFormItemForm = (formKey, fleet) => ({
-  formKey, fleet: fleet || '', section: '', kind: 'tick', description: '', notes: '', mos: '', ipcOnly: false,
+  formKey, fleet: fleet || '', section: '', kind: CIT_FORM_KEYS.includes(formKey) ? 'satisfactory' : 'tick', description: '', notes: '', mos: '', ipcOnly: false,
   referenceDocument: '', referenceDocumentName: '',
 });
 
@@ -1030,6 +1038,16 @@ function CheckFormItemsSection() {
               </select>
             </div>
           )}
+          {CIT_FORM_KEYS.includes(formKey) && (
+            <div className="field">
+              <label>Item type</label>
+              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+                <option value="observation">Observation (Developing/Adequate/Strong + min standard met)</option>
+                <option value="yesno">Yes/No</option>
+                <option value="satisfactory">Satisfactory/Unsatisfactory</option>
+              </select>
+            </div>
+          )}
           {formKey === 'PROFICIENCY_CHECK' && (
             <div className="field">
               <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1070,6 +1088,9 @@ function CheckFormItemsSection() {
                   {item.kind === 'score_code' ? ' · Score + code' : ''}
                   {item.kind === 'text' ? ' · Free text' : ''}
                   {item.kind === 'score' ? ' · Score (1-5)' : ''}
+                  {item.kind === 'observation' ? ' · Observation + min standard' : ''}
+                  {item.kind === 'yesno' ? ' · Yes/No' : ''}
+                  {item.kind === 'satisfactory' ? ' · Satisfactory/Unsatisfactory' : ''}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>

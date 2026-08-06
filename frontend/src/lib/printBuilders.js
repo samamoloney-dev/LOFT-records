@@ -280,53 +280,33 @@ export function buildCtlFormHtml(data, traineeType) {
 
 // ---- Captain in Training (CaptainInTrainingForm.jsx) ----
 const CIT_VARIANT_LABELS = { PRELIMINARY: 'Captain in Training — Preliminary Assessment', FINAL: 'Captain in Training — Final Assessment' };
-const PRELIM_SECTION_1 = [
-  'Comfort and orientation in LHS', 'Cockpit setup', 'Engine Start Process', 'Correct Use of Checklist',
-  'Overall Aircraft Handling', 'Proficiency Check Test Specific Activities and Maneuvers',
-];
-const PRELIM_SECTION_2 = [
-  'Shows awareness of crew roles and responsibilities', 'Demonstrates a safety-first mindset',
-  'Communicates intentions (even if not fluent)', 'Acknowledges when unsure and seeks clarification',
-  'Receptive to feedback from trainer/FO',
-];
-const FINAL_SECTION_1 = [
-  "Aircraft control and handling", "Adherence to SOP's and checklists", 'Decision making',
-  'Recognition of stable approach criteria', 'Decision to land or go around',
-];
-const FINAL_SECTION_2 = [
-  'Task prioritisation and workload management', 'Monitoring and cross-checking',
-  'Adherence to company policies and regulations', 'Situational awareness and risk assessment',
-  'Decision to take over from First Officer when necessary',
-];
-const FINAL_SECTION_3 = [
-  'Communication with crew and ATC', 'Leadership and command presence', 'Crew coordination and delegation',
-  'Use of standard phraseology and briefing quality', 'Recognition and mitigation of operational threats',
-  'Fatigue and stress management', 'Handling of unexpected or abnormal situations',
-  'Decision making under pressure', 'Assertiveness and intervention when required',
-];
 
-function citSectionsFor(variant) {
-  return variant === 'PRELIMINARY'
-    ? [{ title: 'Section 1: Basic Aircraft Handling — LHS Introduction', kind: 'observation', items: PRELIM_SECTION_1 },
-      { title: 'Section 2: Early Command Aptitude Indicators', kind: 'yesno', items: PRELIM_SECTION_2 }]
-    : [{ title: 'Section 1: Flight Performance & Handling', kind: 'satisfactory', items: FINAL_SECTION_1 },
-      { title: 'Section 2: Flight Management & Situational Awareness', kind: 'satisfactory', items: FINAL_SECTION_2 },
-      { title: 'Section 3: Human Factors & Non-Technical Skills', kind: 'satisfactory', items: FINAL_SECTION_3 }];
+// items is this variant's admin-editable catalogue (formKey
+// CAPTAIN_IN_TRAINING_PRELIMINARY/_FINAL, see check-form-items.js) - grouped
+// by each item's own section, preserving the catalogue's sort_order.
+function groupBySection(items) {
+  const map = new Map();
+  for (const item of items) {
+    const key = item.section || '—';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  }
+  return [...map.entries()];
 }
 
-export function buildCaptainInTrainingHtml(check, variant, crewMemberName) {
+export function buildCaptainInTrainingHtml(check, variant, items, crewMemberName) {
   const d = check.details || {};
-  const items = d.items || {};
+  const answers = d.items || {};
   const label = CIT_VARIANT_LABELS[variant];
-  const sections = citSectionsFor(variant);
+  const sections = groupBySection(items || []);
   let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
-  for (const s of sections) {
-    body += section(s.title, s.items.map((desc) => {
-      const v = items[desc] || {};
-      const mark = s.kind === 'satisfactory' ? (v.satisfactory === true ? 'Satisfactory' : v.satisfactory === false ? 'Unsatisfactory' : '')
-        : s.kind === 'yesno' ? (v.observation === true ? 'Yes' : v.observation === false ? 'No' : '')
+  for (const [sectionName, sectionItems] of sections) {
+    body += section(sectionName, sectionItems.map((item) => {
+      const v = answers[item.id] || {};
+      const mark = item.kind === 'satisfactory' ? (v.satisfactory === true ? 'Satisfactory' : v.satisfactory === false ? 'Unsatisfactory' : '')
+        : item.kind === 'yesno' ? (v.observation === true ? 'Yes' : v.observation === false ? 'No' : '')
           : `${v.observation || ''}${v.minStandard !== undefined ? ` (Min standard: ${v.minStandard ? 'Yes' : 'No'})` : ''}`;
-      return [desc, `${mark}${v.comments ? ` — ${v.comments}` : ''}`];
+      return [item.description, `${mark}${v.comments ? ` — ${v.comments}` : ''}`];
     }));
   }
   body += section('Overall Assessment', [

@@ -9,6 +9,7 @@ import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow } from '../lib/print';
 import { buildCaptainInTrainingHtml } from '../lib/printBuilders';
 import { formatDate, formatUserRole } from '../lib/format';
+import { visibleCheckFormItems } from '../lib/checkFormItems';
 
 // Captain in Training upgrade assessments (SA 567 Preliminary, SA 568
 // Final) - assigned ad hoc when a First Officer is upgrading to Captain,
@@ -16,27 +17,15 @@ import { formatDate, formatUserRole } from '../lib/format';
 // integration). Preliminary accompanies the candidate's first simulator
 // session (their PC or IPC+PC); Final happens as they approach Check to
 // Line. Both share one checkType (CAPTAIN_IN_TRAINING) with a
-// details.variant, same pattern as RECURRENT_SIMULATOR's PC/IPC_PC.
+// details.variant, same pattern as RECURRENT_SIMULATOR's PC/IPC_PC. The
+// item catalogue itself (formKey CAPTAIN_IN_TRAINING_PRELIMINARY/_FINAL) is
+// admin-editable from Syllabus > Check Forms, same as every other check
+// type - see check-form-items.js.
 const VARIANT_LABELS = { PRELIMINARY: 'Captain in Training — Preliminary Assessment', FINAL: 'Captain in Training — Final Assessment' };
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
 // record - mirrors backend/src/routes/checks.js POST /.
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
-const PRELIM_SECTION_1 = [
-  'Comfort and orientation in LHS',
-  'Cockpit setup',
-  'Engine Start Process',
-  'Correct Use of Checklist',
-  'Overall Aircraft Handling',
-  'Proficiency Check Test Specific Activities and Maneuvers',
-];
-const PRELIM_SECTION_2 = [
-  'Shows awareness of crew roles and responsibilities',
-  'Demonstrates a safety-first mindset',
-  'Communicates intentions (even if not fluent)',
-  'Acknowledges when unsure and seeks clarification',
-  'Receptive to feedback from trainer/FO',
-];
 const PRELIM_RECOMMENDATIONS = [
   'Has demonstrated sufficient technical and non-technical competency to commence supervised line training',
   'More training required prior to first LOFT',
@@ -44,31 +33,6 @@ const PRELIM_RECOMMENDATIONS = [
 ];
 const OBSERVATION_OPTIONS = ['Developing', 'Adequate', 'Strong'];
 
-const FINAL_SECTION_1 = [
-  "Aircraft control and handling",
-  "Adherence to SOP's and checklists",
-  'Decision making',
-  'Recognition of stable approach criteria',
-  'Decision to land or go around',
-];
-const FINAL_SECTION_2 = [
-  'Task prioritisation and workload management',
-  'Monitoring and cross-checking',
-  'Adherence to company policies and regulations',
-  'Situational awareness and risk assessment',
-  'Decision to take over from First Officer when necessary',
-];
-const FINAL_SECTION_3 = [
-  'Communication with crew and ATC',
-  'Leadership and command presence',
-  'Crew coordination and delegation',
-  'Use of standard phraseology and briefing quality',
-  'Recognition and mitigation of operational threats',
-  'Fatigue and stress management',
-  'Handling of unexpected or abnormal situations',
-  'Decision making under pressure',
-  'Assertiveness and intervention when required',
-];
 const FINAL_RECOMMENDATIONS = [
   'Candidate is suitable for upgrade to Captain',
   'Additional training required',
@@ -85,13 +49,16 @@ function resultFor(variant, recommendation) {
   return recommendation === passText ? 'PASS' : 'FAIL';
 }
 
-function sectionsFor(variant) {
-  return variant === 'PRELIMINARY'
-    ? [{ title: 'Section 1: Basic Aircraft Handling — LHS Introduction', kind: 'observation', items: PRELIM_SECTION_1 },
-      { title: 'Section 2: Early Command Aptitude Indicators', kind: 'yesno', items: PRELIM_SECTION_2 }]
-    : [{ title: 'Section 1: Flight Performance & Handling', kind: 'satisfactory', items: FINAL_SECTION_1 },
-      { title: 'Section 2: Flight Management & Situational Awareness', kind: 'satisfactory', items: FINAL_SECTION_2 },
-      { title: 'Section 3: Human Factors & Non-Technical Skills', kind: 'satisfactory', items: FINAL_SECTION_3 }];
+// Preserves the item catalogue's own sort_order (items already arrive
+// sorted from the API) - mirrors PilotLineCheck.jsx's identical helper.
+function groupBySection(items) {
+  const map = new Map();
+  for (const item of items) {
+    const key = item.section || '—';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  }
+  return [...map.entries()];
 }
 
 function isAnswered(kind, value) {
@@ -182,6 +149,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState({ date: '', assignedTo: '' });
   const [error, setError] = useState(null);
+  const [items, setItems] = useState([]);
   const subjectParam = crewMemberId ? `crewMemberId=${crewMemberId}` : `traineeId=${traineeId}`;
   const candidatePersonType = crewMemberId ? 'crewMember' : 'trainee';
   const candidatePersonId = crewMemberId || traineeId;
@@ -192,9 +160,11 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
       .catch((e) => setError(e.message));
   }
   useEffect(load, [variant, archived, crewMemberId, traineeId]);
+  useEffect(() => {
+    api.get(`/api/check-form-items?formKey=CAPTAIN_IN_TRAINING_${variant}&includeArchived=true`).then(setItems).catch(() => {});
+  }, [variant]);
 
   const selected = checks.find((c) => c.id === selectedId);
-  const sections = sectionsFor(variant);
   const recommendations = variant === 'PRELIMINARY' ? PRELIM_RECOMMENDATIONS : FINAL_RECOMMENDATIONS;
   const label = VARIANT_LABELS[variant];
 
@@ -263,14 +233,16 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
   }
 
   function printCheck(check) {
-    openPrintWindow(`${label} - ${crewMemberName}`, buildCaptainInTrainingHtml(check, variant, crewMemberName));
+    openPrintWindow(`${label} - ${crewMemberName}`, buildCaptainInTrainingHtml(check, variant, items, crewMemberName));
   }
 
   if (selected) {
     const d = selected.details || {};
-    const items = d.items || {};
+    const answers = d.items || {};
     const locked = !!selected.completedAt;
-    const allItemsAnswered = sections.every((s) => s.items.every((desc) => isAnswered(s.kind, items[desc])));
+    const visibleItems = visibleCheckFormItems(items, answers);
+    const sections = groupBySection(visibleItems);
+    const allItemsAnswered = visibleItems.length > 0 && visibleItems.every((item) => isAnswered(item.kind, answers[item.id]));
 
     return (
       <div>
@@ -295,13 +267,13 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
           <AssignedToPicker value={selected.assignedTo} accessType="IPC" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
-        {sections.map((s) => (
-          <div key={s.title} className="card">
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>{s.title}</div>
-            {s.items.map((desc) => (
+        {sections.map(([sectionName, sectionItems]) => (
+          <div key={sectionName} className="card">
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>{sectionName}</div>
+            {sectionItems.map((item) => (
               <ItemRow
-                key={desc} kind={s.kind} description={desc} value={items[desc]} disabled={locked}
-                onChange={(v) => setItemValue(selected, desc, v)}
+                key={item.id} kind={item.kind} description={item.description} value={answers[item.id]} disabled={locked}
+                onChange={(v) => setItemValue(selected, item.id, v)}
               />
             ))}
           </div>

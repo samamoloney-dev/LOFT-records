@@ -22,12 +22,18 @@ const FORM_KEYS = [
   // SA 507's FSM E5.2.3 required simulator training (General Handling +
   // Simulated Control Difficulty) - Training Captain upgrade only.
   'UPGRADE_TRAINING_CAPTAIN_SIMULATOR',
+  // Captain in Training Preliminary/Final Assessment (SA 567/568) - see
+  // CaptainInTrainingForm.jsx.
+  'CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
 // answer (e.g. which aircraft system was discussed). score: a plain 1-5
 // numeric score with no code (Pilot Line Check's Non-Technical Skill
-// Assessment markers).
-const ITEM_KINDS = ['tick', 'score_code', 'text', 'score'];
+// Assessment markers). observation: Developing/Adequate/Strong rating plus
+// a Yes/No minimum-standard flag. yesno: plain Yes/No. satisfactory:
+// Satisfactory/Unsatisfactory (the latter three are Captain in Training's
+// own answer styles, see CaptainInTrainingForm.jsx).
+const ITEM_KINDS = ['tick', 'score_code', 'text', 'score', 'observation', 'yesno', 'satisfactory'];
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
 // Anyone who can reach a check form needs to be able to read its item

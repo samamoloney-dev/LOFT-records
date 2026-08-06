@@ -284,16 +284,7 @@ const CIT_VARIANT_LABELS = { PRELIMINARY: 'Captain in Training — Preliminary A
 // items is this variant's admin-editable catalogue (formKey
 // CAPTAIN_IN_TRAINING_PRELIMINARY/_FINAL, see check-form-items.js) - grouped
 // by each item's own section, preserving the catalogue's sort_order.
-function groupBySection(items) {
-  const map = new Map();
-  for (const item of items) {
-    const key = item.section || '—';
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(item);
-  }
-  return [...map.entries()];
-}
-
+// Reuses groupBySection, already defined above for Pilot Line Check.
 export function buildCaptainInTrainingHtml(check, variant, items, crewMemberName) {
   const d = check.details || {};
   const answers = d.items || {};

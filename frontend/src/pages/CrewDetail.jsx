@@ -12,6 +12,7 @@ import { CaptainInTrainingForm } from './CaptainInTrainingForm';
 import { UpgradeRecordForm } from './UpgradeRecordForm';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
+import { SpecialistTrainingItems } from './SpecialistTrainingItems';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
@@ -447,6 +448,10 @@ function SpecialistTrainingTab({ member }) {
     ...upgradeVariants.map((v) => ({ key: v, label: UPGRADE_VARIANTS[v].label })),
     ...(showGic ? [{ key: 'gic', label: 'Ground Instructor Check' }] : []),
     ...(showPac ? [{ key: 'pac', label: 'Personnel (Air) Competency Check' }] : []),
+    // Free-form additional training records (own form, name + photos) -
+    // pilot-only per the operator's request, unlike the tabs above which
+    // are gated on role/link rather than crew type.
+    ...(isPilot ? [{ key: 'additional', label: 'Additional Training' }] : []),
   ];
   const [subTab, setSubTab] = useState(subTabs[0]?.key);
 
@@ -462,6 +467,7 @@ function SpecialistTrainingTab({ member }) {
       ))}
       {subTab === 'gic' && <GroundInstructorCheckForm userId={member.userId} userName={member.name} />}
       {subTab === 'pac' && <PersonnelCompetencyCheckForm userId={member.userId} userName={member.name} />}
+      {subTab === 'additional' && <SpecialistTrainingItems crewMemberId={member.id} crewArchived={member.archived} />}
     </div>
   );
 }

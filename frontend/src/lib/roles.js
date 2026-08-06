@@ -27,14 +27,15 @@ export const CONTINUOUS_IMPROVEMENT_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
 export const SURVEY_FILL_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'SIMULATOR_ONLY'];
 
 // Who must hold (and is eligible to conduct) a current Ground Instructor
-// Competency Check (SA_520, renewed every 12 months) - narrower than it
-// once was, per the operator's explicit correction: only the dedicated
-// Ground Instructor role, Simulator Only Examiner, and anyone individually
-// ticked for Emergency Procedures checkAccess ("EP trainers"). Mirrors
-// backend/src/middleware/roles.js's isGroundInstructorCheckEligible.
+// Competency Check (SA_520, renewed every 12 months) - per the operator's
+// explicit correction, the dedicated Ground Instructor role is exempt (their
+// qualification for the role already covers this, so the check itself
+// would be redundant on them) - only Simulator Only Examiner and anyone
+// individually ticked for Emergency Procedures checkAccess ("EP trainers")
+// actually need it. Mirrors backend/src/middleware/roles.js's
+// isGroundInstructorCheckEligible.
 export function isGroundInstructorCheckEligible(user) {
-  return user.role === 'GROUND_INSTRUCTOR'
-    || user.role === 'SIMULATOR_ONLY'
+  return user.role === 'SIMULATOR_ONLY'
     || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
 }
 

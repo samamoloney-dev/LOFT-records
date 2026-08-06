@@ -27,7 +27,7 @@ async function assertTraineeVisible(req, res, traineeId) {
 }
 
 // Filling in and signing a Check to Line is an assessor's job - for cabin
-// attendants that's specifically the Checker (Cabin Attendant Checker or
+// attendants that's specifically the Checker (Check Cabin Attendant or
 // Cabin Attendant Manager), never the Trainer, even though a CA Trainer can
 // otherwise view/access this trainee's record. Pilot Check to Line is
 // unaffected - unchanged from canAccessTraineeRecord alone.
@@ -95,7 +95,7 @@ router.put('/:traineeId', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
   if (!canAssessCheckToLine(req.user, trainee)) {
-    return res.status(403).json({ error: 'Only a Cabin Attendant Checker, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
+    return res.status(403).json({ error: 'Only a Check Cabin Attendant, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
   }
 
   const parsed = upsertSchema.safeParse(req.body);
@@ -173,7 +173,7 @@ router.post('/:traineeId/complete', async (req, res) => {
   const trainee = await assertTraineeVisible(req, res, req.params.traineeId);
   if (!trainee) return;
   if (!canAssessCheckToLine(req.user, trainee)) {
-    return res.status(403).json({ error: 'Only a Cabin Attendant Checker, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
+    return res.status(403).json({ error: 'Only a Check Cabin Attendant, Cabin Attendant Manager, or admin can complete and sign this Check to Line' });
   }
 
   const { rows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);

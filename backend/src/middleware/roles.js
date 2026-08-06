@@ -34,16 +34,17 @@ const PRE_SIM_ASSESSOR_ROLES = ['TRAINING_CAPTAIN', 'CC', 'EXAMINER'];
 const LANDING_ASSESSMENT_EDIT_ROLES = ['CC', 'EXAMINER'];
 
 // Who must hold (and is eligible to conduct) a current Ground Instructor
-// Competency Check (SA_520, renewed every 12 months) - narrower than it
-// once was, per the operator's explicit correction: only the dedicated
-// Ground Instructor role, Simulator Only Examiner, and anyone individually
-// ticked for Emergency Procedures checkAccess on their Staff profile ("EP
-// trainers") actually need this. HOTC/HOFO/Alternate/Examiner/CA Checker/
-// CA Manager do NOT need it just by virtue of their role/checking
-// authority - only if they're separately ticked as an EP trainer.
+// Competency Check (SA_520, renewed every 12 months) - per the operator's
+// explicit correction, the dedicated Ground Instructor role is exempt
+// (their qualification for the role already covers this, so the check
+// itself would be redundant on them) - only Simulator Only Examiner and
+// anyone individually ticked for Emergency Procedures checkAccess on their
+// Staff profile ("EP trainers") actually need this. HOTC/HOFO/Alternate/
+// Examiner/CA Checker/CA Manager do NOT need it just by virtue of their
+// role/checking authority - only if they're separately ticked as an EP
+// trainer.
 function isGroundInstructorCheckEligible(user) {
-  return user.role === 'GROUND_INSTRUCTOR'
-    || user.role === 'SIMULATOR_ONLY'
+  return user.role === 'SIMULATOR_ONLY'
     || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
 }
 

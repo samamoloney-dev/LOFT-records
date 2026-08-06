@@ -63,7 +63,7 @@ router.post('/', async (req, res) => {
   const d = parsed.data;
 
   const instructor = await findEligibleUser(d.userId);
-  if (!instructor) return res.status(400).json({ error: 'Not an eligible instructor (must be a Ground Instructor, a Cabin Attendant Checker/Manager, an admin/Examiner, or ticked for Emergency Procedures)' });
+  if (!instructor) return res.status(400).json({ error: 'Not an eligible instructor (must be Simulator Only Examiner, or ticked for Emergency Procedures)' });
   if (d.assignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
   }

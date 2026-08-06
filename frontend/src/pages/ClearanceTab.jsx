@@ -28,8 +28,8 @@ const PILOT_STAGE_LABELS = {
 const CA_STAGE_LABELS = {
   GROUND_SCHOOL: 'Ground School Completed',
   LINE_TRAINING: 'Line Training Completed',
-  CA_TRAINER: 'Cabin Attendant Trainer Training Completed',
-  CA_CHECKER: 'Cabin Attendant Checker Training Completed',
+  CA_TRAINER: 'Training Cabin Attendant Training Completed',
+  CA_CHECKER: 'Check Cabin Attendant Training Completed',
 };
 
 const CAPACITY_LABELS = {

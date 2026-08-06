@@ -143,7 +143,11 @@ export function SpecialistTrainingItems({ crewMemberId, crewArchived }) {
           <div className="grid2" style={{ marginTop: 8 }}>
             <div className="field" style={{ margin: 0 }}>
               <label>Completed date</label>
-              <input type="date" disabled={crewArchived} defaultValue={item.completedDate || ''} onBlur={(e) => updateItem(item, { completedDate: e.target.value || null })} />
+              {/* completedDate comes back from Postgres as a full ISO
+                  timestamp (e.g. 2026-01-15T00:00:00.000Z) - a date input
+                  only accepts the plain yyyy-mm-dd prefix, same fix used
+                  elsewhere in the app (see Planning.jsx's plannedDate). */}
+              <input type="date" disabled={crewArchived} defaultValue={item.completedDate ? item.completedDate.slice(0, 10) : ''} onBlur={(e) => updateItem(item, { completedDate: e.target.value || null })} />
             </div>
           </div>
           <div className="field">

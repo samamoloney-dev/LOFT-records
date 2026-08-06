@@ -10,12 +10,17 @@
 // the parent can also use it to auto-match a typed candidate name against
 // an existing crew member - see EpChecks/CaChecks/ProficiencyChecks
 // createCheck.
-export function CrewMemberPicker({ members, value, onSelect }) {
+// allowUnlinked/label let a check type that has no free-text name fallback
+// (e.g. PilotLineCheck's ad-hoc mode - unlike EpChecks/CaChecks/
+// ProficiencyChecks, it has nothing else to record if left unlinked) reuse
+// this same picker as a genuinely required "who is this for" selector
+// instead of the default optional-link phrasing.
+export function CrewMemberPicker({ members, value, onSelect, label = 'Crew member (optional - links this check to their currency record)', allowUnlinked = true }) {
   return (
     <div className="field">
-      <label>Crew member (optional - links this check to their currency record)</label>
+      <label>{label}</label>
       <select value={value || ''} onChange={(e) => onSelect(members.find((m) => m.id === e.target.value) || null)}>
-        <option value="">— Not linked (one-off / initial training) —</option>
+        <option value="">{allowUnlinked ? '— Not linked (one-off / initial training) —' : '— Select —'}</option>
         {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
       </select>
     </div>

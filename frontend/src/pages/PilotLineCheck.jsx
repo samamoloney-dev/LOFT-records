@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AssessorPicker } from '../components/AssessorPicker';
 import { AssignedToPicker } from '../components/AssignedToPicker';
+import { CrewMemberPicker } from '../components/CrewMemberPicker';
 import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
@@ -19,9 +20,11 @@ import { sortNotCompletedFirst } from '../lib/sortChecks';
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
 // One generic item catalogue for every pilot fleet (see check-form-items.js
 // FORM_KEYS/PILOT_LINE_CHECK, editable from Syllabus > Check Forms), keyed
-// by item.id rather than a fixed source-code list. Only ever rendered
-// scoped to one Crew roster member (see CrewDetail.jsx) - there's no
-// free-text/ad-hoc use of this check type.
+// by item.id rather than a fixed source-code list. crewMemberId/
+// crewMemberName/fleet scope this to one Crew roster member's own recurring
+// Line Checks (see CrewDetail.jsx) - when omitted (Checks tab's own Pilots >
+// Line Check), a CrewMemberPicker lets the assessor pick any pilot instead,
+// mirroring CaChecks.jsx's identical ad-hoc mode.
 const REFRESHER_ITEM_NAME = 'Refresher training and check';
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
@@ -143,6 +146,13 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   const [error, setError] = useState(null);
   const [items, setItems] = useState([]);
   const [refresherCompetency, setRefresherCompetency] = useState(null);
+  const [crewOptions, setCrewOptions] = useState([]);
+
+  const selected = checks.find((c) => c.id === selectedId);
+  // Falls back to the check's own crew link/snapshot name in ad-hoc mode
+  // (no crewMemberId prop), where there's no single fixed pilot to scope to.
+  const activeCrewMemberId = crewMemberId || selected?.crewMemberId;
+  const activeCrewMemberName = crewMemberName || selected?.crewMemberName || 'Unknown pilot';
 
   useEffect(() => {
     // fleet can be undefined for a pilot ticked on more than one fleet
@@ -153,13 +163,17 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
     api.get(`/api/check-form-items?formKey=PILOT_LINE_CHECK${fleetParam}&includeArchived=true`).then(setItems).catch(() => {});
   }, [fleet]);
   useEffect(() => {
-    api.get(`/api/crew/${crewMemberId}/competencies`)
+    if (!activeCrewMemberId) return;
+    api.get(`/api/crew/${activeCrewMemberId}/competencies`)
       .then((rows) => setRefresherCompetency(rows.find((r) => r.name === 'Refresher Training') || null))
       .catch(() => {});
-  }, [crewMemberId]);
+  }, [activeCrewMemberId]);
   useEffect(() => {
     // Carries over an examiner/instructor/check pilot already assigned to
-    // this crew member's upcoming Line Check from the Planning page.
+    // this crew member's upcoming Line Check from the Planning page - only
+    // relevant when scoped to one crew member; the ad-hoc CrewMemberPicker
+    // below carries this over itself once a pilot is picked instead.
+    if (!crewMemberId) return;
     api.get(`/api/crew/${crewMemberId}`)
       .then((m) => setNewForm((f) => {
         const planned = m.currency?.lineCheck?.plannedAssignedTo;
@@ -169,15 +183,18 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
       }))
       .catch(() => {});
   }, [crewMemberId]);
+  useEffect(() => {
+    if (crewMemberId) return;
+    api.get('/api/crew?type=PILOT').then(setCrewOptions).catch(() => {});
+  }, [crewMemberId]);
 
   function load() {
-    api.get(`/api/checks?checkType=PILOT_LINE_CHECK&archived=${archived}&crewMemberId=${crewMemberId}`)
+    api.get(`/api/checks?checkType=PILOT_LINE_CHECK&archived=${archived}${crewMemberId ? `&crewMemberId=${crewMemberId}` : ''}`)
       .then(setChecks)
       .catch((e) => setError(e.message));
   }
   useEffect(load, [archived, crewMemberId]);
 
-  const selected = checks.find((c) => c.id === selectedId);
   // Unfiltered by archived status - each render site below narrows this to
   // that specific check's own results via visibleCheckFormItems, so an
   // archived item is only ever shown if that particular check already
@@ -187,9 +204,11 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   async function createCheck(e) {
     e.preventDefault();
     setError(null);
+    const targetCrewMemberId = crewMemberId || newForm.linkedCrewMemberId;
+    if (!targetCrewMemberId) return;
     try {
-      const { assignedTo, ...details } = newForm;
-      await api.post('/api/checks', { checkType: 'PILOT_LINE_CHECK', appliesTo: 'PILOT', assignedTo: assignedTo || undefined, crewMemberId, details });
+      const { assignedTo, linkedCrewMemberId, ...details } = newForm;
+      await api.post('/api/checks', { checkType: 'PILOT_LINE_CHECK', appliesTo: 'PILOT', assignedTo: assignedTo || undefined, crewMemberId: targetCrewMemberId, details });
       setCreating(false);
       setNewForm(emptyNewForm());
       load();
@@ -267,7 +286,8 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
   }
 
   function printCheck(check) {
-    openPrintWindow(`Line Check - ${crewMemberName}`, buildPilotLineCheckHtml(check, items, refresherCompetency, crewMemberName));
+    const name = crewMemberName || check.crewMemberName || '';
+    openPrintWindow(`Line Check - ${name}`, buildPilotLineCheckHtml(check, items, refresherCompetency, name));
   }
 
   if (selected) {
@@ -302,7 +322,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
           </div>
         </div>
         <div className="card">
-          <div style={{ fontSize: 16, fontWeight: 500 }}>{crewMemberName} — Line Check</div>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>{activeCrewMemberName} — Line Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
@@ -385,7 +405,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
               <div className="field"><label>Assessor signature</label><input defaultValue={d.assessorSig} disabled={locked} onBlur={(e) => patchDetails(selected, { assessorSig: e.target.value })} /></div>
             )}
             <PinSignature
-              label="Candidate signature" personType="crewMember" personId={crewMemberId}
+              label="Candidate signature" personType="crewMember" personId={activeCrewMemberId}
               signedName={d.candidateSig} signedAt={d.candidateSigAt} disabled={locked}
               onSigned={(name, at) => patchDetails(selected, { candidateSig: name, candidateSigAt: at })}
             />
@@ -432,6 +452,25 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
 
       {!archived && creating && (
         <form className="card" onSubmit={createCheck}>
+          {!crewMemberId && (
+            <CrewMemberPicker
+              members={crewOptions}
+              value={newForm.linkedCrewMemberId}
+              label="Pilot"
+              allowUnlinked={false}
+              onSelect={(m) => {
+                // Carries over an examiner/instructor/check pilot already
+                // assigned to this pilot's upcoming Line Check from the
+                // Planning page, instead of re-picking it here.
+                const planned = m?.currency?.lineCheck?.plannedAssignedTo;
+                setNewForm((f) => ({
+                  ...f,
+                  linkedCrewMemberId: m?.id || '',
+                  ...(planned && !f.assignedTo ? { assignedTo: planned.id, assessorId: planned.id, assessor: planned.name, assessorArn: planned.arn } : {}),
+                }));
+              }}
+            />
+          )}
           <div className="grid2">
             <div className="field"><label>Date</label><input type="date" value={newForm.date} onChange={(e) => setNewForm({ ...newForm, date: e.target.value })} required /></div>
             <div className="field">
@@ -458,9 +497,11 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
       {sortNotCompletedFirst(checks).map((c) => (
         <div key={c.id} className="card row" onClick={() => setSelectedId(c.id)}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500 }}>{c.details?.date ? formatDate(c.details.date) : 'No date'}</div>
+            <div style={{ fontWeight: 500 }}>{crewMemberId ? (c.details?.date ? formatDate(c.details.date) : 'No date') : (c.crewMemberName || 'Unknown pilot')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {c.details?.actype || 'No aircraft type'} · {c.details?.assessor ? `Assessor: ${c.details.assessor}` : 'No assessor'}
+              {crewMemberId
+                ? <>{c.details?.actype || 'No aircraft type'} · {c.details?.assessor ? `Assessor: ${c.details.assessor}` : 'No assessor'}</>
+                : <>{c.details?.date ? formatDate(c.details.date) : 'No date'} · {c.details?.actype || 'No aircraft type'}</>}
             </div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}

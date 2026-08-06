@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { EpChecks } from './EpChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
+import { PilotLineCheck } from './PilotLineCheck';
 import { CheckToLinePicker } from './CheckToLinePicker';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
@@ -29,9 +30,19 @@ export function Checks() {
   // even if their broader role isn't one of the roles that otherwise unlocks
   // the Pilots/Cabin Attendants tabs (e.g. a CA_CHECKER or CA_TRAINER).
   const hasEpAccess = isCaManager || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  // Line Check / Check to Line checkAccess ticks let a Check Captain (whose
+  // whole purpose is conducting Line Checks) or a Training Captain reach
+  // these tabs even though CC/TRAINING_CAPTAIN aren't in the blanket-access
+  // CHECK_ROLES list - mirrors the EP tick pattern above and backend/src/
+  // routes/checks.js canAccessCheckType's PILOT_LINE_CHECK branch. Excluded
+  // for Simulator Only staff regardless of any tick, same as EP.
+  const hasLineCheckAccess = (user.checkAccess || []).includes('LINE_CHECK');
+  const hasCheckToLineAccess = (user.checkAccess || []).includes('CHECK_TO_LINE');
   const canAccessPilotChecks = CHECK_ROLES.includes(user.role) || isSimulatorOnly;
   const canAccessPilotEp = !isSimulatorOnly && (CHECK_ROLES.includes(user.role) || hasEpAccess);
-  const canAccessPilots = canAccessPilotChecks || canAccessPilotEp;
+  const canAccessPilotLineCheck = !isSimulatorOnly && (CHECK_ROLES.includes(user.role) || hasLineCheckAccess);
+  const canAccessPilotCtl = !isSimulatorOnly && (CHECK_ROLES.includes(user.role) || hasCheckToLineAccess);
+  const canAccessPilots = canAccessPilotChecks || canAccessPilotEp || canAccessPilotLineCheck || canAccessPilotCtl;
   const canAccessEpForCa = CHECK_ROLES.includes(user.role) || hasEpAccess;
   const canAccessCaOnly = CA_CHECK_ROLES.includes(user.role);
   const canAccessCabinAttendants = canAccessEpForCa || canAccessCaOnly;
@@ -52,6 +63,8 @@ export function Checks() {
     canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
     canAccessPilotChecks && { key: 'pc', label: 'PC' },
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
+    canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check' },
+    canAccessPilotCtl && { key: 'ctl', label: 'Check to Line' },
   ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
@@ -79,6 +92,8 @@ export function Checks() {
           {pilotTab === 'ipc' && canAccessPilotChecks && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
           {pilotTab === 'pc' && canAccessPilotChecks && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
           {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
+          {pilotTab === 'linecheck' && canAccessPilotLineCheck && <PilotLineCheck />}
+          {pilotTab === 'ctl' && canAccessPilotCtl && <CheckToLinePicker traineeType="PILOT" />}
         </div>
       )}
 
@@ -86,7 +101,7 @@ export function Checks() {
         <div>
           <TabBar tabs={caTabs} active={caTab} onSelect={setCaTab} />
           {caTab === 'ep' && canAccessEpForCa && <EpChecks appliesTo="CABIN_ATTENDANT" />}
-          {caTab === 'ctl' && canAccessCaOnly && <CheckToLinePicker />}
+          {caTab === 'ctl' && canAccessCaOnly && <CheckToLinePicker traineeType="CABIN_ATTENDANT" />}
           {caTab === 'linecheck' && canAccessCaOnly && <CaChecks />}
         </div>
       )}

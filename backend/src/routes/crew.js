@@ -1103,7 +1103,7 @@ router.get('/:id/competencies', async (req, res) => {
   // interleaved with the real catalog order.
   const { rows } = await pool.query(
     `SELECT * FROM (
-       SELECT ct.sort_order, ct.created_at, ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
+       SELECT ct.sort_order, ct.created_at, ct.id AS competency_type_id, NULL::uuid AS id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
        FROM competency_types ct
        LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
        WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
@@ -1112,7 +1112,7 @@ router.get('/:id/competencies', async (req, res) => {
            SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
          ))
        UNION ALL
-       SELECT 9999 AS sort_order, cc.created_at, NULL::uuid AS competency_type_id, cc.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, false AS course_sent
+       SELECT 9999 AS sort_order, cc.created_at, NULL::uuid AS competency_type_id, cc.id, cc.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, false AS course_sent
        FROM crew_competencies cc
        WHERE cc.crew_member_id = $1 AND cc.competency_type_id IS NULL AND cc.archived = false
      ) combined
@@ -1192,6 +1192,29 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));
+});
+
+// Deletes an ad-hoc crew_competencies row (one with no competency_type_id -
+// today that's only ever "Right Hand Seat", auto-created by checks.js's
+// revalidateRhsCompetency). Catalog-linked rows are never deleted this way -
+// clearing their dates through the PUT route above is how those get reset,
+// since every crew member is always supposed to have exactly one row per
+// active type. Scoped to admins only, same as every other destructive
+// action on a crew member's record.
+router.delete('/:id/competencies/:competencyId', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+
+  const { rows } = await pool.query(
+    'DELETE FROM crew_competencies WHERE id = $1 AND crew_member_id = $2 AND competency_type_id IS NULL RETURNING name',
+    [req.params.competencyId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'crew_competencies', targetId: req.params.competencyId,
+    description: `Removed "${rows[0].name}" from ${member.name}`,
+  });
+  res.status(204).end();
 });
 
 // Clearance Form - the paper trail (SA 539 for cabin attendants, SA 586 for

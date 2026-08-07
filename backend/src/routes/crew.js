@@ -96,6 +96,18 @@ function assertNotArchived(member, res) {
   return true;
 }
 
+// Deliberately excludes archived checks. A completed check only ever gets
+// archived one of two ways: auto-superseded the moment a newer one of the
+// same type/variant completes (see checks.js PATCH /:id), or manually
+// archived by an admin - either way, "archived" means "no longer the
+// current record" everywhere else in this app (the Dates tab, the archive
+// browse views, etc.), so this must honour that too. Omitting this filter
+// was a real bug: any leftover archived check with a later completed_at
+// than the genuinely-current one (e.g. stale seed/mock data left on a
+// crew profile that was later repurposed for a real person) would
+// silently win here and corrupt that crew member's due date - reported
+// live for Garry Underwood (pilot), but this function is shared by both
+// pilot and cabin attendant currency, so it was never pilot-only.
 async function lastCompletedCheck(crewMemberId, checkType, variant) {
   const params = [crewMemberId, checkType];
   let variantClause = '';
@@ -105,7 +117,7 @@ async function lastCompletedCheck(crewMemberId, checkType, variant) {
   }
   const { rows } = await pool.query(
     `SELECT completed_at FROM checks
-     WHERE crew_member_id = $1 AND check_type = $2 ${variantClause} AND completed_at IS NOT NULL
+     WHERE crew_member_id = $1 AND check_type = $2 ${variantClause} AND completed_at IS NOT NULL AND archived = false
      ORDER BY completed_at DESC LIMIT 1`,
     params,
   );
@@ -196,20 +208,27 @@ async function activeUpgradeTraineeId(crewMemberId) {
 }
 
 // Same reverse link as activeUpgradeTraineeId, but not restricted to a
-// still-in-progress record - once that upgrade/fleet-conversion LOFT
-// finishes, its trainee record archives and crew_members.trainee_id is
-// still never backfilled to point at it (see the comment above), so its
+// still-in-progress record, and not just the single most recent one - a
+// career can carry several of these (initial onboarding, an FO-to-Captain
+// upgrade, a later fleet conversion), each pointing at its own trainee
+// record, and none of them ever get backfilled onto
+// crew_members.trainee_id (see the comment above) - so every one of their
 // completed Check to Line/Landing Assessment/flights would otherwise be
-// unreachable from this crew profile forever. Reported live for Mathew
-// Joubert - his completed LOFT paperwork looked to have "vanished" once
-// promote-to-crew archived the trainee record it lived under. Exposed to
-// the frontend as loftTraineeId below; printCrewFile.js is the consumer.
-async function mostRecentLinkedTraineeId(crewMemberId) {
+// unreachable from this crew profile forever, not just the latest.
+// Reported live for Mathew Joubert - his completed LOFT paperwork looked
+// to have "vanished" once promote-to-crew archived the trainee record it
+// lived under. Exposed to the frontend as loftTraineeIds below (most
+// recent first); printCrewFile.js's Print file feature is the consumer -
+// it needs the whole career's worth of LOFT paperwork, not just the
+// latest cycle.
+async function allLinkedTraineeIds(crewMemberId, directTraineeId) {
   const { rows } = await pool.query(
-    'SELECT id FROM trainees WHERE source_crew_member_id = $1 ORDER BY created_at DESC LIMIT 1',
+    'SELECT id FROM trainees WHERE source_crew_member_id = $1 ORDER BY created_at DESC',
     [crewMemberId],
   );
-  return rows[0]?.id || null;
+  const ids = rows.map((r) => r.id);
+  if (directTraineeId && !ids.includes(directTraineeId)) ids.unshift(directTraineeId);
+  return ids;
 }
 
 // trainingGate is null/false once nothing's holding this item back, or one
@@ -452,8 +471,8 @@ async function allItemsFor(member, currency, inLoft) {
 }
 
 async function withCurrency(member) {
-  const [planned, upgradeTraineeId, loftTraineeId] = await Promise.all([
-    plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), mostRecentLinkedTraineeId(member.id),
+  const [planned, upgradeTraineeId, loftTraineeIds] = await Promise.all([
+    plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), allLinkedTraineeIds(member.id, member.traineeId),
   ]);
   // See activeUpgradeTraineeId above - falls back to an in-progress upgrade
   // trainee record when this crew profile has no direct trainee_id link of
@@ -568,11 +587,12 @@ async function withCurrency(member) {
     // flagged there is expected while training is still in progress rather
     // than a real oversight.
     inLoft,
-    // See mostRecentLinkedTraineeId above - the trainee record whose Check
-    // to Line/Landing Assessment/flights belong to this crew member, direct
-    // link or reverse-linked upgrade/fleet-conversion record alike. null
-    // for a crew profile that's never been through LOFT at all.
-    loftTraineeId: member.traineeId || loftTraineeId,
+    // See allLinkedTraineeIds above - every trainee record whose Check to
+    // Line/Landing Assessment/flights belong to this crew member (direct
+    // link and every reverse-linked upgrade/fleet-conversion record),
+    // most recent first. Empty for a crew profile that's never been
+    // through LOFT at all.
+    loftTraineeIds,
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
     allItems: await allItemsFor(member, currency, inLoft),

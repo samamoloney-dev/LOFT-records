@@ -51,9 +51,12 @@ function serialize(row) {
 // completed check of that type).
 async function withGroundInstructorCheck(user) {
   if (!isGroundInstructorCheckEligible(user)) return user;
+  // Excludes archived checks - see crew.js's lastCompletedCheck for why an
+  // archived one (superseded or manually archived) must never be treated
+  // as current for due-date purposes. Same bug class, same fix.
   const { rows } = await pool.query(
     `SELECT completed_at FROM instructor_competency_checks
-     WHERE user_id = $1 AND completed_at IS NOT NULL
+     WHERE user_id = $1 AND completed_at IS NOT NULL AND archived = false
      ORDER BY completed_at DESC LIMIT 1`,
     [user.id],
   );
@@ -72,9 +75,12 @@ async function withGroundInstructorCheck(user) {
 // completed check, same rolling-due mechanics as EP/IPC/CA Line Check.
 async function withPersonnelAirCompetency(user) {
   if (!PERSONNEL_AIR_COMPETENCY_ROLES.includes(user.role)) return user;
+  // Excludes archived checks - see crew.js's lastCompletedCheck for why an
+  // archived one (superseded or manually archived) must never be treated
+  // as current for due-date purposes. Same bug class, same fix.
   const { rows } = await pool.query(
     `SELECT completed_at FROM personnel_competency_checks
-     WHERE user_id = $1 AND completed_at IS NOT NULL
+     WHERE user_id = $1 AND completed_at IS NOT NULL AND archived = false
      ORDER BY completed_at DESC LIMIT 1`,
     [user.id],
   );

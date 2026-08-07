@@ -4,7 +4,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { ADMIN_ROLES, requireRole } = require('../middleware/roles');
+const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -20,16 +20,34 @@ async function findItem(id) {
   return rows[0] ? rowToCamel(rows[0]) : null;
 }
 
-async function assertCrewMemberEditable(crewMemberId, res) {
-  const { rows } = await pool.query('SELECT archived FROM crew_members WHERE id = $1', [crewMemberId]);
+// Additional Training is pilot-only in the UI (see CrewDetail.jsx's
+// SpecialistTrainingTab), but that's just where the tab is shown - nothing
+// here stopped a Cabin Attendant Manager (a CA-only role, per
+// isCaOnlyRole) from reading or editing a *pilot's* records by
+// crewMemberId directly, unlike crew.js's forbiddenForCaManager which this
+// route otherwise mirrors ("hangs off of crew.js"). Checked up front for
+// every route below (both read and write), not just edits.
+async function assertCrewMemberVisible(req, res, crewMemberId) {
+  const { rows } = await pool.query('SELECT type, archived FROM crew_members WHERE id = $1', [crewMemberId]);
   if (!rows[0]) { res.status(404).json({ error: 'Crew member not found' }); return false; }
-  if (rows[0].archived) { res.status(400).json({ error: 'This crew member is archived' }); return false; }
+  if (isCaOnlyRole(req.user) && rows[0].type !== 'CABIN_ATTENDANT') {
+    res.status(403).json({ error: 'Forbidden' });
+    return false;
+  }
+  return rows[0];
+}
+
+async function assertCrewMemberEditable(req, crewMemberId, res) {
+  const crewMember = await assertCrewMemberVisible(req, res, crewMemberId);
+  if (!crewMember) return false;
+  if (crewMember.archived) { res.status(400).json({ error: 'This crew member is archived' }); return false; }
   return true;
 }
 
 router.get('/', async (req, res) => {
   const { crewMemberId } = req.query;
   if (!crewMemberId) return res.status(400).json({ error: 'crewMemberId is required' });
+  if (!(await assertCrewMemberVisible(req, res, crewMemberId))) return;
   const { rows } = await pool.query(
     `SELECT * FROM specialist_training_items WHERE crew_member_id = $1 AND archived = false ORDER BY created_at DESC`,
     [crewMemberId],
@@ -48,7 +66,7 @@ router.post('/', async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
-  if (!(await assertCrewMemberEditable(d.crewMemberId, res))) return;
+  if (!(await assertCrewMemberEditable(req, d.crewMemberId, res))) return;
 
   const { rows } = await pool.query(
     `INSERT INTO specialist_training_items (crew_member_id, name, completed_date, notes)
@@ -70,7 +88,7 @@ const COLUMN_MAP = { name: 'name', completedDate: 'completed_date', notes: 'note
 router.patch('/:id', async (req, res) => {
   const existing = await findItem(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (!(await assertCrewMemberEditable(existing.crewMemberId, res))) return;
+  if (!(await assertCrewMemberEditable(req, existing.crewMemberId, res))) return;
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -91,6 +109,7 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/archive', async (req, res) => {
   const existing = await findItem(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (!(await assertCrewMemberVisible(req, res, existing.crewMemberId))) return;
   await pool.query('UPDATE specialist_training_items SET archived = true, updated_at = now() WHERE id = $1', [req.params.id]);
   await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'specialist_training_items', targetId: existing.id });
   res.json({ ok: true });
@@ -108,7 +127,7 @@ const addPhotoSchema = z.object({
 router.post('/:id/photos', async (req, res) => {
   const existing = await findItem(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (!(await assertCrewMemberEditable(existing.crewMemberId, res))) return;
+  if (!(await assertCrewMemberEditable(req, existing.crewMemberId, res))) return;
 
   const parsed = addPhotoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -125,7 +144,7 @@ router.post('/:id/photos', async (req, res) => {
 router.delete('/:id/photos/:photoId', async (req, res) => {
   const existing = await findItem(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  if (!(await assertCrewMemberEditable(existing.crewMemberId, res))) return;
+  if (!(await assertCrewMemberEditable(req, existing.crewMemberId, res))) return;
 
   const photos = (existing.photos || []).filter((p) => p.id !== req.params.photoId);
   const { rows } = await pool.query(
@@ -138,6 +157,7 @@ router.delete('/:id/photos/:photoId', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const existing = await findItem(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (!(await assertCrewMemberVisible(req, res, existing.crewMemberId))) return;
   await pool.query('DELETE FROM specialist_training_items WHERE id = $1', [req.params.id]);
   await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'specialist_training_items', targetId: req.params.id, description: `Deleted specialist training "${existing.name}"` });
   res.json({ ok: true });

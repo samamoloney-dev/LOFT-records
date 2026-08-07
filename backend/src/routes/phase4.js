@@ -57,12 +57,19 @@ router.put('/:traineeId', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
-  // A trainee may only sign their own applicant signature - never the
-  // Training Captain's - mirroring the phase-completions signature rule.
+  // A trainee may only sign their own applicant signature - never write
+  // any of the actual assessment content (sectorDetails/itemResults/
+  // categoryRemarks/ntsScores/comments) or the Training Captain's
+  // signature. Allow-listed rather than block-listed - the frontend
+  // (Phase4Form.jsx's canEdit) already disables everything else, but that's
+  // only a UI convenience, not enforcement; a trainee calling this route
+  // directly must be stopped server-side too, since letting them touch
+  // their own assessment content would mean self-scoring.
   if (req.user.role === 'TRAINEE') {
     if (req.user.trainee?.id !== trainee.id) return res.status(403).json({ error: 'Forbidden' });
-    if (d.trainingCaptainSignature !== undefined || d.trainingCaptainSignatureAt !== undefined) {
-      return res.status(403).json({ error: 'Forbidden' });
+    const traineeAllowedKeys = new Set(['applicantSignature', 'applicantSignatureAt']);
+    if (Object.keys(d).some((key) => !traineeAllowedKeys.has(key))) {
+      return res.status(403).json({ error: 'Trainees may only sign their own applicant signature' });
     }
   }
 

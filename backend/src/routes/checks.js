@@ -202,6 +202,10 @@ router.get('/:id', async (req, res) => {
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   const check = rowToCamel(rows[0]);
   if (!canAccessCheckType(req.user, check.checkType)) return res.status(403).json({ error: 'Forbidden' });
+  // Matches GET /'s own archived=true gate - a non-admin can't browse the
+  // archive list, so fetching one of those checks directly by id shouldn't
+  // be a back door around that either.
+  if (check.archived && !isAdmin(req.user)) return res.status(403).json({ error: 'Forbidden' });
   res.json(check);
 });
 

@@ -115,11 +115,17 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { name, email, password, role, fleets, arn, checkAccess } = parsed.data;
+  // Flight Ops Admin is administrative only and can never actually check
+  // anyone (per the operator's explicit rule, enforced elsewhere via
+  // checks.js's canAccessCheckType/CHECK_ROLES) - the Staff form's own
+  // dropdown doesn't offer this role a checkAccess tick, but nothing
+  // server-side stopped one being sent directly, so belt-and-suspenders it.
+  const effectiveCheckAccess = role === 'FLIGHT_OPS_ADMIN' ? [] : (checkAccess || []);
   const passwordHash = await bcrypt.hash(password, 10);
   const { rows } = await pool.query(
     `INSERT INTO users (name, email, password_hash, role, fleets, arn, check_access)
      VALUES ($1, $2, $3, $4, $5::fleet[], $6, $7::check_access_type[]) RETURNING *`,
-    [name, email, passwordHash, role, fleets || [], arn || null, checkAccess || []],
+    [name, email, passwordHash, role, fleets || [], arn || null, effectiveCheckAccess],
   );
   const user = rows[0];
   await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'users', targetId: user.id });
@@ -144,6 +150,17 @@ const CAST_MAP = { checkAccess: '::check_access_type[]', fleets: '::fleet[]' };
 router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  // Flight Ops Admin is administrative only and can never actually check
+  // anyone (see the matching guard on POST / above) - resolve whichever
+  // role will actually be in effect after this PATCH (the one being set
+  // now, or else whatever's already on file) before deciding whether a
+  // checkAccess tick is allowed to stick.
+  if (parsed.data.checkAccess && parsed.data.checkAccess.length > 0) {
+    const effectiveRole = parsed.data.role
+      || (await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id])).rows[0]?.role;
+    if (effectiveRole === 'FLIGHT_OPS_ADMIN') parsed.data.checkAccess = [];
+  }
 
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });

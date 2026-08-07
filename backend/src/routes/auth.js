@@ -13,6 +13,17 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+// Same in-memory lockout pattern as signatures.js's PIN verification (no
+// persistent rate-limit storage exists elsewhere in this app, and an
+// in-memory map is a reasonable fit for a single small deployment) - login
+// protects real account credentials, not just a signature, and had no
+// brute-force protection at all before this, unlike the PIN flow it sits
+// right next to. Keyed per email (case-insensitive) so one account's
+// lockout doesn't affect anyone else, reset on every successful login.
+const LOGIN_ATTEMPTS = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
+
 function serializeUser(user) {
   return {
     id: user.id,
@@ -30,6 +41,13 @@ router.post('/login', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Invalid credentials' });
 
   const { email, password } = parsed.data;
+  const key = email.toLowerCase();
+  const state = LOGIN_ATTEMPTS.get(key);
+  if (state && state.lockedUntil && state.lockedUntil > Date.now()) {
+    const minutes = Math.ceil((state.lockedUntil - Date.now()) / 60000);
+    return res.status(429).json({ error: `Too many incorrect attempts - try again in ${minutes} minute${minutes === 1 ? '' : 's'}` });
+  }
+
   const { rows } = await pool.query(
     `SELECT u.*, t.id AS trainee_id
      FROM users u
@@ -37,11 +55,22 @@ router.post('/login', async (req, res) => {
      WHERE u.email = $1`,
     [email],
   );
-  if (rows.length === 0) return res.status(401).json({ error: 'Invalid email or password' });
-
-  const row = rowToCamel(rows[0]);
-  const valid = await bcrypt.compare(password, row.passwordHash);
-  if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+  // Same generic error and the same failed-attempt bookkeeping whether the
+  // email doesn't exist or the password is wrong - an unknown email must
+  // count against the lockout too, or that path stays an unlimited-attempt
+  // oracle for confirming which emails exist even with a shared error
+  // message.
+  const row = rows[0] ? rowToCamel(rows[0]) : null;
+  const valid = row && await bcrypt.compare(password, row.passwordHash);
+  if (!valid) {
+    const attempts = (state?.attempts || 0) + 1;
+    LOGIN_ATTEMPTS.set(key, {
+      attempts,
+      lockedUntil: attempts >= MAX_LOGIN_ATTEMPTS ? Date.now() + LOGIN_LOCKOUT_MS : null,
+    });
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  LOGIN_ATTEMPTS.delete(key);
 
   const user = {
     id: row.id,

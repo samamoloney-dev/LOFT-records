@@ -195,6 +195,23 @@ async function activeUpgradeTraineeId(crewMemberId) {
   return rows[0]?.id || null;
 }
 
+// Same reverse link as activeUpgradeTraineeId, but not restricted to a
+// still-in-progress record - once that upgrade/fleet-conversion LOFT
+// finishes, its trainee record archives and crew_members.trainee_id is
+// still never backfilled to point at it (see the comment above), so its
+// completed Check to Line/Landing Assessment/flights would otherwise be
+// unreachable from this crew profile forever. Reported live for Mathew
+// Joubert - his completed LOFT paperwork looked to have "vanished" once
+// promote-to-crew archived the trainee record it lived under. Exposed to
+// the frontend as loftTraineeId below; printCrewFile.js is the consumer.
+async function mostRecentLinkedTraineeId(crewMemberId) {
+  const { rows } = await pool.query(
+    'SELECT id FROM trainees WHERE source_crew_member_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [crewMemberId],
+  );
+  return rows[0]?.id || null;
+}
+
 // trainingGate is null/false once nothing's holding this item back, or one
 // of 'ground_school' / 'in_loft' / 'new_hire_grace' identifying *why* it's
 // not due yet - see trainingGateReason below. Kept distinct from a plain
@@ -435,7 +452,9 @@ async function allItemsFor(member, currency, inLoft) {
 }
 
 async function withCurrency(member) {
-  const [planned, upgradeTraineeId] = await Promise.all([plannedDatesFor(member.id), activeUpgradeTraineeId(member.id)]);
+  const [planned, upgradeTraineeId, loftTraineeId] = await Promise.all([
+    plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), mostRecentLinkedTraineeId(member.id),
+  ]);
   // See activeUpgradeTraineeId above - falls back to an in-progress upgrade
   // trainee record when this crew profile has no direct trainee_id link of
   // its own (the normal case once someone's already on the Crew roster).
@@ -549,6 +568,11 @@ async function withCurrency(member) {
     // flagged there is expected while training is still in progress rather
     // than a real oversight.
     inLoft,
+    // See mostRecentLinkedTraineeId above - the trainee record whose Check
+    // to Line/Landing Assessment/flights belong to this crew member, direct
+    // link or reverse-linked upgrade/fleet-conversion record alike. null
+    // for a crew profile that's never been through LOFT at all.
+    loftTraineeId: member.traineeId || loftTraineeId,
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
     allItems: await allItemsFor(member, currency, inLoft),

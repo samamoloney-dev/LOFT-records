@@ -289,9 +289,19 @@ router.post('/:id/promote-to-crew', async (req, res) => {
       // member's role, not their fleets - an FO upgrading to Captain on a
       // fleet they already hold gains no new fleet at all, just a new role.
       const roleChanged = trainee.role !== sourceCrew.role;
+      // A passed Check to Line is operationally the start of a Line Check
+      // cycle (per the operator) - true whether this is a brand-new crew
+      // member (handled below) or an existing one returning to LOFT for a
+      // fleet conversion, so this fresh CTL resets their anchor too, same
+      // as a first-time one would.
+      const setClauses = ['fleets = $1::fleet[]'];
+      const params = [mergedFleets];
+      if (roleChanged) { params.push(trainee.role); setClauses.push(`role = $${params.length}`); }
+      if (trainee.type === 'PILOT') { params.push(ctlRows[0].completed_at); setClauses.push(`line_check_anchor_date = $${params.length}`); }
+      params.push(sourceCrew.id);
       ({ rows } = await client.query(
-        `UPDATE crew_members SET fleets = $1::fleet[]${roleChanged ? ', role = $3' : ''} WHERE id = $2 RETURNING *`,
-        roleChanged ? [mergedFleets, sourceCrew.id, trainee.role] : [mergedFleets, sourceCrew.id],
+        `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params,
       ));
     } else {
       ({ rows } = await client.query(

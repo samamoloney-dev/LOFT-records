@@ -119,14 +119,18 @@ export async function printCrewFile(member, competencies) {
     }));
   }
 
-  // Pre-qualification LOFT training paperwork - only reachable via
-  // crew_members.trainee_id (see backend/src/routes/crew.js), which stops
-  // existing once a trainee record is deleted, not just archived.
-  if (member.traineeId) {
+  // Pre-qualification LOFT training paperwork - reachable via
+  // crew_members.trainee_id for a brand-new crew member, or (see
+  // backend/src/routes/crew.js's mostRecentLinkedTraineeId) the reverse
+  // source_crew_member_id link for an existing crew member who went back
+  // through LOFT for an upgrade/fleet conversion - loftTraineeId covers
+  // both. Stops existing once that trainee record is deleted, not just
+  // archived.
+  if (member.loftTraineeId) {
     const [ctlData, landingData, flights] = await Promise.all([
-      safeGet(`/api/ctl/${member.traineeId}`),
-      safeGet(`/api/landing-assessment/${member.traineeId}`),
-      safeGet(`/api/flights?traineeId=${member.traineeId}&archived=true`),
+      safeGet(`/api/ctl/${member.loftTraineeId}`),
+      safeGet(`/api/landing-assessment/${member.loftTraineeId}`),
+      safeGet(`/api/flights?traineeId=${member.loftTraineeId}&archived=true`),
     ]);
     if (ctlData?.form && (ctlData.form.completedAt || ctlData.form.archived)) sections.push(buildCtlFormHtml(ctlData, member.type));
     if (landingData?.form && (landingData.form.completedAt || landingData.form.archived)) sections.push(buildLandingAssessmentHtml(landingData.form));

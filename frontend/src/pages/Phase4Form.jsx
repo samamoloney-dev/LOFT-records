@@ -23,6 +23,16 @@ function itemKey(item) {
 function SectorFields({ label, value, disabled, onChange }) {
   const v = value || {};
   const update = (field, fieldValue) => onChange({ ...v, [field]: fieldValue });
+  // Route/Aircraft/hours are typed character by character, but each
+  // keystroke was round-tripping straight to the server and back
+  // (value={v.route} bound directly to the saved record) - a slow or
+  // out-of-order response could overwrite what's since been typed,
+  // dropping characters or jumping the cursor. Buffering in local state and
+  // only saving on blur (same pattern as FlightRow.jsx's Route field) fixes
+  // that without changing what gets saved.
+  const [route, setRoute] = useState(v.route || '');
+  const [aircraft, setAircraft] = useState(v.aircraft || '');
+  const [thisFlight, setThisFlight] = useState(v.thisFlight || '');
 
   return (
     <div className="card">
@@ -30,11 +40,11 @@ function SectorFields({ label, value, disabled, onChange }) {
       <div className="grid2">
         <div className="field">
           <label>Route</label>
-          <input disabled={disabled} value={v.route || ''} onChange={(e) => update('route', e.target.value)} />
+          <input disabled={disabled} value={route} onChange={(e) => setRoute(e.target.value)} onBlur={() => update('route', route)} />
         </div>
         <div className="field">
           <label>Aircraft</label>
-          <input disabled={disabled} value={v.aircraft || ''} onChange={(e) => update('aircraft', e.target.value)} />
+          <input disabled={disabled} value={aircraft} onChange={(e) => setAircraft(e.target.value)} onBlur={() => update('aircraft', aircraft)} />
         </div>
       </div>
       <div className="grid2">
@@ -44,7 +54,7 @@ function SectorFields({ label, value, disabled, onChange }) {
         </div>
         <div className="field">
           <label>Flight time (this flight)</label>
-          <input type="number" step="0.1" disabled={disabled} value={v.thisFlight || ''} onChange={(e) => update('thisFlight', e.target.value)} />
+          <input type="number" step="0.1" disabled={disabled} value={thisFlight} onChange={(e) => setThisFlight(e.target.value)} onBlur={() => update('thisFlight', thisFlight)} />
         </div>
       </div>
       <div className="field">

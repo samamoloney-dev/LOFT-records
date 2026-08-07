@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, isAdmin } = require('../middleware/roles');
 const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
+const { localDateString } = require('../lib/currency');
 const { NTS_MARKERS } = require('../../db/phase4-items');
 
 const router = express.Router();
@@ -20,6 +21,17 @@ async function assertTraineeVisible(req, res, traineeId) {
   }
   const trainee = rowToCamel(rows[0]);
   if (!canAccessTraineeRecord(req.user, trainee)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+  // Matches trainees.js's own GET /:id and flights.js's assertTraineeVisible -
+  // an archived trainee's record (and, by the same rule, everything hung
+  // off it - this Check to Line included) is admin-only once archived, not
+  // just read-only to everyone who could see it before. Without this, a
+  // non-admin who already knew/guessed the traineeId could still reach a
+  // since-archived trainee's Check to Line directly by URL even though the
+  // trainee itself is hidden from them everywhere else in the app.
+  if (trainee.archived && !isAdmin(req.user)) {
     res.status(403).json({ error: 'Forbidden' });
     return null;
   }
@@ -185,9 +197,13 @@ router.post('/:traineeId/complete', async (req, res) => {
   // not archive the trainee record itself (that only happens once they're
   // actually promoted onto the Crew roster, see trainees.js
   // promote-to-crew, at which point the trainee record becomes redundant).
+  // Computed once in JS (rather than two separate SQL now() calls) so the
+  // CTL's own completedAt and the Line Check anchor it starts always agree
+  // to the same instant.
+  const completedAt = new Date();
   const { rows: updatedRows } = await pool.query(
-    'UPDATE check_to_line_forms SET completed_at = now() WHERE id = $1 RETURNING *',
-    [form.id],
+    'UPDATE check_to_line_forms SET completed_at = $2 WHERE id = $1 RETURNING *',
+    [form.id, completedAt],
   );
   await logAction({
     userId: req.user.id, action: 'COMPLETE', targetTable: 'check_to_line_forms', targetId: trainee.id,
@@ -199,11 +215,13 @@ router.post('/:traineeId/complete', async (req, res) => {
   // "promote to crew" step coming for them - do here what that step would
   // otherwise do: start their Line Check anniversary from this completion
   // date (pilots only - that's what line_check_anchor_date drives), and
-  // archive the now-redundant trainee record.
+  // archive the now-redundant trainee record. line_check_anchor_date is a
+  // DATE column - see currency.js's localDateString for why this can't
+  // just be now() cast straight to a date.
   if (trainee.type === 'PILOT') {
     const { rows: linkedCrew } = await pool.query('SELECT id FROM crew_members WHERE trainee_id = $1', [trainee.id]);
     if (linkedCrew.length > 0) {
-      await pool.query('UPDATE crew_members SET line_check_anchor_date = now() WHERE id = $1', [linkedCrew[0].id]);
+      await pool.query('UPDATE crew_members SET line_check_anchor_date = $2 WHERE id = $1', [linkedCrew[0].id, localDateString(completedAt)]);
       await pool.query('UPDATE trainees SET archived = true, archived_at = now() WHERE id = $1', [trainee.id]);
       await logAction({
         userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: linkedCrew[0].id,

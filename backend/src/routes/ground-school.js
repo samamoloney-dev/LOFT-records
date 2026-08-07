@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES, isCaOnlyRole } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES, isCaOnlyRole, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { requestOrApply, applyToTable } = require('../lib/approvals');
 
@@ -14,6 +14,16 @@ router.use(requireAuth);
 const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 function forbiddenFleetForCaManager(req, fleet) {
   return isCaOnlyRole(req.user) && fleet && !CA_FLEETS.includes(fleet);
+}
+
+// Matches trainees.js's own GET /:id and flights.js's assertTraineeVisible -
+// an archived trainee's record (and everything hung off it: ground school
+// progress) is admin-only once archived, not just read-only to everyone
+// who could see it before.
+function canAccessTraineeRecordFull(req, trainee) {
+  if (!canAccessTraineeRecord(req.user, trainee)) return false;
+  if (trainee.archived && !isAdmin(req.user)) return false;
+  return true;
 }
 
 // Ground School curriculum management - same admin-only pattern as syllabus
@@ -141,7 +151,7 @@ async function findTrainee(id) {
 router.get('/trainee/:traineeId', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   // Aircraft Endorsement is the last thing that happens chronologically
   // (after ground school and the simulator, right before LOFT), but "A"
@@ -179,7 +189,7 @@ router.get('/trainee/:traineeId', async (req, res) => {
 router.get('/trainee/:traineeId/category-notes', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query('SELECT * FROM ground_school_category_notes WHERE trainee_id = $1', [trainee.id]);
   res.json(rows.map(rowToCamel));
@@ -193,7 +203,7 @@ const categoryNoteSchema = z.object({
 router.put('/trainee/:traineeId/category-notes', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = categoryNoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -219,7 +229,7 @@ const detailsSchema = z.object({
 router.put('/trainee/:traineeId/items/:itemId/details', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = detailsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -248,7 +258,7 @@ const completeSchema = z.object({
 router.post('/trainee/:traineeId/complete', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = completeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

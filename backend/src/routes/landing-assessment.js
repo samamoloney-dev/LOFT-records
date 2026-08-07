@@ -22,6 +22,14 @@ async function assertTraineeVisible(req, res, traineeId) {
     res.status(403).json({ error: 'Forbidden' });
     return null;
   }
+  // Matches trainees.js's own GET /:id and flights.js's assertTraineeVisible -
+  // an archived trainee's record (and everything hung off it, this Landing
+  // Assessment included) is admin-only once archived, not just read-only
+  // to everyone who could see it before.
+  if (trainee.archived && !isAdmin(req.user)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
   return trainee;
 }
 

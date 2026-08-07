@@ -7,6 +7,7 @@ const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_
 const { logAction } = require('../lib/audit');
 const { fleetOrderError } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
+const { localDateString } = require('../lib/currency');
 const { createCrewMemberRecord } = require('./crew');
 
 const router = express.Router();
@@ -231,6 +232,9 @@ router.patch('/:id', async (req, res) => {
   const trainee = await findTrainee(req.params.id);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  // Matches this file's own GET /:id - archived is admin-only, same as
+  // every other write route on an archived record elsewhere in the app.
+  if (trainee.archived && !canAccessArchived(req.user)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -297,7 +301,11 @@ router.post('/:id/promote-to-crew', async (req, res) => {
       const setClauses = ['fleets = $1::fleet[]'];
       const params = [mergedFleets];
       if (roleChanged) { params.push(trainee.role); setClauses.push(`role = $${params.length}`); }
-      if (trainee.type === 'PILOT') { params.push(ctlRows[0].completed_at); setClauses.push(`line_check_anchor_date = $${params.length}`); }
+      // line_check_anchor_date is a DATE column - see currency.js's
+      // localDateString for why the raw completed_at timestamp can't just
+      // be passed straight through (Postgres would truncate it to a date
+      // using the DB session's own timezone, not the operator's).
+      if (trainee.type === 'PILOT') { params.push(localDateString(ctlRows[0].completed_at)); setClauses.push(`line_check_anchor_date = $${params.length}`); }
       params.push(sourceCrew.id);
       ({ rows } = await client.query(
         `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
@@ -313,7 +321,7 @@ router.post('/:id/promote-to-crew', async (req, res) => {
           trainee.type,
           trainee.role,
           [trainee.fleet],
-          trainee.type === 'PILOT' ? ctlRows[0].completed_at : null,
+          trainee.type === 'PILOT' ? localDateString(ctlRows[0].completed_at) : null,
         ],
       ));
     }

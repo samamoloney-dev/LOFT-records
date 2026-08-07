@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord } = require('../middleware/roles');
+const { canAccessTraineeRecord, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { NTS_MARKERS, itemsForFleet } = require('../../db/phase4-items');
 
@@ -19,6 +19,14 @@ async function assertTraineeVisible(req, res, traineeId) {
   }
   const trainee = rowToCamel(rows[0]);
   if (!canAccessTraineeRecord(req.user, trainee)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+  // Matches trainees.js's own GET /:id and flights.js's assertTraineeVisible -
+  // an archived trainee's record (and everything hung off it, this Phase 4
+  // assessment included) is admin-only once archived, not just read-only
+  // to everyone who could see it before.
+  if (trainee.archived && !isAdmin(req.user)) {
     res.status(403).json({ error: 'Forbidden' });
     return null;
   }

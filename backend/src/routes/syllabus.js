@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES, isCaOnlyRole } = require('../middleware/roles');
+const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES, isCaOnlyRole, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { hasIncompleteGroundSchool } = require('./crew');
 const { requestOrApply, applyToTable } = require('../lib/approvals');
@@ -13,6 +13,20 @@ const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 const router = express.Router();
 
 router.use(requireAuth);
+
+// Matches trainees.js's own GET /:id and flights.js's assertTraineeVisible -
+// an archived trainee's record (and everything hung off it: syllabus/
+// discussion progress, per-flight sign-offs, phase completions) is
+// admin-only once archived, not just read-only to everyone who could see
+// it before. Every one of this file's trainee-scoped routes used to check
+// only canAccessTraineeRecord, leaving all of this reachable for a
+// non-admin who already knew the traineeId even after the trainee itself
+// is hidden from them everywhere else in the app.
+function canAccessTraineeRecordFull(req, trainee) {
+  if (!canAccessTraineeRecord(req.user, trainee)) return false;
+  if (trainee.archived && !isAdmin(req.user)) return false;
+  return true;
+}
 
 function roleScopeFor(traineeRole) {
   return traineeRole === 'CAPTAIN' ? 'CAPTAIN_ONLY' : traineeRole === 'FIRST_OFFICER' ? 'FO_ONLY' : 'BOTH';
@@ -159,7 +173,7 @@ async function findFlight(id) {
 router.get('/trainee/:traineeId/category-notes', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query('SELECT * FROM syllabus_category_notes WHERE trainee_id = $1', [trainee.id]);
   res.json(rows.map(rowToCamel));
@@ -174,7 +188,7 @@ const categoryNoteSchema = z.object({
 router.put('/trainee/:traineeId/category-notes', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = categoryNoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -199,7 +213,7 @@ router.get('/flight/:flightId', async (req, res) => {
   if (!flight) return res.status(404).json({ error: 'Not found' });
   const trainee = await findTrainee(flight.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const scope = roleScopeFor(trainee.role);
   // Pilots progress through numbered phases (1-3), so a given flight only
@@ -261,7 +275,7 @@ router.post('/flight/:flightId/complete', async (req, res) => {
   if (!flight) return res.status(404).json({ error: 'Not found' });
   const trainee = await findTrainee(flight.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = flightCompleteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -294,7 +308,7 @@ router.post('/flight/:flightId/complete', async (req, res) => {
 router.get('/trainee/:traineeId', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const scope = roleScopeFor(trainee.role);
   const { rows: itemRows } = await pool.query(
@@ -333,7 +347,7 @@ const completeSchema = z.object({
 router.post('/trainee/:traineeId/complete', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const parsed = completeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -367,7 +381,7 @@ router.post('/trainee/:traineeId/complete', async (req, res) => {
 router.get('/trainee/:traineeId/phase-completions', async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
     'SELECT * FROM phase_completions WHERE trainee_id = $1 ORDER BY phase ASC',
@@ -384,7 +398,7 @@ const signatureSchema = z.object({
 router.put('/trainee/:traineeId/phase-completions/:phase', requireRole(...FLIGHT_CREATOR_ROLES, 'TRAINEE'), async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const phase = Number(req.params.phase);
   const parsed = signatureSchema.safeParse(req.body);
@@ -416,7 +430,7 @@ router.put('/trainee/:traineeId/phase-completions/:phase', requireRole(...FLIGHT
 router.post('/trainee/:traineeId/phase-completions/:phase/complete', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
   const trainee = await findTrainee(req.params.traineeId);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
-  if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
+  if (!canAccessTraineeRecordFull(req, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
   const phase = Number(req.params.phase);
   const { rows } = await pool.query(

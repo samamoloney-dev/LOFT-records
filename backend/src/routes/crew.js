@@ -1090,16 +1090,33 @@ router.get('/:id/competencies', async (req, res) => {
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
+  // The catalog-driven types (one row per active type, LEFT JOINed so it
+  // shows even with no dates yet) plus any ad-hoc crew_competencies rows
+  // that were never linked to a catalog type - the only one of those today
+  // is "Right Hand Seat" (checks.js's revalidateRhsCompetency), which is
+  // deliberately NOT a catalog type (a catalog type applies to every crew
+  // member automatically - RHS only applies to whichever Training
+  // Captains/Examiners happen to have sat "Other Seat" on an IPC/PC) - it
+  // was being tracked correctly in the database this whole time but was
+  // silently invisible here, since this query only ever looked at
+  // competency_types rows. Sorted to the end (sort_order 9999) rather than
+  // interleaved with the real catalog order.
   const { rows } = await pool.query(
-    `SELECT ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
-     FROM competency_types ct
-     LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
-     WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
-       AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
-       AND (ct.staff_roles IS NULL OR EXISTS (
-         SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
-       ))
-     ORDER BY ct.sort_order ASC, ct.created_at ASC`,
+    `SELECT * FROM (
+       SELECT ct.sort_order, ct.created_at, ct.id AS competency_type_id, ct.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, COALESCE(cc.course_sent, false) AS course_sent
+       FROM competency_types ct
+       LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
+       WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
+         AND (ct.fleets IS NULL OR ct.fleets && $3::fleet[])
+         AND (ct.staff_roles IS NULL OR EXISTS (
+           SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
+         ))
+       UNION ALL
+       SELECT 9999 AS sort_order, cc.created_at, NULL::uuid AS competency_type_id, cc.name, cc.completed_date, cc.due_date, cc.planned_date, COALESCE(cc.na, false) AS na, false AS course_sent
+       FROM crew_competencies cc
+       WHERE cc.crew_member_id = $1 AND cc.competency_type_id IS NULL AND cc.archived = false
+     ) combined
+     ORDER BY sort_order ASC, created_at ASC`,
     [member.id, member.type, member.fleets],
   );
   // Refresher Training's default due date rides on the pilot Line Check's

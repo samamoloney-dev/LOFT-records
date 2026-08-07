@@ -37,14 +37,21 @@ function nextDueRolling(lastCompletedAt, days = 365) {
   return addDays(new Date(lastCompletedAt), days);
 }
 
-// Pilot Line Check: due 365 days after the anchor date (their initial Check
-// to Line), then every 365 days after that - a fixed anniversary that does
-// not move regardless of when each subsequent check is actually completed.
-// completedCount is how many Line Checks have been completed since the
-// anchor (not counting the anchor itself).
+// Pilot Line Check: due on the anchor date's calendar anniversary (their
+// initial Check to Line), one year on, then every year after that - a
+// fixed anniversary that does not move regardless of when each subsequent
+// check is actually completed. completedCount is how many Line Checks have
+// been completed since the anchor (not counting the anchor itself).
+// Deliberately addMonths(12*n), not addDays(365*n) - a fixed day-count
+// drifts against the real calendar anniversary by a day or two per leap
+// year spanned (see addMonths' own comment above), which for a career-long
+// anchor is no longer a rounding error - it can flag a Line Check overdue
+// a day or two before its real due date. addDays is still correct for
+// nextDueRolling above, whose 365-day clocks are genuinely rolling windows
+// rather than a fixed calendar date.
 function pilotLineCheckDue(anchorDate, completedCount) {
   if (!anchorDate) return null;
-  return addDays(new Date(anchorDate), 365 * (completedCount + 1));
+  return addMonths(new Date(anchorDate), 12 * (completedCount + 1));
 }
 
 // Three graduated advance-warning bands ahead of the real deadline, closest
@@ -88,4 +95,24 @@ function competencyStatus(dueDate) {
   return 'ok';
 }
 
-module.exports = { addDays, addMonths, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus };
+// The operator (Skippers Aviation) is based in Perth, Western Australia
+// (AWST, UTC+8, no daylight saving - so no DST-transition edge case to
+// worry about, just a constant offset). A handful of DATE columns (e.g.
+// crew_members.line_check_anchor_date) get written from a moment-in-time
+// (an examiner clicking "Complete" right now) rather than a value the user
+// actually typed into a date field - writing that straight as SQL now() (or
+// passing a JS Date to a DATE-column parameter) truncates to a calendar
+// date using the database session's own timezone, which on a managed host
+// is typically UTC, not Perth's. A Check to Line completed in the early
+// hours of an AWST morning (any time before ~8am local, since AWST is 8
+// hours ahead of UTC) would truncate onto the *previous* UTC calendar day -
+// silently anchoring that pilot's whole future Line Check anniversary
+// sequence a day earlier than the real event. Use this instead of now()
+// wherever a moment-in-time needs to become "today's date" for a DATE
+// column.
+const OPERATOR_TIMEZONE = 'Australia/Perth';
+function localDateString(instant = new Date(), timeZone = OPERATOR_TIMEZONE) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
+}
+
+module.exports = { addDays, addMonths, nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, localDateString };

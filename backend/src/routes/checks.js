@@ -355,8 +355,7 @@ router.patch('/:id', async (req, res) => {
     ? await resolveAssignee(d.assignedTo)
     : { assignedToName: null, assignedToArn: null, assignedToRole: null };
 
-  const { rows } = await pool.query(
-    `UPDATE checks SET
+  const updateSql = `UPDATE checks SET
        details = COALESCE($1, details),
        result = COALESCE($2, result),
        score = COALESCE($3, score),
@@ -367,23 +366,77 @@ router.patch('/:id', async (req, res) => {
        assigned_to_arn = CASE WHEN $6 THEN $9 ELSE assigned_to_arn END,
        assigned_to_role = CASE WHEN $6 THEN $10 ELSE assigned_to_role END,
        completed_by = $11
-     WHERE id = $12 RETURNING *`,
-    [
-      d.details ? JSON.stringify(d.details) : null,
-      d.result ?? null,
-      d.score ?? null,
-      d.completedAt ? new Date(d.completedAt) : null,
-      d.assessorName ?? null,
-      hasAssignedTo,
-      d.assignedTo ?? null,
-      assignee.assignedToName,
-      assignee.assignedToArn,
-      assignee.assignedToRole,
-      req.user.id,
-      req.params.id,
-    ],
-  );
-  const updated = rowToCamel(rows[0]);
+     WHERE id = $12 RETURNING *`;
+  const updateParams = [
+    d.details ? JSON.stringify(d.details) : null,
+    d.result ?? null,
+    d.score ?? null,
+    d.completedAt ? new Date(d.completedAt) : null,
+    d.assessorName ?? null,
+    hasAssignedTo,
+    d.assignedTo ?? null,
+    assignee.assignedToName,
+    assignee.assignedToArn,
+    assignee.assignedToRole,
+    req.user.id,
+    req.params.id,
+  ];
+
+  let updated;
+  let superseded = [];
+  // Setting a result is what triggers "supersede whatever was previously
+  // current" below - serialized per crew member/check type(/variant) with
+  // an advisory lock (released automatically at COMMIT/ROLLBACK) so two
+  // near-simultaneous completions of duplicate check rows for the same
+  // crew member (e.g. a double-submitted "create check" click, each then
+  // completed close together) can't each see the other's freshly-set
+  // result and archive it - without this, both ended up archived, leaving
+  // lastCompletedCheck reading "never completed" right after two checks
+  // were just completed. Every other PATCH call (autosaving items/details
+  // while a form is still being filled in - the vast majority of calls to
+  // this route) skips the lock/transaction entirely, unchanged from before.
+  if (d.result && existing.crewMemberId) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`${existing.crewMemberId}:${existing.checkType}:${existing.details?.variant || ''}`],
+      );
+      const { rows } = await client.query(updateSql, updateParams);
+      updated = rowToCamel(rows[0]);
+
+      const supersedeParams = [updated.checkType, updated.crewMemberId, updated.id];
+      let variantClause = '';
+      // RECURRENT_SIMULATOR shares one checkType across PC/IPC, and
+      // UPGRADE_RECORD shares one checkType across all four upgrade variants -
+      // both need the variant match too, or completing e.g. a Check Captain
+      // Upgrade would wrongly archive that same crew member's already-completed
+      // (and unrelated) Training Captain Upgrade record.
+      if (updated.checkType === 'RECURRENT_SIMULATOR' || updated.checkType === 'UPGRADE_RECORD') {
+        supersedeParams.push(updated.details?.variant || null);
+        variantClause = `AND details->>'variant' = $${supersedeParams.length}`;
+      }
+      const { rows: supersededRows } = await client.query(
+        `UPDATE checks SET archived = true, archived_at = now()
+         WHERE check_type = $1 AND crew_member_id = $2 AND id != $3
+           AND archived = false AND result IS NOT NULL ${variantClause}
+         RETURNING id`,
+        supersedeParams,
+      );
+      superseded = supersededRows;
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    const { rows } = await pool.query(updateSql, updateParams);
+    updated = rowToCamel(rows[0]);
+  }
+
   // Only the specific PATCH call that actually sets a result reads as a
   // "completed" event worth surfacing - the same check gets several other
   // incremental UPDATE calls while a form is being filled in, which would
@@ -402,36 +455,8 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
-  // A newly-completed check supersedes whatever the crew member's previous
-  // completed check of the same type was (same variant too, for
-  // RECURRENT_SIMULATOR's shared PC/IPC checkType) - archiving the old one
-  // automatically means a crew member's Dates tab always shows just the
-  // current check for each recurrent item, with history sitting under
-  // "Show archived" rather than piling up as several non-archived rows.
-  // Scoped to crew members only (not ad-hoc/unlinked checks), matching
-  // where this was asked for.
-  if (d.result && updated.crewMemberId) {
-    const params = [updated.checkType, updated.crewMemberId, updated.id];
-    let variantClause = '';
-    // RECURRENT_SIMULATOR shares one checkType across PC/IPC, and
-    // UPGRADE_RECORD shares one checkType across all four upgrade variants -
-    // both need the variant match too, or completing e.g. a Check Captain
-    // Upgrade would wrongly archive that same crew member's already-completed
-    // (and unrelated) Training Captain Upgrade record.
-    if (updated.checkType === 'RECURRENT_SIMULATOR' || updated.checkType === 'UPGRADE_RECORD') {
-      params.push(updated.details?.variant || null);
-      variantClause = `AND details->>'variant' = $${params.length}`;
-    }
-    const { rows: superseded } = await pool.query(
-      `UPDATE checks SET archived = true, archived_at = now()
-       WHERE check_type = $1 AND crew_member_id = $2 AND id != $3
-         AND archived = false AND result IS NOT NULL ${variantClause}
-       RETURNING id`,
-      params,
-    );
-    for (const row of superseded) {
-      await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'checks', targetId: row.id });
-    }
+  for (const row of superseded) {
+    await logAction({ userId: req.user.id, action: 'ARCHIVE', targetTable: 'checks', targetId: row.id });
   }
 
   res.json(updated);

@@ -101,8 +101,14 @@ export function GroundInstructorCheckForm({ userId, userName }) {
     await save(check.id, { items: next });
   }
 
+  // Backdated to the check's own Date field (the day the observation
+  // actually happened) rather than the moment "Complete" is clicked - the
+  // same bug once corrupted a Cabin Attendant Line Check's due date (see
+  // migration 0097_fix_tomazin_line_check_date.sql) when signing off
+  // happened days after the check itself; nextDueRolling(completedAt)
+  // would otherwise roll this GIC's next-due date from the wrong day.
   async function complete(check) {
-    await save(check.id, { completedAt: new Date().toISOString() });
+    await save(check.id, { completedAt: check.dateOfObservation || new Date().toISOString() });
   }
 
   async function archiveCheck(check) {

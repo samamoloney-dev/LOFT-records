@@ -179,7 +179,14 @@ export function PersonnelCompetencyCheckEditor({ check, userName, candidateRole,
           label="Assessor signature" personType="user" personId={check.assessorId}
           signedName={check.certifiedSignature} signedAt={check.certifiedSignedAt}
           disabled={locked || !allItemsAnswered}
-          onSigned={(name, at) => onPatch({ certifiedSignature: name, certifiedSignedAt: at, completedAt: name ? at : null })}
+          // completedAt backdates to the check's own Date field (the day
+          // the assessment actually happened) rather than the signing
+          // moment - the same bug once corrupted a Cabin Attendant Line
+          // Check's due date (see migration
+          // 0097_fix_tomazin_line_check_date.sql) when signing off happened
+          // days after the check itself; nextDueRolling(completedAt) would
+          // otherwise roll this PAC's next-due date from the wrong day.
+          onSigned={(name, at) => onPatch({ certifiedSignature: name, certifiedSignedAt: at, completedAt: name ? (check.checkDate || at) : null })}
         />
       ) : (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Select an assessor above before signing.</div>

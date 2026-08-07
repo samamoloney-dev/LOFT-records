@@ -199,10 +199,15 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
   async function setRecommendation(check, recommendation) {
     setError(null);
     try {
+      // Backdated to the check's own Date field (set at creation - see
+      // createCheck above) rather than the moment the recommendation is
+      // recorded, matching every other check form's completedAt handling
+      // (see e.g. EpChecks.jsx) - the day the assessment actually happened,
+      // not whenever it got signed off in the app.
       const updated = await api.patch(`/api/checks/${check.id}`, {
         details: { ...check.details, recommendation },
         result: resultFor(variant, recommendation),
-        completedAt: new Date().toISOString(),
+        completedAt: check.details?.date || new Date().toISOString(),
       });
       setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
     } catch (err) { setError(err.message); }

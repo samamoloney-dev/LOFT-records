@@ -55,13 +55,18 @@ function LandingAssessmentAssigneePicker({ value, fleet, disabled, onAssign }) {
 function ObservationSector({ index, value, disabled, onChange }) {
   const v = value || {};
   const update = (field, fieldValue) => onChange(index, { ...v, [field]: fieldValue });
+  // Route is typed character by character, but was bound directly to
+  // value (round-tripping straight to the server and back on every
+  // keystroke) - buffered in local state and only saved on blur instead,
+  // same fix as CtlForm.jsx/Phase4Form.jsx's Route fields.
+  const [route, setRoute] = useState(v.route || '');
 
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Sector {index + 1}</div>
       <div className="grid2">
         <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
-        <div className="field"><label>Route</label><input disabled={disabled} value={v.route || ''} onChange={(e) => update('route', e.target.value)} /></div>
+        <div className="field"><label>Route</label><input disabled={disabled} value={route} onChange={(e) => setRoute(e.target.value)} onBlur={() => update('route', route)} /></div>
       </div>
     </div>
   );
@@ -73,17 +78,24 @@ function ObservationSector({ index, value, disabled, onChange }) {
 function DemonstrationSector({ index, value, disabled, onChange }) {
   const v = value || {};
   const update = (field, fieldValue) => onChange(index, { ...v, [field]: fieldValue });
+  // Airport/Rwy/Wind are typed character by character, but were bound
+  // directly to value (round-tripping straight to the server and back on
+  // every keystroke) - buffered in local state and only saved on blur
+  // instead, same fix as CtlForm.jsx/Phase4Form.jsx's Route fields.
+  const [airport, setAirport] = useState(v.airport || '');
+  const [rwy, setRwy] = useState(v.rwy || '');
+  const [wind, setWind] = useState(v.wind || '');
 
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Flight {index + 1}</div>
       <div className="grid2">
         <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
-        <div className="field"><label>Airport</label><input disabled={disabled} value={v.airport || ''} onChange={(e) => update('airport', e.target.value)} /></div>
+        <div className="field"><label>Airport</label><input disabled={disabled} value={airport} onChange={(e) => setAirport(e.target.value)} onBlur={() => update('airport', airport)} /></div>
       </div>
       <div className="grid2">
-        <div className="field"><label>Rwy</label><input disabled={disabled} value={v.rwy || ''} onChange={(e) => update('rwy', e.target.value)} /></div>
-        <div className="field"><label>Wind</label><input disabled={disabled} value={v.wind || ''} onChange={(e) => update('wind', e.target.value)} /></div>
+        <div className="field"><label>Rwy</label><input disabled={disabled} value={rwy} onChange={(e) => setRwy(e.target.value)} onBlur={() => update('rwy', rwy)} /></div>
+        <div className="field"><label>Wind</label><input disabled={disabled} value={wind} onChange={(e) => setWind(e.target.value)} onBlur={() => update('wind', wind)} /></div>
       </div>
       <div className="grid2">
         <div className="field">

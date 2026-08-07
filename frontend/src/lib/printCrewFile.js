@@ -1,12 +1,13 @@
 // Assembles one combined, page-broken printable document for a crew
 // member's whole file - a currency/competency summary followed by their
-// full history (at least the past 72 months) of every check type that
-// applies to them, including every pre-qualification LOFT training period
-// they've ever been through (initial onboarding, and any later
-// FO-to-Captain upgrade or fleet conversion - see crew.js's
-// loftTraineeIds) and, if they're also linked to an FS Staff account, that
-// account's own instructor/examiner competency check history too. See
-// CrewDetail.jsx's "Print file" button (HOTC/HOFO/Flight Ops Admin only).
+// last 4 completed records of every check type that applies to them, plus
+// every Additional Training item on file, every pre-qualification LOFT
+// training period they've ever been through (initial onboarding, and any
+// later FO-to-Captain upgrade or fleet conversion - see crew.js's
+// loftTraineeIds), and, if they're also linked to an FS Staff account,
+// that account's own instructor/examiner competency check history too.
+// See CrewDetail.jsx's "Print file" button (HOTC/HOFO/Flight Ops Admin
+// only).
 //
 // Each section reuses the exact same builder its own individual Print
 // button calls (see lib/printBuilders.js) - just fed with independently
@@ -18,13 +19,14 @@ import {
   buildCrewFileSummary, buildEpCheckHtml, buildCaLineCheckHtml, buildProficiencyCheckHtml,
   buildPilotLineCheckHtml, buildCtlFormHtml, buildCaptainInTrainingHtml, buildLandingAssessmentHtml,
   buildUpgradeRecordHtml, buildGroundInstructorCheckHtml, buildPersonnelCompetencyCheckHtml, buildLoftFlightHtml,
+  buildSpecialistTrainingHtml,
 } from './printBuilders';
 
-// Per the operator's explicit request: a personnel file/audit handover
-// needs a working career's worth of history, not just the current record -
-// "at least" 72 months, so nothing this recent is ever left out regardless
-// of how far back this operator's own data actually goes.
-const HISTORY_MONTHS = 72;
+// Per the operator's explicit request: the last 4 completions of each
+// check type, not the single current one - enough to show a real pattern
+// (spacing, examiners, recurring notes) without a personnel file growing
+// unbounded over a long career.
+const HISTORY_COUNT = 4;
 
 // Every fetch here is best-effort - a missing/erroring endpoint (e.g. no
 // Check to Line ever started for this trainee) just means that section is
@@ -57,15 +59,14 @@ async function fetchAllUserChecks(basePath, userId) {
   return [...(active || []), ...(archived || []).filter((c) => c.userId === userId)];
 }
 
-// Every completed check within the lookback window, most recent first -
-// matches each form's own PrintButton gating (completedAt is what actually
-// makes a record meaningful to print; an abandoned in-progress one isn't).
-function historicalChecks(checks, months = HISTORY_MONTHS) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
+// The last `count` completed checks, most recent first - matches each
+// form's own PrintButton gating (completedAt is what actually makes a
+// record meaningful to print; an abandoned in-progress one isn't).
+function historicalChecks(checks, count = HISTORY_COUNT) {
   return (checks || [])
-    .filter((c) => c.completedAt && new Date(c.completedAt) >= cutoff)
-    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    .filter((c) => c.completedAt)
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+    .slice(0, count);
 }
 
 export async function printCrewFile(member, competencies) {
@@ -111,6 +112,13 @@ export async function printCrewFile(member, competencies) {
     const finalHistory = historicalChecks((citChecks || []).filter((c) => c.details?.variant === 'FINAL'));
     for (const chk of prelimHistory) sections.push(buildCaptainInTrainingHtml(chk, 'PRELIMINARY', prelimItems || [], member.name));
     for (const chk of finalHistory) sections.push(buildCaptainInTrainingHtml(chk, 'FINAL', finalItems || [], member.name));
+
+    // Additional Training (SpecialistTrainingItems.jsx) - pilot-only, same
+    // as the Specialist Training tab itself. Every item on file, not just
+    // the last 4 - these are one-off named records (a course, a
+    // certificate), not a recurring check with a growing history.
+    const trainingItems = await safeGet(`/api/specialist-training?crewMemberId=${member.id}`);
+    for (const item of trainingItems || []) sections.push(buildSpecialistTrainingHtml(item));
   } else {
     const [caChecks, caAllItems] = await Promise.all([
       fetchAllChecks('CABIN_ATTENDANT_LINE_CHECK', member.id),

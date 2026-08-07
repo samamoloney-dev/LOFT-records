@@ -617,6 +617,29 @@ function currencyReportSection(title, rows) {
     </div>`;
 }
 
+// ---- Additional Training (SpecialistTrainingItems.jsx) ----
+// Free-form training records with no dedicated form of their own - one
+// section per item (name/completed date/notes), photos inlined as images
+// (already base64 data URIs, same as everywhere else photos appear in this
+// app) rather than just named/listed, since a scanned certificate *is* the
+// record here.
+export function buildSpecialistTrainingHtml(item) {
+  const photos = item.photos || [];
+  const photosHtml = photos.length > 0
+    ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">${photos.map((p) => `
+        <div style="width:160px;">
+          <img src="${p.data}" alt="${p.name}" style="width:100%;border:1px solid #d7dbe0;border-radius:3px;display:block;" />
+          <div style="font-size:9.5px;color:#555;margin-top:2px;word-break:break-word;">${p.name}</div>
+        </div>`).join('')}</div>`
+    : '';
+  return `
+    <h1>Additional Training</h1>
+    <div class="meta">${item.name}${item.completedDate ? ` · Completed ${formatDate(item.completedDate)}` : ' · No completed date on file'}</div>
+    ${section('Details', [['Notes', item.notes]])}
+    ${photosHtml}
+  `;
+}
+
 export function buildCurrencyOverviewHtml(rows) {
   const overdue = rows.filter((r) => r.status === 'overdue' || r.status === 'not_completed');
   const important = rows.filter((r) => r.status === 'important');

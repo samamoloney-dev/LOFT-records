@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { formatDate, formatFleet } from '../lib/format';
+import { formatDate, formatFleet, formatTraineeRole } from '../lib/format';
 import { crewLinkForItem } from '../lib/checkNav';
 import { PrintButton } from '../components/PrintButton';
+import { ExportCsvButton } from '../components/ExportCsvButton';
 import { openPrintWindow } from '../lib/print';
 import { buildCurrencyOverviewHtml } from '../lib/printBuilders';
+import { downloadCsv } from '../lib/exportCsv';
 
 // Overdue and not-yet-completed rank above the three graduated advance-
 // warning bands (important > due_soon > approaching - closest deadline
@@ -115,6 +117,49 @@ function StatusPill({ status }) {
   );
 }
 
+// Fixed 7-letter join key per competency, for handing dates off to the new
+// rostering system (which tracks the same competencies by a short code
+// rather than this app's full label) - see Export CSV below. Anything not
+// listed here (an admin-added ad-hoc competency, or a future catalog type
+// added after this map was written) falls through to codeFor's generated
+// fallback instead of coming through blank.
+const COMPETENCY_CODE_MAP = {
+  'Emergency Procedures': 'EMERPRC',
+  IPC: 'IPCHECK',
+  'Proficiency Check': 'PROFCHK',
+  'Line Check': 'LINECHK',
+  'Cabin Attendant Line Check': 'CALNCHK',
+  Medical: 'MEDICAL',
+  'Refresher Training': 'REFRESH',
+  'Dangerous Goods': 'DANGGDS',
+  'First Aid': 'FIRSTAD',
+  'SMS Training': 'SMSTRNG',
+  'Fatigue Management': 'FATIGMT',
+  'Human Factor and NTS': 'HUMFCTR',
+  'Human Factor and NTS 2': 'HUMFCT2',
+  'Human Factor and NTS 3': 'HUMFCT3',
+  'Human Factor and NTS 4': 'HUMFCT4',
+  DAMP: 'DAMPPGM',
+  CFIT: 'CFITAWR',
+  'CPR Training': 'CPRTRNG',
+  'Smoke and Firing Training': 'SMKFIRE',
+  'EFB Training': 'EFBTRNG',
+  'Emergency Slide F100 & Safety Equipment': 'ESLIDF1',
+  'Maintenance Authority': 'MAINTAU',
+  UPRT: 'UPRTRNG',
+  'Right Hand Seat': 'RGHTHND',
+};
+
+// Deterministic fallback for any label not in COMPETENCY_CODE_MAP above -
+// letters only, uppercased, truncated/padded to exactly 7 characters, so
+// every exported row always has some code rather than a blank one that'd
+// silently fail to match on the rostering side.
+function codeFor(label) {
+  if (COMPETENCY_CODE_MAP[label]) return COMPETENCY_CODE_MAP[label];
+  const letters = String(label || '').toUpperCase().replace(/[^A-Z]/g, '');
+  return (letters + 'XXXXXXX').slice(0, 7);
+}
+
 // Flattens a crew member's allItems (see backend/src/routes/crew.js
 // withCurrency/allItemsFor) into rows for this page - every recurrent
 // check and competency, whatever its status, so the whole roster's
@@ -125,9 +170,12 @@ function allRows(member) {
   return member.allItems.map((item) => ({
     memberId: member.id,
     name: member.name,
+    arn: member.arn,
+    type: member.type,
     fleets: member.fleets,
     fleet: member.fleets.map(formatFleet).join(', '),
     item: item.label,
+    itemCode: codeFor(item.label),
     dueDate: item.dueDate,
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
@@ -225,13 +273,32 @@ export function CurrencyOverview() {
     openPrintWindow('Currency Overview', buildCurrencyOverviewHtml(filteredRows));
   }
 
+  // Exports the whole roster's competency dates (not just whatever's
+  // currently filtered on screen) - this is meant as a full handoff to the
+  // rostering system, not a snapshot of what an admin happens to be
+  // looking at. ISO dates (YYYY-MM-DD), not this app's usual dd/mm/yyyy
+  // display format, so whatever imports this file can't misparse it as
+  // mm/dd/yyyy regardless of its own locale settings.
+  function exportCsv() {
+    const isoDate = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
+    const headers = ['Crew Member', 'ARN', 'Type', 'Fleet', 'Competency', 'Competency Code', 'Completed Date', 'Due Date', 'Status'];
+    const csvRows = rows.map((r) => [
+      r.name, r.arn || '', formatTraineeRole(r.type), r.fleet, r.item, r.itemCode,
+      isoDate(r.completedDate), isoDate(r.dueDate), STATUS_TEXT[r.status] || r.status,
+    ]);
+    downloadCsv(`competency-dates-${isoDate(new Date())}.csv`, headers, csvRows);
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: '0.75rem' }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
           Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
         </div>
-        <PrintButton onPrint={printReport} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ExportCsvButton onExport={exportCsv} />
+          <PrintButton onPrint={printReport} />
+        </div>
       </div>
       <FilterBar options={FLEET_FILTERS} value={fleetFilter} onChange={setFleetFilter} />
       <FilterBar options={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />

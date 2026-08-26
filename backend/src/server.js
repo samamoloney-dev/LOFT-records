@@ -33,8 +33,11 @@ const app = express();
 // middleware/auth.js) - credentials: true/cookie-parser aren't needed.
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // Default 100kb is too small for the IPC licence-photo capture (a
-// compressed base64 JPEG, see checks.js PATCH /:id/licence-photo).
-app.use(express.json({ limit: '8mb' }));
+// compressed base64 JPEG, see checks.js PATCH /:id/licence-photo) - bumped
+// again for crew certificate PDFs (crew.js POST /:id/certificates), which
+// can run several MB for a multi-page scan and aren't compressed
+// client-side the way photos are.
+app.use(express.json({ limit: '20mb' }));
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

@@ -1217,6 +1217,83 @@ router.delete('/:id/competencies/:competencyId', requireRole(...ADMIN_ROLES), as
   res.status(204).end();
 });
 
+// Scanned certificates (Dangerous Goods, First Aid, licences, etc.) - a
+// crew member can hold several, each imported as a PDF scan and viewable
+// again later. List response omits file_data (kept lightweight, same
+// reasoning as excluding licencePhoto from the roster list above) - the
+// full PDF is only fetched when a specific certificate is actually opened.
+router.get('/:id/certificates', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows } = await pool.query(
+    `SELECT id, name, file_name, uploaded_by_name, created_at FROM crew_certificates
+     WHERE crew_member_id = $1 ORDER BY created_at DESC`,
+    [member.id],
+  );
+  res.json(rows.map(rowToCamel));
+});
+
+router.get('/:id/certificates/:certificateId', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+
+  const { rows } = await pool.query(
+    'SELECT * FROM crew_certificates WHERE id = $1 AND crew_member_id = $2',
+    [req.params.certificateId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  res.json(rowToCamel(rows[0]));
+});
+
+const certificateSchema = z.object({
+  name: z.string().min(1),
+  fileName: z.string().min(1),
+  fileData: z.string().min(1),
+});
+
+router.post('/:id/certificates', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const parsed = certificateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const d = parsed.data;
+
+  const { rows } = await pool.query(
+    `INSERT INTO crew_certificates (crew_member_id, name, file_name, file_data, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, name, file_name, uploaded_by_name, created_at`,
+    [member.id, d.name, d.fileName, d.fileData, req.user.name],
+  );
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'crew_certificates', targetId: rows[0].id,
+    description: `Uploaded certificate "${d.name}" for ${member.name}`,
+  });
+  res.status(201).json(rowToCamel(rows[0]));
+});
+
+router.delete('/:id/certificates/:certificateId', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const { rows } = await pool.query(
+    'DELETE FROM crew_certificates WHERE id = $1 AND crew_member_id = $2 RETURNING name',
+    [req.params.certificateId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'DELETE', targetTable: 'crew_certificates', targetId: req.params.certificateId,
+    description: `Deleted certificate "${rows[0].name}" for ${member.name}`,
+  });
+  res.status(204).end();
+});
+
 // Clearance Form - the paper trail (SA 539 for cabin attendants, SA 586 for
 // pilots) that gets a fresh sign-off box added every time a crew member
 // clears a stage: aircraft type conversion/ground school, then check to

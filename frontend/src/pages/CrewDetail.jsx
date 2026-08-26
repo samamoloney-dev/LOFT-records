@@ -16,7 +16,7 @@ import { SpecialistTrainingItems } from './SpecialistTrainingItems';
 import { DueBadge } from '../components/DueBadge';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { TabBar } from '../components/TabBar';
-import { formatFleet, formatTraineeRole } from '../lib/format';
+import { formatFleet, formatTraineeRole, formatDate } from '../lib/format';
 import { UPGRADE_VARIANTS, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
@@ -376,6 +376,127 @@ function LicencePhotoTab({ member, onSaved }) {
         )}
         {error && <div className="error-text">{error}</div>}
       </div>
+    </div>
+  );
+}
+
+// Reads a File straight into a base64 data URI - same FileReader pattern as
+// lib/imageCompress.js's compressImage, minus the canvas re-encode step
+// (a PDF can't be re-compressed the way a camera photo can).
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Opens a base64 data-URI PDF in a new tab via a Blob/object URL rather than
+// navigating directly to the (potentially several-MB) data: URI itself,
+// which some browsers cap or refuse for large URLs.
+function viewPdf(dataUri) {
+  const [, base64] = dataUri.split(',');
+  const bytes = atob(base64);
+  const array = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) array[i] = bytes.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([array], { type: 'application/pdf' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Scanned certificates (Dangerous Goods, First Aid, licences, etc.) - the
+// operator imports a PDF per certificate and can reopen it later. Unlike
+// Licence Photo (a single slot) this is an open-ended list, closer in shape
+// to Specialist Training's photos - but its own tab, since it applies to
+// every crew member (pilot and cabin attendant alike), not just pilots.
+function CertificatesTab({ member }) {
+  const [certificates, setCertificates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  function load() {
+    setLoading(true);
+    api.get(`/api/crew/${member.id}/certificates`)
+      .then(setCertificates)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, [member.id]);
+
+  async function upload(file) {
+    if (!file || !name.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const fileData = await readFileAsDataUrl(file);
+      await api.post(`/api/crew/${member.id}/certificates`, { name: name.trim(), fileName: file.name, fileData });
+      setName('');
+      load();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function view(cert) {
+    setError(null);
+    try {
+      const full = await api.get(`/api/crew/${member.id}/certificates/${cert.id}`);
+      viewPdf(full.fileData);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function remove(cert) {
+    if (!window.confirm(`Delete "${cert.name}"? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await api.delete(`/api/crew/${member.id}/certificates/${cert.id}`);
+      setCertificates((cs) => cs.filter((c) => c.id !== cert.id));
+    } catch (err) { setError(err.message); }
+  }
+
+  if (loading) return <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+        Scanned certificates on file for this crew member - imported as PDFs, click a certificate to view it.
+      </div>
+
+      {!member.archived && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="field">
+            <label>Certificate name</label>
+            <input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods Certificate" />
+          </div>
+          <div className="field">
+            <label>{busy ? 'Uploading…' : 'Import PDF'}</label>
+            <input
+              type="file" accept="application/pdf" disabled={busy || !name.trim()}
+              onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(f); }}
+            />
+            {!name.trim() && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Name the certificate above before choosing a file.</div>}
+          </div>
+        </div>
+      )}
+      {error && <div className="error-text">{error}</div>}
+
+      {certificates.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No certificates on file yet.</div>
+      ) : certificates.map((cert) => (
+        <div key={cert.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>{cert.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {cert.fileName} · Added {formatDate(cert.createdAt)}{cert.uploadedByName ? ` by ${cert.uploadedByName}` : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => view(cert)}>View</button>
+            {!member.archived && <button className="danger" onClick={() => remove(cert)}>Delete</button>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -768,6 +889,7 @@ export function CrewDetail() {
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
     ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),
     ...(isAdmin ? [{ key: 'specialistTraining', label: 'Specialist Training' }] : []),
+    ...(isAdmin ? [{ key: 'certificates', label: 'Certificates' }] : []),
   ];
 
   return (
@@ -808,6 +930,7 @@ export function CrewDetail() {
       )}
       {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
       {topTab === 'specialistTraining' && isAdmin && <SpecialistTrainingTab member={member} />}
+      {topTab === 'certificates' && isAdmin && <CertificatesTab member={member} />}
     </div>
   );
 }

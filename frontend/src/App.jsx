@@ -18,6 +18,7 @@ import { Planning } from './pages/Planning';
 import { SyllabusAdmin, ContentApprovalAlert } from './pages/SyllabusAdmin';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
+import { OverdueCheckAlert } from './components/OverdueCheckAlert';
 import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from './lib/roles';
@@ -127,6 +128,7 @@ function Shell({ children }) {
         <button onClick={logout}>Sign out</button>
       </div>
       <main className="main-content">
+        {user.role !== 'TRAINEE' && <OverdueCheckAlert />}
         {user.role !== 'TRAINEE' && <MeetingMinutesAlert />}
         {user.role !== 'TRAINEE' && <ContentApprovalAlert />}
         {children}

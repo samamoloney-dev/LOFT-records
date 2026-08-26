@@ -7,6 +7,7 @@ const { canAccessChecks, isAdmin, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS, PERSO
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
+const { localDateString } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -195,6 +196,57 @@ router.post('/alerts/mark-reviewed', async (req, res) => {
   );
   await pool.query(`UPDATE check_to_line_forms SET reviewed_at = now() WHERE completed_at IS NOT NULL AND reviewed_at IS NULL`);
   res.json({ count: 0 });
+});
+
+// Whole calendar days between two YYYY-MM-DD date strings (not real elapsed
+// time) - both sides are plain calendar dates (details.date, the date the
+// check was actually scheduled for - see createCheckRecord/
+// ProficiencyChecks.jsx, which always set this - not the due_date column,
+// which this creation path leaves null), so this is deliberately pure date
+// arithmetic rather than anything instant/timezone-based.
+function daysBetweenDates(fromStr, toStr) {
+  const [fy, fm, fd] = fromStr.slice(0, 10).split('-').map(Number);
+  const [ty, tm, td] = toStr.slice(0, 10).split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+
+// A check form still not completed more than a day after the date it was
+// actually scheduled for - per the operator's explicit rule, this has to
+// reach the assigned examiner/check pilot directly (see
+// OverdueCheckAlert.jsx), not just sit in an admin-only report they might
+// never open. "Today" is Australia/Perth (see currency.js's
+// localDateString), matching every other due-date calculation in this app,
+// rather than the server's own UTC clock.
+router.get('/alerts/overdue-completion', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, crew_member_id, check_type, details, crew_member_name, assigned_to, assigned_to_name
+     FROM checks
+     WHERE completed_at IS NULL AND archived = false
+       AND check_type IN ('EMERGENCY_PROCEDURES', 'RECURRENT_SIMULATOR', 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK')`,
+  );
+  const today = localDateString();
+  const overdue = rows
+    .map(rowToCamel)
+    .filter((c) => c.details?.date && daysBetweenDates(c.details.date, today) >= 1)
+    .map((c) => ({
+      id: c.id,
+      crewMemberId: c.crewMemberId,
+      crewMemberName: c.crewMemberName,
+      label: alertLabelFor(c.checkType, c.details),
+      scheduledDate: c.details.date,
+      daysOverdue: daysBetweenDates(c.details.date, today),
+      assignedTo: c.assignedTo,
+      assignedToName: c.assignedToName,
+    }))
+    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  res.json({
+    mine: overdue.filter((c) => c.assignedTo === req.user.id),
+    // Full roster-wide view for admins (who's responsible for what, even
+    // checks assigned to someone else or to no one) - everyone else only
+    // ever sees their own, via `mine` above.
+    all: isAdmin(req.user) ? overdue : [],
+  });
 });
 
 router.get('/:id', async (req, res) => {

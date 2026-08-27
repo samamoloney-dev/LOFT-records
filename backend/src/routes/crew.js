@@ -442,6 +442,12 @@ async function itemsFor(member, currency, inLoft) {
       plannedDate: info.plannedDate,
       issued: info.issued,
       overdueReason: info.overdueReason,
+      // Whether the plan above has actually been confirmed on the roster
+      // (see crew_planned_checks.rostered / Planning.jsx's "Mark rostered"
+      // button) - distinct from merely having a plannedDate/assignee, both
+      // of which can exist without this being true yet. Competencies have
+      // no equivalent concept, so this is only ever set here.
+      rostered: info.rostered,
     }));
 
   // Includes ad-hoc competencies now (see activeCompetencies above) - a
@@ -662,8 +668,9 @@ router.get('/', async (req, res) => {
   const effectiveType = isCaOnlyRole(req.user) ? 'CABIN_ATTENDANT' : type;
   const members = await listCrewWithCurrency({ type: effectiveType, archived: archived === 'true' });
   // Roster/overview views don't need the (potentially large) base64 licence
-  // photo - only the crew member's own detail page does (see GET /:id).
-  res.json(members.map(({ licencePhoto, ...rest }) => rest));
+  // photo or medical document - only the crew member's own detail page does
+  // (see GET /:id).
+  res.json(members.map(({ licencePhoto, medicalDocument, ...rest }) => rest));
 });
 
 router.get('/:id', async (req, res) => {
@@ -933,6 +940,51 @@ router.patch('/:id', async (req, res) => {
   res.json(await withCurrency(await findCrewMember(req.params.id)));
 });
 
+const medicalDocumentSchema = z.object({
+  fileName: z.string().min(1),
+  fileData: z.string().min(1),
+});
+
+// Current medical certificate PDF, kept on the crew profile itself (Medical
+// tab) rather than the general Documents list - a single slot, replaced
+// (not accumulated) each time a new certificate is issued. Whatever was
+// there before gets filed into crew_documents (archived) first, so it stays
+// findable later under this crew member's name via the Archive page's
+// searchable Documents tab, per the operator's explicit request, instead of
+// being silently overwritten and lost.
+router.post('/:id/medical-document', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const parsed = medicalDocumentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows: currentRows } = await pool.query(
+    'SELECT medical_document, medical_document_file_name FROM crew_members WHERE id = $1',
+    [member.id],
+  );
+  const current = currentRows[0];
+  if (current?.medical_document) {
+    await pool.query(
+      `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name, archived, archived_at)
+       VALUES ($1, 'Medical Certificate (superseded)', $2, $3, $4, true, now())`,
+      [member.id, current.medical_document_file_name || 'medical.pdf', current.medical_document, req.user.name],
+    );
+  }
+
+  await pool.query(
+    'UPDATE crew_members SET medical_document = $1, medical_document_file_name = $2 WHERE id = $3',
+    [parsed.data.fileData, parsed.data.fileName, member.id],
+  );
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: member.id,
+    description: `Uploaded medical certificate for ${member.name}`,
+  });
+  res.json(await withCurrency(await findCrewMember(req.params.id)));
+});
+
 // Mirrors frontend/src/pages/CrewDetail.jsx's OVERDUE_REASONS - a fixed
 // dropdown rather than free text, per the operator's explicit request.
 const OVERDUE_REASONS = ['In LOFT', 'Sick Leave', 'Personal Leave', 'Failed Check'];
@@ -1028,6 +1080,13 @@ router.post('/:id/planned-checks/:checkKey/create-check', blockCaManager, async 
   const planned = rowToCamel(plannedRows[0]);
   if (!planned.plannedDate || !planned.assignedTo) {
     return res.status(400).json({ error: 'A planned date and an assigned examiner are both required' });
+  }
+  // Closes the same loophole the Planning tab's button gating exists to
+  // close (see Planning.jsx PlannedChecksSection) - enforced here too so a
+  // check form can never be created from a plan nobody has actually
+  // confirmed is on the roster, even via a direct API call.
+  if (!planned.rostered) {
+    return res.status(400).json({ error: 'Confirm this check is rostered before creating the check form' });
   }
 
   const { checkType, variant } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);

@@ -104,6 +104,168 @@ function ArchivedDocuments() {
   );
 }
 
+// Reads a File as a base64 data URI - same approach as CrewDetail.jsx's own
+// readFileAsDataUrl, duplicated here rather than shared since this page has
+// no import path to a component file.
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Mirrors CrewDetail.jsx's nameFromFileName - strips the extension and
+// turns dashes/underscores into spaces, so a batch import doesn't leave
+// every document named after its raw filename.
+function nameFromFileName(fileName) {
+  return fileName.replace(/\.pdf$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || fileName;
+}
+
+function normalize(s) {
+  return (s || '').toLowerCase().replace(/[^a-z]/g, '');
+}
+
+// Guesses which crew member a scanned document belongs to from its
+// filename - requires a last name match, and if more than one crew member
+// shares a last name, also requires a first name match to disambiguate.
+// Anything still ambiguous (or with no match at all) is left blank rather
+// than risking a document landing on the wrong person's profile - the
+// operator picks it manually instead.
+function guessMemberId(fileName, members) {
+  const norm = normalize(fileName);
+  const byBoth = members.filter((m) => {
+    const last = normalize(m.lastName);
+    const first = normalize(m.firstName);
+    return last && norm.includes(last) && first && norm.includes(first);
+  });
+  if (byBoth.length === 1) return byBoth[0].id;
+  const byLastOnly = members.filter((m) => {
+    const last = normalize(m.lastName);
+    return last && norm.includes(last);
+  });
+  return byLastOnly.length === 1 ? byLastOnly[0].id : '';
+}
+
+// Imports many scanned documents across the whole roster in one go, rather
+// than having to open each crew member's own profile and upload one at a
+// time - each file is auto-matched to a crew member by filename (last
+// name, and first name too if more than one person shares it), with a
+// dropdown to fix or fill in any that couldn't be guessed confidently.
+// Reuses the existing per-document POST route underneath (one request per
+// file, sequential so a partial failure doesn't leave things interleaved),
+// so no separate bulk endpoint exists on the backend.
+function BulkImportDocuments() {
+  const [members, setMembers] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
+  const [doneCount, setDoneCount] = useState(0);
+
+  useEffect(() => {
+    Promise.all([api.get('/api/crew?type=PILOT'), api.get('/api/crew?type=CABIN_ATTENDANT')])
+      .then(([pilots, cas]) => setMembers([...pilots, ...cas].sort((a, b) => a.name.localeCompare(b.name))))
+      .catch((e) => setError(e.message));
+  }, []);
+
+  function addFiles(files) {
+    if (!files || files.length === 0) return;
+    setDoneCount(0);
+    setRows((prev) => [
+      ...prev,
+      ...files.map((file) => ({
+        file,
+        fileName: file.name,
+        name: nameFromFileName(file.name),
+        crewMemberId: guessMemberId(file.name, members),
+      })),
+    ]);
+  }
+
+  function updateRow(i, patch) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  function removeRow(i) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function importAll() {
+    if (rows.some((r) => !r.crewMemberId)) {
+      setError('Pick a crew member for every document before importing.');
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    const remaining = [];
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        setProgress({ done: i, total: rows.length });
+        const r = rows[i];
+        try {
+          const fileData = await readFileAsDataUrl(r.file);
+          await api.post(`/api/crew/${r.crewMemberId}/documents`, { name: r.name, fileName: r.fileName, fileData });
+          setDoneCount((n) => n + 1);
+        } catch (err) {
+          remaining.push({ ...r, error: err.message });
+        }
+      }
+    } finally {
+      setRows(remaining);
+      setBusy(false);
+      setProgress(null);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+        Import many scanned documents at once across the whole roster - each file is matched to a crew member by
+        filename where possible (fix or fill in any that couldn't be guessed), then imported straight to that
+        person's own Documents tab.
+      </div>
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="field">
+          <label>{busy ? (progress ? `Importing ${progress.done + 1} of ${progress.total}…` : 'Importing…') : 'Select PDF(s) to import'}</label>
+          <input
+            type="file" accept="application/pdf" multiple disabled={busy}
+            onChange={(e) => { const files = [...e.target.files]; e.target.value = ''; addFiles(files); }}
+          />
+        </div>
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {doneCount > 0 && rows.length === 0 && !busy && (
+        <div className="card" style={{ background: 'var(--bg-accent)', color: 'var(--text-accent)' }}>
+          Imported {doneCount} document{doneCount === 1 ? '' : 's'}.
+        </div>
+      )}
+      {rows.map((r, i) => (
+        <div key={i} className="card" style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="field" style={{ margin: 0, flex: '1 1 220px' }}>
+            <label>{r.fileName}{r.error ? ` - failed: ${r.error}` : ''}</label>
+            <input value={r.name} disabled={busy} onChange={(e) => updateRow(i, { name: e.target.value })} placeholder="Document name" />
+          </div>
+          <div className="field" style={{ margin: 0, flex: '1 1 220px' }}>
+            <label>Crew member</label>
+            <select value={r.crewMemberId} disabled={busy} onChange={(e) => updateRow(i, { crewMemberId: e.target.value })}>
+              <option value="">— Select crew member —</option>
+              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+          <button disabled={busy} onClick={() => removeRow(i)}>Remove</button>
+        </div>
+      ))}
+      {rows.length > 0 && (
+        <button className="primary" disabled={busy} onClick={importAll}>
+          Import {rows.length} document{rows.length === 1 ? '' : 's'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Archive() {
   const topTabs = [
     { key: 'pilots', label: 'Pilots' },
@@ -129,6 +291,12 @@ export function Archive() {
     { key: 'ep', label: 'Emergency Procedures' },
   ];
   const [caTab, setCaTab] = useState('loft');
+
+  const documentTabs = [
+    { key: 'search', label: 'Search archive' },
+    { key: 'bulk-import', label: 'Bulk import' },
+  ];
+  const [documentTab, setDocumentTab] = useState('search');
 
   return (
     <div>
@@ -159,7 +327,13 @@ export function Archive() {
 
       {topTab === 'specialist' && <ArchivedUpgrades />}
 
-      {topTab === 'documents' && <ArchivedDocuments />}
+      {topTab === 'documents' && (
+        <div>
+          <TabBar tabs={documentTabs} active={documentTab} onSelect={setDocumentTab} />
+          {documentTab === 'search' && <ArchivedDocuments />}
+          {documentTab === 'bulk-import' && <BulkImportDocuments />}
+        </div>
+      )}
 
       {topTab === 'others' && <ArchivedTrainees />}
     </div>

@@ -332,16 +332,71 @@ function MedicalBox({ medical, onUpdate, disabled }) {
   );
 }
 
+// Current medical certificate PDF, stored on the crew profile itself (a
+// single slot, replaced rather than accumulated - see backend/src/routes/
+// crew.js POST /:id/medical-document). Uploading a new one automatically
+// archives whatever was there before into this crew member's Documents
+// list (already archived, so it doesn't clutter their active list), which
+// is exactly what the Archive page's searchable Documents tab searches -
+// per the operator's explicit request that a superseded certificate stay
+// findable under this crew member's name rather than being silently lost.
+function MedicalDocument({ member, onSaved }) {
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  function view() {
+    if (member.medicalDocument) viewPdf(member.medicalDocument);
+  }
+
+  async function upload(file) {
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const fileData = await readFileAsDataUrl(file);
+      const updated = await api.post(`/api/crew/${member.id}/medical-document`, { fileName: file.name, fileData });
+      onSaved(updated);
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Medical certificate</div>
+      {member.medicalDocumentFileName ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{member.medicalDocumentFileName}</div>
+          <button onClick={view}>View</button>
+        </div>
+      ) : (
+        <div style={{ color: 'var(--text-secondary)', marginBottom: 10, fontSize: 13 }}>No medical certificate on file yet.</div>
+      )}
+      {!member.archived && (
+        <>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>
+            {busy ? 'Uploading…' : member.medicalDocumentFileName ? 'Replace with new certificate' : 'Add certificate'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 6 }}>
+            Uploading a new one archives the old copy - still findable later via the Archive page's Documents search.
+          </div>
+          <input type="file" accept="application/pdf" disabled={busy} onChange={(e) => upload(e.target.files[0])} />
+        </>
+      )}
+      {error && <div className="error-text">{error}</div>}
+    </div>
+  );
+}
+
 // Full Completed/Due/Planned date editing for Medical, on its own tab
 // rather than mixed into the general Competencies list (see CrewDetail) -
 // reuses the same CompetencyRow the Competencies list uses for everything
 // else, just scoped to the one Medical entry.
-function MedicalTab({ medical, onUpdate, unlocked, setUnlocked, error, archived }) {
+function MedicalTab({ member, medical, onUpdate, onSaved, unlocked, setUnlocked, error, archived }) {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Medical</div>
       {error && <div className="error-text">{error}</div>}
       <CompetencyRow c={medical} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
+      <MedicalDocument member={member} onSaved={onSaved} />
     </div>
   );
 }
@@ -1155,7 +1210,7 @@ export function CrewDetail() {
         />
       )}
       {topTab === 'medical' && medical && (
-        <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
+        <MedicalTab member={member} medical={medical} onUpdate={updateCompetency} onSaved={setMember} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
       )}
       {topTab === 'competencies' && (
         <CompetenciesTab

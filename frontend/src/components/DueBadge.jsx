@@ -72,7 +72,9 @@ export function DueBadge({ label, info }) {
       {info.issued ? (
         <div style={{ fontSize: 10.5, color: 'var(--text-accent)' }}>Check Form Issued</div>
       ) : info.plannedDate && (
-        <div style={{ fontSize: 10.5, color: 'var(--text-accent)' }}>Planned for {formatDate(info.plannedDate)}</div>
+        <div style={{ fontSize: 10.5, color: info.rostered ? '#14632f' : 'var(--text-accent)', fontWeight: info.rostered ? 600 : 400 }}>
+          {info.rostered ? '✓ Rostered for ' : 'Planned for '}{formatDate(info.plannedDate)}
+        </div>
       )}
     </div>
   );

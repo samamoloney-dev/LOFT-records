@@ -29,6 +29,30 @@ const NOT_YET_DUE_STATUSES = ['ok', 'important', 'due_soon', 'approaching'];
 // never-done - used for Needs Attention and the "Not Yet Rostered" filter.
 const URGENT_STATUSES = ['overdue', 'important', 'due_soon', 'approaching', 'not_completed'];
 
+// A currency item (EP/IPC/PC/Line Check) only carries a real `rostered`
+// flag (see crew.js itemsFor/crew_planned_checks.rostered) - a bare
+// plannedDate or assigned examiner used to be enough to drop it from Needs
+// Attention/the "Not Yet Rostered" filter, but neither is a firm
+// commitment until "Mark rostered" is actually clicked (Planning.jsx), so
+// a check with just a hopeful plannedDate could silently run past its due
+// date with nobody having ever really booked it in - this closes that
+// loophole. Ad-hoc/catalog competencies have no rostered concept of their
+// own (`rostered` stays undefined for them), so a plannedDate there still
+// counts as "in hand", same as before.
+//
+// Either way, a plan only counts as "in hand" while its own planned date
+// hasn't itself already slipped by - once today is past the planned date
+// with no check form actually created (`issued`) or competency completed,
+// the plan clearly didn't happen, so this stops suppressing the alert
+// rather than staying silent forever off a promise that was never kept.
+function isInHand(i) {
+  if (i.issued) return true;
+  if (!i.plannedDate) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (new Date(i.plannedDate) < today) return false;
+  return i.rostered !== undefined ? !!i.rostered : true;
+}
+
 // Mirrors frontend/src/lib/checkNav.js's crewLinkForItem - lets a Home
 // Dashboard row land straight on the specific check/tab rather than just
 // the crew profile root.
@@ -148,7 +172,7 @@ router.get('/summary', async (req, res) => {
        ORDER BY outstanding DESC`,
     ),
     pool.query(
-      `SELECT pc.crew_member_id, pc.check_key, pc.planned_date, pc.assigned_to_name, cm.first_name, cm.last_name, cm.fleets, cm.type
+      `SELECT pc.crew_member_id, pc.check_key, pc.planned_date, pc.assigned_to_name, pc.rostered, cm.first_name, cm.last_name, cm.fleets, cm.type
        FROM crew_planned_checks pc
        JOIN crew_members cm ON cm.id = pc.crew_member_id
        WHERE cm.archived = false AND pc.planned_date IS NOT NULL
@@ -284,7 +308,7 @@ router.get('/summary', async (req, res) => {
   // active check record exists) - same fix as CurrencyOverview.jsx's own
   // Not Yet Rostered filter, which had the identical gap.
   const attentionCurrencyItems = allItems.filter((i) => (
-    URGENT_STATUSES.includes(i.status) && !i.plannedDate && !i.issued && !isActiveLoftTrainee(i.member)
+    URGENT_STATUSES.includes(i.status) && !isInHand(i) && !isActiveLoftTrainee(i.member)
   ));
   const overdueAttention = attentionCurrencyItems
     .filter((i) => i.status === 'overdue')
@@ -429,6 +453,7 @@ router.get('/summary', async (req, res) => {
       fleets: parsePgArray(r.fleets),
       label: CHECK_LABELS[r.check_key] || r.check_key,
       assignedToName: r.assigned_to_name,
+      rostered: !!r.rostered,
       isCheck: true,
       linkTo: `/crew/${r.crew_member_id}`,
     })),

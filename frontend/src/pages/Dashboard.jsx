@@ -76,9 +76,14 @@ function ComingUpPanel({ data, navigate }) {
             </div>
           </div>
           {row.isCheck && (
-            row.assignedToName
-              ? <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{row.assignedToName}</div>
-              : <span className="badge warn" style={{ fontSize: 11 }}>Unassigned</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              {row.assignedToName
+                ? <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{row.assignedToName}</div>
+                : <span className="badge warn" style={{ fontSize: 11 }}>Unassigned</span>}
+              {row.rostered && (
+                <span className="badge" style={{ fontSize: 11, background: '#dff5e1', color: '#14632f' }}>Rostered</span>
+              )}
+            </div>
           )}
         </div>
       ))}

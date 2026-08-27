@@ -187,6 +187,12 @@ function allRows(member) {
     // ever separately entering a planned date, and that candidate is
     // clearly no longer "not yet rostered" even though plannedDate is null.
     issued: item.issued,
+    // Whether a plannedDate above has actually been confirmed on the
+    // roster (see crew.js itemsFor/crew_planned_checks.rostered) - only
+    // ever set for EP/IPC/PC/Line Check rows; competencies have no
+    // rostered concept and this stays undefined for them (see isInHand
+    // below, same fallback as the backend's dashboard.js uses).
+    rostered: item.rostered,
     status: item.status,
     // A typed note explaining why this is overdue (see crew.js's
     // ReasonEditor/overdueReason) - only ever set on the recurrent
@@ -246,13 +252,30 @@ export function CurrencyOverview() {
   // Planning tab - an admin who's already assigned an examiner has plainly
   // actioned it, so it shouldn't still read as "not yet rostered".
   const ROSTERABLE_STATUSES = ['overdue', 'not_completed', 'important', 'due_soon', 'approaching'];
+  // A bare plannedDate/assigned examiner used to be enough to count as
+  // "rostered" here - but neither is a firm commitment until "Mark
+  // rostered" is actually clicked (see Planning.jsx), so a check with just
+  // a hopeful plannedDate could sit in the "Rostered" bucket and never get
+  // followed up. Competencies have no rostered concept of their own
+  // (r.rostered stays undefined), so a plannedDate still counts there.
+  // Either way, once the planned date itself has already slipped by with
+  // nothing actually issued/completed, the plan clearly didn't happen -
+  // this stops counting it as "in hand" rather than hiding it forever
+  // (mirrors backend/src/routes/dashboard.js's own isInHand).
+  const isInHand = (r) => {
+    if (r.issued) return true;
+    if (!r.plannedDate) return false;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (new Date(r.plannedDate) < today) return false;
+    return r.rostered !== undefined ? !!r.rostered : true;
+  };
   const filteredRows = rows
     .filter((r) => statusFilter === 'all' || r.status === statusFilter)
     .filter((r) => fleetFilter === 'all' || (fleetFilter === 'CABIN_ATTENDANTS' ? r.fleets.some((f) => CABIN_FLEETS.includes(f)) : r.fleets.includes(fleetFilter)))
     .filter((r) => {
       if (rosteredFilter === 'all') return true;
-      if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !r.plannedDate && !r.issued;
-      return !!r.plannedDate || !!r.issued;
+      if (rosteredFilter === 'not_rostered') return ROSTERABLE_STATUSES.includes(r.status) && !isInHand(r);
+      return isInHand(r);
     });
   // Once specifically looking at what's already booked in, the planned date
   // itself (closest first) is more useful than the usual overdue-first
@@ -315,7 +338,9 @@ export function CurrencyOverview() {
             {r.issued ? (
               <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Check Form Issued</div>
             ) : r.plannedDate && (
-              <div style={{ fontSize: 11, color: 'var(--text-accent)', marginTop: 2 }}>Planned for {formatDate(r.plannedDate)}</div>
+              <div style={{ fontSize: 11, color: r.rostered ? '#14632f' : 'var(--text-accent)', marginTop: 2, fontWeight: r.rostered ? 600 : 400 }}>
+                {r.rostered ? '✓ Rostered for ' : 'Planned for '}{formatDate(r.plannedDate)}
+              </div>
             )}
             {r.overdueReason && <span className="badge warn" style={{ marginTop: 4, display: 'inline-block' }}>{r.overdueReason}</span>}
           </div>

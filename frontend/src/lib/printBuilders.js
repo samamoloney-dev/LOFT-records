@@ -601,7 +601,7 @@ export function buildCrewFileSummary(member, competencies) {
 // applied there), rather than always dumping the entire roster regardless
 // of what the admin was actually looking at.
 function currencyReportRow(r) {
-  const notes = r.overdueReason || (r.issued ? 'Check Form Issued' : '') || (r.plannedDate ? `Planned ${formatDate(r.plannedDate)}` : '') || (r.inLoft ? 'In LOFT' : '');
+  const notes = r.overdueReason || (r.issued ? 'Check Form Issued' : '') || (r.plannedDate ? `${r.rostered ? 'Rostered' : 'Planned'} ${formatDate(r.plannedDate)}` : '') || (r.inLoft ? 'In LOFT' : '');
   return `<tr><td>${r.name}</td><td>${r.fleet}</td><td>${r.item}</td><td>${r.dueDate ? formatDate(r.dueDate) : '—'}</td><td>${notes}</td></tr>`;
 }
 

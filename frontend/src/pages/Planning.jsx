@@ -26,6 +26,7 @@ const ACCESS_TYPE_FOR_KEY = {
 function PlannedChecksSection() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
 
   function load() {
     api.get('/api/planning/planned-checks').then(setRows).catch((e) => setError(e.message));
@@ -51,9 +52,31 @@ function PlannedChecksSection() {
     } catch (err) { setError(err.message); }
   }
 
-  // Once both a planned date and an assigned examiner/instructor/check
-  // pilot are in place, this turns the plan into the real (incomplete)
-  // check record - the row then disappears since it's no longer just a plan.
+  // Separate, deliberate confirmation that this plan is actually on the
+  // roster - not just a date and an assignee, both of which can exist
+  // before anything's really booked in (mirrors IpcPcSpacingSection's own
+  // "Mark rostered" button below, and crew.js's rostered gate on
+  // create-check). A changed date/assignee already invalidates this
+  // server-side (see crew.js PUT /planned-checks), so no client-side reset
+  // needed here beyond the reload.
+  async function toggleRostered(row) {
+    const key = `${row.crewMemberId}-${row.checkKey}`;
+    setSavingKey(key);
+    setError(null);
+    try {
+      await api.put(`/api/crew/${row.crewMemberId}/planned-checks/${row.checkKey}`, { rostered: !row.rostered });
+      load();
+    } catch (err) { setError(err.message); }
+    setSavingKey(null);
+  }
+
+  // Once a planned date, an assigned examiner/instructor/check pilot AND
+  // an actual "Mark rostered" confirmation are all in place, this turns
+  // the plan into the real (incomplete) check record - the row then
+  // disappears since it's no longer just a plan. Requiring rostered too
+  // (not just date+assignee) closes the loophole where a check form could
+  // otherwise be created straight off a hopeful plan nobody had actually
+  // confirmed was on the roster - crew.js enforces this server-side too.
   async function createCheck(row) {
     setError(null);
     try {
@@ -66,7 +89,8 @@ function PlannedChecksSection() {
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
         Planned simulator and line check dates, with an optional assigned examiner/instructor/check pilot -
-        edit a date directly on a crew member's own Dates tab, or here.
+        edit a date directly on a crew member's own Dates tab, or here. Once a date's actually confirmed on the
+        schedule, click "Mark rostered" - only then can the check form itself be created.
       </div>
       {error && <div className="error-text">{error}</div>}
       {rows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing planned yet.</div>}
@@ -90,7 +114,10 @@ function PlannedChecksSection() {
               onAssign={(s) => updateAssignee(r, s)}
             />
           </div>
-          {r.plannedDate && r.assignedTo && (
+          <div style={{ marginTop: 8 }}>
+            <RosteredButton item={r} onToggle={() => toggleRostered(r)} saving={savingKey === `${r.crewMemberId}-${r.checkKey}`} />
+          </div>
+          {r.plannedDate && r.assignedTo && r.rostered && (
             <button className="primary" style={{ marginTop: 8 }} onClick={() => createCheck(r)}>Create check form</button>
           )}
         </div>

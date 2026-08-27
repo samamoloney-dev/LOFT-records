@@ -13,5 +13,7 @@ export function crewLinkForItem(memberId, label) {
   const subTab = CHECK_SUB_TABS[label];
   if (subTab) return `/crew/${memberId}?top=currency&sub=${subTab}`;
   if (label === 'Medical') return `/crew/${memberId}?top=medical`;
-  return `/crew/${memberId}?top=expiry`;
+  // Everything else here is a competency (catalog-driven or a one-off ad
+  // hoc one) - those live on their own Competencies tab now, not Expiration.
+  return `/crew/${memberId}?top=competencies`;
 }

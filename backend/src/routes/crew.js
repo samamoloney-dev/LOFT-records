@@ -364,7 +364,11 @@ async function activeCompetencies(crewMemberId, crewType, crewFleets) {
        AND (ct.staff_roles IS NULL OR EXISTS (
          SELECT 1 FROM crew_members cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1 AND u.role = ANY(ct.staff_roles)
        ))
-       AND ct.syllabus_id IS NOT DISTINCT FROM (SELECT syllabus_id FROM crew_members WHERE id = $1)`,
+       AND ct.syllabus_id IS NOT DISTINCT FROM (SELECT syllabus_id FROM crew_members WHERE id = $1)
+     UNION ALL
+     SELECT cc.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
+     FROM crew_competencies cc
+     WHERE cc.crew_member_id = $1 AND cc.competency_type_id IS NULL AND cc.archived = false`,
     [crewMemberId, crewType, crewFleets],
   );
   return rows;
@@ -421,6 +425,12 @@ function newHireGraceActive(member) {
   return new Date() < addDays(new Date(member.lineCheckAnchorDate), NEW_HIRE_GRACE_DAYS);
 }
 
+// Returns the two source lists separately (rather than one flat array)
+// so callers can decide whether they need just the core recurrent checks,
+// just the competencies (see urgentCompetencyItemsFor - drives the new
+// Competencies tab's own "⚠" warning, independent of the Expiration tab's),
+// or both combined (urgentItemsFor/allItemsFor below, unchanged from the
+// caller's point of view).
 async function itemsFor(member, currency, inLoft) {
   const fromCurrency = Object.entries(currency)
     .filter(([, info]) => !!info)
@@ -434,6 +444,12 @@ async function itemsFor(member, currency, inLoft) {
       overdueReason: info.overdueReason,
     }));
 
+  // Includes ad-hoc competencies now (see activeCompetencies above) - a
+  // one-off competency assigned to just this crew member (CrewDetail.jsx's
+  // Competencies tab) needs to show up here too, the same as every
+  // catalog-driven one already did, so it reaches Currency Overview and the
+  // Home dashboard's Needs Attention list rather than only being visible on
+  // the crew member's own profile.
   const competencies = await activeCompetencies(member.id, member.type, member.fleets);
   const newHireGrace = newHireGraceActive(member);
   const fromCompetencies = competencies
@@ -455,42 +471,44 @@ async function itemsFor(member, currency, inLoft) {
       };
     });
 
-  return [...fromCurrency, ...fromCompetencies];
+  return { fromCurrency, fromCompetencies };
 }
 
 async function urgentItemsFor(member, currency, inLoft) {
-  const items = await itemsFor(member, currency, inLoft);
-  return items.filter((i) => isUrgent(i.status));
+  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+  return [...fromCurrency, ...fromCompetencies].filter((i) => isUrgent(i.status));
 }
 
 // Every recurrent check and competency, whatever its status - Currency
 // Overview shows the whole roster's picture (not just problems) so
 // "everything's fine" is as visible as "this is overdue".
 async function allItemsFor(member, currency, inLoft) {
-  return itemsFor(member, currency, inLoft);
+  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+  return [...fromCurrency, ...fromCompetencies];
 }
 
-// Manually-entered document expiry dates (crew_documents.expiry_date - see
-// the Documents tab route block below) that count as urgent by the same
-// statusFor bands as every other due-date in this app - drives the
-// Documents tab's own "⚠" warning (see CrewDetail.jsx topTabs) the same
-// way urgentItems already drives the Expiration tab's, and feeds the Home
-// dashboard's Needs Attention list (see dashboard.js) with enough detail
-// (name, expiry date) to build a real alert row rather than just a flag.
-async function urgentDocumentsFor(crewMemberId) {
-  const { rows } = await pool.query(
-    'SELECT id, name, expiry_date FROM crew_documents WHERE crew_member_id = $1 AND expiry_date IS NOT NULL AND archived = false',
-    [crewMemberId],
-  );
-  return rows
-    .map((r) => ({ id: r.id, name: r.name, expiryDate: r.expiry_date, status: statusFor(r.expiry_date) }))
-    .filter((d) => isUrgent(d.status));
+// Competencies only, excluding Medical (which has its own dedicated tab and
+// stays part of the Expiration tab's top block, not the Competencies list -
+// see CrewDetail.jsx) - drives the Competencies tab's own "⚠" warning,
+// independent of the Expiration tab's, now that they live on separate tabs.
+async function urgentCompetencyItemsFor(member, currency, inLoft) {
+  const { fromCompetencies } = await itemsFor(member, currency, inLoft);
+  return fromCompetencies.filter((i) => i.label !== 'Medical' && isUrgent(i.status));
+}
+
+// EP/IPC/PC/Line Check plus Medical (a competency_types row, but shown in
+// the Expiration tab's top block rather than the Competencies list - see
+// CrewDetail.jsx) - drives the Expiration tab's own "⚠" warning,
+// independent of the Competencies tab's above.
+async function urgentCoreItemsFor(member, currency, inLoft) {
+  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+  const medical = fromCompetencies.filter((i) => i.label === 'Medical');
+  return [...fromCurrency, ...medical].filter((i) => isUrgent(i.status));
 }
 
 async function withCurrency(member) {
-  const [planned, upgradeTraineeId, loftTraineeIds, urgentDocuments] = await Promise.all([
+  const [planned, upgradeTraineeId, loftTraineeIds] = await Promise.all([
     plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), allLinkedTraineeIds(member.id, member.traineeId),
-    urgentDocumentsFor(member.id),
   ]);
   // See activeUpgradeTraineeId above - falls back to an in-progress upgrade
   // trainee record when this crew profile has no direct trainee_id link of
@@ -611,13 +629,15 @@ async function withCurrency(member) {
     // most recent first. Empty for a crew profile that's never been
     // through LOFT at all.
     loftTraineeIds,
-    // Drives the Documents tab's own "⚠" warning icon (CrewDetail.jsx
-    // topTabs) and the Home dashboard's Needs Attention list (dashboard.js)
-    // - see urgentDocumentsFor above.
-    urgentDocuments,
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
     allItems: await allItemsFor(member, currency, inLoft),
+    // Drives the Expiration tab's own "⚠" warning icon (CrewDetail.jsx
+    // topTabs) - see urgentCoreItemsFor above.
+    urgentCoreItems: await urgentCoreItemsFor(member, currency, inLoft),
+    // Drives the Competencies tab's own "⚠" warning icon (CrewDetail.jsx
+    // topTabs) - see urgentCompetencyItemsFor above.
+    urgentCompetencyItems: await urgentCompetencyItemsFor(member, currency, inLoft),
     ipcPcRaw,
   };
 }
@@ -1216,14 +1236,71 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
-// Deletes an ad-hoc crew_competencies row (one with no competency_type_id -
-// today that's only ever "Right Hand Seat", auto-created by checks.js's
-// revalidateRhsCompetency). Catalog-linked rows are never deleted this way -
-// clearing their dates through the PUT route above is how those get reset,
-// since every crew member is always supposed to have exactly one row per
-// active type. Scoped to admins only, same as every other destructive
-// action on a crew member's record.
-router.delete('/:id/competencies/:competencyId', requireRole(...ADMIN_ROLES), async (req, res) => {
+// One-off competencies assigned to a single crew member rather than every
+// crew member on the catalog - per the operator's explicit request, for a
+// requirement that only applies to specific chosen pilots/cabin attendants
+// rather than the whole fleet/role a real competency_types entry would
+// reach. Lives in the same crew_competencies table as catalog rows, just
+// with competency_type_id left NULL (the same shape "Right Hand Seat" -
+// checks.js's revalidateRhsCompetency - has always used, just without a
+// UI to create/edit one by hand until now). Scoped to admins only, same as
+// every other write on a crew member's record.
+const adHocCompetencySchema = z.object({
+  name: z.string().min(1),
+  completedDate: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  plannedDate: z.string().nullable().optional(),
+});
+
+router.post('/:id/competencies/ad-hoc', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
+
+  const parsed = adHocCompetencySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const d = parsed.data;
+
+  const { rows } = await pool.query(
+    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [member.id, d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null],
+  );
+  await logAction({
+    userId: req.user.id, action: 'CREATE', targetTable: 'crew_competencies', targetId: rows[0].id,
+    description: `Added one-off competency "${d.name}" for ${member.name}`,
+  });
+  res.status(201).json(rowToCamel(rows[0]));
+});
+
+router.put('/:id/competencies/ad-hoc/:competencyId', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (!assertNotArchived(member, res)) return;
+
+  const parsed = adHocCompetencySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const d = parsed.data;
+
+  const { rows } = await pool.query(
+    `UPDATE crew_competencies SET name = $1, completed_date = $2, due_date = $3, planned_date = $4
+     WHERE id = $5 AND crew_member_id = $6 AND competency_type_id IS NULL RETURNING *`,
+    [d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null, req.params.competencyId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id,
+    description: `Updated one-off competency "${rows[0].name}" for ${member.name}`,
+  });
+  res.json(rowToCamel(rows[0]));
+});
+
+// Deletes an ad-hoc crew_competencies row. Catalog-linked rows are never
+// deleted this way - clearing their dates through the PUT route above is
+// how those get reset, since every crew member is always supposed to have
+// exactly one row per active type. Scoped to admins only, same as every
+// other destructive action on a crew member's record.
+router.delete('/:id/competencies/ad-hoc/:competencyId', requireRole(...ADMIN_ROLES), async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
 
@@ -1243,24 +1320,26 @@ router.delete('/:id/competencies/:competencyId', requireRole(...ADMIN_ROLES), as
 // the operator needs on file - renamed from "Certificates" per the
 // operator's explicit request, broader than certifications alone) - a
 // crew member can hold several, each imported as a PDF scan and viewable
-// again later. List response omits file_data (kept lightweight, same
-// reasoning as excluding licencePhoto from the roster list above) - the
-// full PDF is only fetched when a specific document is actually opened.
-// expiryDate is optional and manually typed in (there's no form this
-// could be derived from, unlike every other due-date in this app) - see
-// urgentDocumentsFor above for how it feeds the tab's own warning icon and
-// dashboard.js for how it feeds the Home dashboard's Needs Attention list.
+// again later. Purely a filed record of evidence - no expiry date/status
+// tracking of its own (that was removed per the operator's explicit
+// request, once one-off competencies could be assigned to a crew member
+// directly; a document just proves a competency was completed, the
+// competency itself is what carries the due date - see the ad-hoc
+// competency routes above). List response omits file_data (kept
+// lightweight, same reasoning as excluding licencePhoto from the roster
+// list above) - the full PDF is only fetched when a specific document is
+// actually opened.
 router.get('/:id/documents', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
-    `SELECT id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at FROM crew_documents
+    `SELECT id, name, file_name, archived, archived_at, uploaded_by_name, created_at FROM crew_documents
      WHERE crew_member_id = $1 AND archived = $2 ORDER BY created_at DESC`,
     [member.id, req.query.archived === 'true'],
   );
-  res.json(rows.map(rowToCamel).map(withDocumentStatus));
+  res.json(rows.map(rowToCamel));
 });
 
 router.get('/:id/documents/:documentId', async (req, res) => {
@@ -1276,18 +1355,10 @@ router.get('/:id/documents/:documentId', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
-// Same statusFor bands as every other due-date in this app, computed here
-// rather than left to the frontend to reimplement - null when there's no
-// expiry date to judge (most documents won't have one).
-function withDocumentStatus(d) {
-  return { ...d, status: d.expiryDate ? statusFor(d.expiryDate) : null };
-}
-
 const documentSchema = z.object({
   name: z.string().min(1),
   fileName: z.string().min(1),
   fileData: z.string().min(1),
-  expiryDate: z.string().nullable().optional(),
 });
 
 router.post('/:id/documents', async (req, res) => {
@@ -1301,25 +1372,22 @@ router.post('/:id/documents', async (req, res) => {
   const d = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, expiry_date, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
-    [member.id, d.name, d.fileName, d.fileData, d.expiryDate || null, req.user.name],
+    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
+    [member.id, d.name, d.fileName, d.fileData, req.user.name],
   );
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,
     description: `Uploaded document "${d.name}" for ${member.name}`,
   });
-  res.status(201).json(withDocumentStatus(rowToCamel(rows[0])));
+  res.status(201).json(rowToCamel(rows[0]));
 });
 
-// Editing the name and/or expiry date of an already-uploaded document - the
-// operator types the expiry in by hand and will need to correct/renew it
-// over time without re-uploading the PDF, and name is editable too since a
-// bulk multi-file upload (see CrewDetail.jsx DocumentsTab) auto-derives a
-// name from each file's filename, which sometimes needs a quick fix.
+// Renaming an already-uploaded document - a bulk multi-file upload (see
+// CrewDetail.jsx DocumentsTab) auto-derives a name from each file's
+// filename, which sometimes needs a quick fix.
 const documentUpdateSchema = z.object({
-  name: z.string().min(1).optional(),
-  expiryDate: z.string().nullable().optional(),
+  name: z.string().min(1),
 });
 
 router.patch('/:id/documents/:documentId', async (req, res) => {
@@ -1330,32 +1398,24 @@ router.patch('/:id/documents/:documentId', async (req, res) => {
 
   const parsed = documentUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const entries = Object.entries(parsed.data);
-  if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
-
-  const columnMap = { name: 'name', expiryDate: 'expiry_date' };
-  const setClauses = entries.map(([key], i) => `${columnMap[key]} = $${i + 1}`);
-  const values = entries.map(([key, value]) => (key === 'expiryDate' ? (value || null) : value));
-  values.push(req.params.documentId, member.id);
 
   const { rows } = await pool.query(
-    `UPDATE crew_documents SET ${setClauses.join(', ')} WHERE id = $${values.length - 1} AND crew_member_id = $${values.length}
-     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
-    values,
+    `UPDATE crew_documents SET name = $1 WHERE id = $2 AND crew_member_id = $3
+     RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
+    [parsed.data.name, req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
-    description: `Updated document "${rows[0].name}" (${member.name})`,
+    description: `Renamed document to "${rows[0].name}" (${member.name})`,
   });
-  res.json(withDocumentStatus(rowToCamel(rows[0])));
+  res.json(rowToCamel(rows[0]));
 });
 
-// Files an expired document away once it's been dealt with (renewed
-// elsewhere, superseded, no longer needed) - per the operator's explicit
-// request, only offered on the Documents tab for an actually-expired
-// document, not every document. Archived documents drop off this crew
-// member's active list and Needs Attention, but stay reachable via the
+// Files a document away once it's no longer needed on the active list
+// (superseded by a newer certificate, no longer relevant) - a general
+// manual action now, not tied to any expiry status. Archived documents
+// drop off this crew member's active list, but stay reachable via the
 // "Show archived" toggle here and the global search on the Archive page
 // (see GET /documents/archived below) - nothing is ever deleted by this.
 router.post('/:id/documents/:documentId/archive', async (req, res) => {
@@ -1366,7 +1426,7 @@ router.post('/:id/documents/:documentId/archive', async (req, res) => {
 
   const { rows } = await pool.query(
     `UPDATE crew_documents SET archived = true, archived_at = now() WHERE id = $1 AND crew_member_id = $2
-     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
+     RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
     [req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
@@ -1374,7 +1434,7 @@ router.post('/:id/documents/:documentId/archive', async (req, res) => {
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
     description: `Archived document "${rows[0].name}" (${member.name})`,
   });
-  res.json(withDocumentStatus(rowToCamel(rows[0])));
+  res.json(rowToCamel(rows[0]));
 });
 
 router.post('/:id/documents/:documentId/unarchive', async (req, res) => {
@@ -1385,7 +1445,7 @@ router.post('/:id/documents/:documentId/unarchive', async (req, res) => {
 
   const { rows } = await pool.query(
     `UPDATE crew_documents SET archived = false, archived_at = null WHERE id = $1 AND crew_member_id = $2
-     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
+     RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
     [req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
@@ -1393,7 +1453,7 @@ router.post('/:id/documents/:documentId/unarchive', async (req, res) => {
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
     description: `Unarchived document "${rows[0].name}" (${member.name})`,
   });
-  res.json(withDocumentStatus(rowToCamel(rows[0])));
+  res.json(rowToCamel(rows[0]));
 });
 
 router.delete('/:id/documents/:documentId', async (req, res) => {
@@ -1434,7 +1494,7 @@ router.get('/documents/archived', requireRole(...ADMIN_ROLES), async (req, res) 
     where += ` AND (cd.name ILIKE $${params.length} OR (cm.first_name || ' ' || cm.last_name) ILIKE $${params.length})`;
   }
   const { rows } = await pool.query(
-    `SELECT cd.id, cd.crew_member_id, cd.name, cd.file_name, cd.expiry_date, cd.archived_at, cd.uploaded_by_name,
+    `SELECT cd.id, cd.crew_member_id, cd.name, cd.file_name, cd.archived_at, cd.uploaded_by_name,
             cm.first_name, cm.last_name
      FROM crew_documents cd
      JOIN crew_members cm ON cm.id = cd.crew_member_id

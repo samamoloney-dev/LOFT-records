@@ -405,31 +405,6 @@ function readFileAsDataUrl(file) {
   });
 }
 
-// Same status bands/colours as Currency Overview's own StatusPill
-// (frontend/src/pages/CurrencyOverview.jsx) - kept as a small local copy
-// rather than a shared import since only the four date-driven bands that
-// actually apply to a manually-entered expiry date are needed here (no
-// 'not_completed'/'in_training', which don't mean anything for a document).
-const DOCUMENT_STATUS_STYLES = {
-  overdue: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
-  important: { background: '#fbe1e1', color: '#9b2020' },
-  due_soon: { background: '#fdf2d0', color: '#8a6100' },
-  approaching: { background: '#fdf8d6', color: '#8a7f00' },
-  ok: { background: '#dff5e1', color: '#14632f' },
-};
-const DOCUMENT_STATUS_TEXT = {
-  overdue: 'Expired', important: 'Important', due_soon: 'Due Soon', approaching: 'Approaching', ok: 'Current',
-};
-function DocumentStatusPill({ status }) {
-  if (!status) return null;
-  return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...DOCUMENT_STATUS_STYLES[status] }}>
-      {DOCUMENT_STATUS_TEXT[status]}
-    </span>
-  );
-}
-const URGENT_DOCUMENT_STATUSES = ['overdue', 'important', 'due_soon', 'approaching'];
-
 // Strips the extension and turns dashes/underscores into spaces (e.g.
 // "dangerous-goods_cert.pdf" -> "dangerous goods cert") so a bulk multi-file
 // upload doesn't leave every document named after its raw filename - the
@@ -443,24 +418,9 @@ function nameFromFileName(fileName) {
 // re-rendered list - saving on every keystroke via a direct value+onChange
 // here caused exactly this kind of field to lose characters mid-type
 // elsewhere in this app, see Phase4Form.jsx/CtlForm.jsx's SectorFields fix).
-// Expiry date doesn't need the same treatment - picking a date is one
-// atomic action, not continuous typing.
-function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, onUnarchive, onRemove }) {
+function DocumentRow({ doc, member, onView, onRename, onArchive, onUnarchive, onRemove }) {
   const [name, setName] = useState(doc.name);
   useEffect(() => setName(doc.name), [doc.name]);
-  // Same onBlur-commit pattern as name above (and Phase4Form/CtlForm's
-  // SectorFields, LandingAssessmentForm) - a date input isn't actually
-  // "atomic" the way a date *picker* click is: typing a year digit by
-  // digit fires an onChange on every keystroke, including intermediate
-  // states where the browser reports an empty/incomplete value before the
-  // year is fully typed. Committing straight to the server on every one of
-  // those (the previous behaviour) saved expiryDate as null mid-type, and
-  // the resulting round-trip reset this controlled input's value back to
-  // blank - wiping out the day/month already entered and making it look
-  // like the year could never be typed at all. Local state absorbs every
-  // keystroke; only the finished value is saved, on blur.
-  const [expiryDate, setExpiryDate] = useState(doc.expiryDate ? doc.expiryDate.slice(0, 10) : '');
-  useEffect(() => setExpiryDate(doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''), [doc.expiryDate]);
 
   return (
     <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -476,23 +436,12 @@ function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, on
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {!doc.archived && (
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label style={{ fontSize: 10 }}>Expiry date</label>
-            <input
-              type="date" value={expiryDate} disabled={member.archived}
-              onChange={(e) => setExpiryDate(e.target.value)}
-              onBlur={() => { if (expiryDate !== (doc.expiryDate ? doc.expiryDate.slice(0, 10) : '')) onSetExpiry(doc, expiryDate); }}
-            />
-          </div>
-        )}
-        <DocumentStatusPill status={doc.status} />
         <button onClick={() => onView(doc)}>View</button>
         {doc.archived ? (
           !member.archived && <button onClick={() => onUnarchive(doc)}>Unarchive</button>
         ) : (
           <>
-            {doc.status === 'overdue' && !member.archived && <button onClick={() => onArchive(doc)}>Archive</button>}
+            {!member.archived && <button onClick={() => onArchive(doc)}>Archive</button>}
             {!member.archived && <button className="danger" onClick={() => onRemove(doc)}>Delete</button>}
           </>
         )}
@@ -507,11 +456,11 @@ function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, on
 // document and can reopen it later. Unlike Licence Photo (a single slot)
 // this is an open-ended list, closer in shape to Specialist Training's
 // photos - but its own tab, since it applies to every crew member (pilot
-// and cabin attendant alike), not just pilots. Expiry date is optional and
-// always manually typed in - there's no form this could be derived from,
-// unlike every other due-date in this app - and drives both this tab's own
-// alert banner below and the Home dashboard's Needs Attention list (see
-// backend/src/routes/crew.js urgentDocumentsFor/dashboard.js).
+// and cabin attendant alike), not just pilots. Purely filed evidence, no
+// date/status tracking of its own - a document proves a competency was
+// completed, and the competency (see CompetenciesTab) is what carries the
+// due date, per the operator's explicit request once one-off competencies
+// could be assigned directly to a crew member.
 function DocumentsTab({ member }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -570,14 +519,6 @@ function DocumentsTab({ member }) {
     } catch (err) { setError(err.message); }
   }
 
-  async function setExpiry(doc, expiryDate) {
-    setError(null);
-    try {
-      const updated = await api.patch(`/api/crew/${member.id}/documents/${doc.id}`, { expiryDate: expiryDate || null });
-      setDocuments((ds) => ds.map((d) => (d.id === doc.id ? updated : d)));
-    } catch (err) { setError(err.message); }
-  }
-
   async function archive(doc) {
     setError(null);
     try {
@@ -605,8 +546,6 @@ function DocumentsTab({ member }) {
 
   if (loading) return <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>;
 
-  const urgentDocuments = showArchived ? [] : documents.filter((d) => URGENT_DOCUMENT_STATUSES.includes(d.status));
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: '1rem' }}>
@@ -615,19 +554,6 @@ function DocumentsTab({ member }) {
         </div>
         <button onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Show active' : 'Show archived'}</button>
       </div>
-
-      {urgentDocuments.length > 0 && (
-        <div className="card" style={{ background: 'var(--bg-danger)', color: 'var(--text-danger)', marginBottom: '1rem' }}>
-          <div style={{ fontWeight: 500, marginBottom: 4 }}>
-            {urgentDocuments.length} document{urgentDocuments.length === 1 ? '' : 's'} need{urgentDocuments.length === 1 ? 's' : ''} attention
-          </div>
-          {urgentDocuments.map((d) => (
-            <div key={d.id} style={{ fontSize: 13 }}>
-              {d.name} - {d.status === 'overdue' ? 'expired' : 'expires'} {formatDate(d.expiryDate)}
-            </div>
-          ))}
-        </div>
-      )}
 
       {!member.archived && !showArchived && (
         <div className="card" style={{ marginBottom: '1rem' }}>
@@ -656,7 +582,7 @@ function DocumentsTab({ member }) {
       ) : documents.map((doc) => (
         <DocumentRow
           key={doc.id} doc={doc} member={member}
-          onView={view} onRename={rename} onSetExpiry={setExpiry}
+          onView={view} onRename={rename}
           onArchive={archive} onUnarchive={unarchive} onRemove={remove}
         />
       ))}
@@ -757,10 +683,21 @@ function SpecialistTrainingTab({ member }) {
 }
 
 // One competency's status badge + editable dates - used by the general
-// Competencies list below the top block (Medical is special-cased into its
-// own compact MedicalBox above instead - see ExpiryTab).
-function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
+// Competencies list (see CompetenciesTab). Medical is special-cased into
+// its own compact MedicalBox instead (see ExpiryTab). A row is either
+// catalog-driven (c.competencyTypeId set, applies to every eligible crew
+// member - managed on the Syllabus tab) or a one-off ad-hoc row assigned
+// to just this crew member (c.id set instead, c.competencyTypeId null -
+// see the "+ Add one-off competency" form on CompetenciesTab); onUpdate/
+// onDelete are handed the whole row so the caller can tell which kind it
+// is and hit the right endpoint, rather than this component needing to know.
+function CompetencyRow({ c, onUpdate, onDelete, unlocked, setUnlocked, archived }) {
   const { user } = useAuth();
+  const isAdHoc = !c.competencyTypeId;
+  // Stable per-row key for the unlock-toggle state below - competencyTypeId
+  // for catalog rows, id for ad-hoc ones (competencyTypeId is null for
+  // every ad-hoc row, so that alone couldn't tell two of them apart).
+  const lockKey = c.competencyTypeId || c.id;
   // Refresher Training is the one exception - Flight Ops Admin administers
   // that course's completions too (see PilotLineCheck.jsx's Refresher
   // Training row), so they also get the unlock for this competency only.
@@ -771,14 +708,19 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
   // First Aid is Metro-only (mirrors the Ground School N/A
   // toggle for the same item), and some crew are exempt from CPR
   // Training. Scoped to exactly these two names rather than a
-  // blanket feature.
-  const canBeNa = NA_ELIGIBLE_COMPETENCIES.includes(c.name);
+  // blanket feature. Never applies to an ad-hoc row - it was specifically
+  // chosen for this one crew member, so "not applicable" wouldn't make
+  // sense.
+  const canBeNa = !isAdHoc && NA_ELIGIBLE_COMPETENCIES.includes(c.name);
   // Once any date has been saved, every date field locks - a typo can no
   // longer just be typed over. Only HOTC/HOFO (or Flight Ops Admin, for
   // Refresher Training) get the "Edit dates" toggle to unlock and correct
-  // it; everyone else is stuck read-only from here.
+  // it; everyone else is stuck read-only from here. Ad-hoc rows skip this
+  // extra lock entirely - the backend only requires an admin for those
+  // (see crew.js's ad-hoc competency routes), not the finer-grained
+  // "HOTC/HOFO only once saved" rule catalog rows have.
   const datesSet = !!(c.completedDate || c.dueDate || c.plannedDate);
-  const datesLocked = archived || (datesSet && !(canUnlock && unlocked[c.competencyTypeId]));
+  const datesLocked = archived || (!isAdHoc && datesSet && !(canUnlock && unlocked[lockKey]));
   // A competency that's current collapses into a closed dropdown by
   // default, so a long list of dates that don't need attention doesn't
   // clutter the tab - anything not yet current, overdue, due soon (or, on
@@ -787,7 +729,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
 
   const header = (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div style={{ fontWeight: 500 }}>{c.name}</div>
+      <div style={{ fontWeight: 500 }}>{c.name}{isAdHoc && <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 400 }}> · one-off</span>}</div>
       {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
     </div>
   );
@@ -800,7 +742,7 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
             type="checkbox"
             disabled={archived}
             checked={!!c.na}
-            onChange={(e) => onUpdate(c.competencyTypeId, { na: e.target.checked })}
+            onChange={(e) => onUpdate(c, { na: e.target.checked })}
             style={{ width: 'auto' }}
           />
           Not applicable to this crew member
@@ -808,12 +750,12 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
       )}
       {!c.na && (
         <>
-          {datesSet && canUnlock && !archived && (
+          {!isAdHoc && datesSet && canUnlock && !archived && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
               <input
                 type="checkbox"
-                checked={!!unlocked[c.competencyTypeId]}
-                onChange={(e) => setUnlocked((u) => ({ ...u, [c.competencyTypeId]: e.target.checked }))}
+                checked={!!unlocked[lockKey]}
+                onChange={(e) => setUnlocked((u) => ({ ...u, [lockKey]: e.target.checked }))}
                 style={{ width: 'auto' }}
               />
               Edit dates
@@ -822,28 +764,33 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
           <div className="grid2" style={{ marginTop: 8 }}>
             <div className="field" style={{ margin: 0 }}>
               <label>Completed date</label>
-              <input type="date" disabled={datesLocked} defaultValue={c.completedDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { completedDate: e.target.value || null })} />
+              <input type="date" disabled={datesLocked} defaultValue={c.completedDate || ''} onBlur={(e) => onUpdate(c, { completedDate: e.target.value || null })} />
             </div>
             <div className="field" style={{ margin: 0 }}>
               <label>Due date</label>
-              <input type="date" disabled={datesLocked} defaultValue={c.dueDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { dueDate: e.target.value || null })} />
+              <input type="date" disabled={datesLocked} defaultValue={c.dueDate || ''} onBlur={(e) => onUpdate(c, { dueDate: e.target.value || null })} />
             </div>
           </div>
           <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
             <label>Planned date</label>
-            <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => onUpdate(c.competencyTypeId, { plannedDate: e.target.value || null })} />
+            <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => onUpdate(c, { plannedDate: e.target.value || null })} />
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
-            <input
-              type="checkbox"
-              disabled={archived}
-              checked={!!c.courseSent}
-              onChange={(e) => onUpdate(c.competencyTypeId, { courseSent: e.target.checked })}
-              style={{ width: 'auto' }}
-            />
-            Course sent to candidate
-          </label>
+          {!isAdHoc && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input
+                type="checkbox"
+                disabled={archived}
+                checked={!!c.courseSent}
+                onChange={(e) => onUpdate(c, { courseSent: e.target.checked })}
+                style={{ width: 'auto' }}
+              />
+              Course sent to candidate
+            </label>
+          )}
         </>
+      )}
+      {isAdHoc && !archived && ADMIN_ROLES.includes(user.role) && (
+        <button className="danger" style={{ marginTop: 8 }} onClick={() => onDelete(c)}>Remove</button>
       )}
     </>
   );
@@ -869,19 +816,18 @@ function CompetencyRow({ c, onUpdate, unlocked, setUnlocked, archived }) {
 // competency-types.js) is required for every crew member automatically -
 // this always shows one row per active type, whether or not any dates
 // have been entered yet, rather than needing them added one at a time
-// from a dropdown. Medical is pulled out and shown in the top block instead
-// (see ExpiryTab) - state/fetching for both live in ExpiryTab so they share
-// one source of truth rather than fetching the same data twice.
-function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked, archived }) {
+// from a dropdown - plus any one-off ad-hoc rows assigned to just this
+// crew member. Medical is pulled out and shown in the top block instead
+// (see ExpiryTab) - state/fetching for both live in CrewDetail, shared with
+// the Medical tab, so both agree on one source of truth.
+function CompetencyList({ competencies, onUpdate, onDelete, unlocked, setUnlocked, archived }) {
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Competencies</div>
-
       {competencies.length === 0 && (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No competencies set up yet - add some on the Syllabus tab.</div>
       )}
       {competencies.map((c) => (
-        <CompetencyRow key={c.competencyTypeId} c={c} onUpdate={onUpdate} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
+        <CompetencyRow key={c.competencyTypeId || c.id} c={c} onUpdate={onUpdate} onDelete={onDelete} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
       ))}
     </div>
   );
@@ -893,7 +839,7 @@ function CompetencyList({ competencies, onUpdate, unlocked, setUnlocked, archive
 // cluttered with due-date cards nobody asked to see yet. Competency
 // state/fetching lives in CrewDetail (shared with the Medical tab), not
 // here, so both agree on one source of truth.
-function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompetency, unlocked, setUnlocked, competencyError }) {
+function ExpiryTab({ member, onSaved, medical, onUpdateCompetency, competencyError }) {
   const isPilot = member.type === 'PILOT';
   const archived = member.archived;
 
@@ -935,8 +881,92 @@ function ExpiryTab({ member, onSaved, medical, otherCompetencies, onUpdateCompet
         {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}
+    </div>
+  );
+}
 
-      <CompetencyList competencies={otherCompetencies} onUpdate={onUpdateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
+// One-off competency form (name + optional Completed/Due/Planned dates) -
+// assigns a competency to just this one crew member rather than every
+// pilot/cabin attendant a real catalog entry (Syllabus tab) would reach,
+// per the operator's explicit request for a requirement that only applies
+// to specific chosen crew. Kept separate from CompetencyList so it only
+// ever shows once, above the list, rather than repeating a form per row.
+function AddAdHocCompetency({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [completedDate, setCompletedDate] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [plannedDate, setPlannedDate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function save() {
+    if (!name.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await onAdd({
+        name: name.trim(),
+        completedDate: completedDate || null,
+        dueDate: dueDate || null,
+        plannedDate: plannedDate || null,
+      });
+      setOpen(false);
+      setName(''); setCompletedDate(''); setDueDate(''); setPlannedDate('');
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  if (!open) {
+    return <button onClick={() => setOpen(true)} style={{ marginBottom: '1rem' }}>+ Add one-off competency</button>;
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ fontWeight: 500, marginBottom: 8 }}>Add one-off competency</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Applies to this crew member only - not the whole fleet/role a Syllabus tab competency would reach.
+      </div>
+      <div className="field">
+        <label>Name</label>
+        <input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Site-Specific Induction" />
+      </div>
+      <div className="grid2">
+        <div className="field" style={{ margin: 0 }}>
+          <label>Completed date</label>
+          <input type="date" disabled={busy} value={completedDate} onChange={(e) => setCompletedDate(e.target.value)} />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Due date</label>
+          <input type="date" disabled={busy} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
+      </div>
+      <div className="field" style={{ marginTop: 8 }}>
+        <label>Planned date</label>
+        <input type="date" disabled={busy} value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} />
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="primary" onClick={save} disabled={busy || !name.trim()}>{busy ? 'Adding…' : 'Add'}</button>
+        <button onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// Every competency this crew member is required to hold - catalog-driven
+// ones (managed on the Syllabus tab, applying to every eligible crew
+// member) plus any one-off ad-hoc ones assigned to just them. Split out
+// from Expiration into its own tab so a long list of competencies doesn't
+// crowd out the core recurrent checks there.
+function CompetenciesTab({ competencies, onUpdate, onAdd, onDelete, unlocked, setUnlocked, competencyError, archived, isAdmin }) {
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+        Every competency required for this crew member.
+      </div>
+      {isAdmin && !archived && <AddAdHocCompetency onAdd={onAdd} />}
+      {competencyError && <div className="error-text">{competencyError}</div>}
+      <CompetencyList competencies={competencies} onUpdate={onUpdate} onDelete={onDelete} unlocked={unlocked} setUnlocked={setUnlocked} archived={archived} />
     </div>
   );
 }
@@ -977,18 +1007,52 @@ export function CrewDetail() {
   }
   useEffect(loadCompetencies, [id]);
 
-  async function updateCompetency(competencyTypeId, patch) {
+  // Accepts either a competencyTypeId directly (MedicalBox's own "Plan a
+  // date" field, which only ever touches the Medical catalog row) or a
+  // whole competency row (CompetencyRow, which could be catalog or a
+  // one-off ad-hoc row - see CompetenciesTab) - dispatches to whichever
+  // endpoint actually owns that row rather than the caller needing to know.
+  async function updateCompetency(rowOrCompetencyTypeId, patch) {
+    setCompetencyError(null);
+    const isRow = typeof rowOrCompetencyTypeId === 'object';
+    const row = isRow ? rowOrCompetencyTypeId : (competencies.find((c) => c.competencyTypeId === rowOrCompetencyTypeId) || {});
+    try {
+      if (!isRow || row.competencyTypeId) {
+        const competencyTypeId = isRow ? row.competencyTypeId : rowOrCompetencyTypeId;
+        await api.put(`/api/crew/${id}/competencies/${competencyTypeId}`, {
+          completedDate: row.completedDate || null,
+          dueDate: row.dueDate || null,
+          plannedDate: row.plannedDate || null,
+          na: row.na || false,
+          courseSent: row.courseSent || false,
+          ...patch,
+        });
+      } else {
+        await api.put(`/api/crew/${id}/competencies/ad-hoc/${row.id}`, {
+          name: row.name,
+          completedDate: row.completedDate || null,
+          dueDate: row.dueDate || null,
+          plannedDate: row.plannedDate || null,
+          ...patch,
+        });
+      }
+      loadCompetencies();
+    } catch (err) { setCompetencyError(err.message); }
+  }
+
+  async function addAdHocCompetency(data) {
     setCompetencyError(null);
     try {
-      const current = competencies.find((c) => c.competencyTypeId === competencyTypeId) || {};
-      await api.put(`/api/crew/${id}/competencies/${competencyTypeId}`, {
-        completedDate: current.completedDate || null,
-        dueDate: current.dueDate || null,
-        plannedDate: current.plannedDate || null,
-        na: current.na || false,
-        courseSent: current.courseSent || false,
-        ...patch,
-      });
+      await api.post(`/api/crew/${id}/competencies/ad-hoc`, data);
+      loadCompetencies();
+    } catch (err) { setCompetencyError(err.message); throw err; }
+  }
+
+  async function deleteAdHocCompetency(row) {
+    if (!window.confirm(`Remove "${row.name}" from this crew member?`)) return;
+    setCompetencyError(null);
+    try {
+      await api.delete(`/api/crew/${id}/competencies/ad-hoc/${row.id}`);
       loadCompetencies();
     } catch (err) { setCompetencyError(err.message); }
   }
@@ -1040,7 +1104,8 @@ export function CrewDetail() {
   if (!member) return null;
 
   const name = member.name;
-  const needsAttention = member.urgentItems.length > 0;
+  const needsAttention = member.urgentCoreItems.length > 0;
+  const competenciesNeedAttention = member.urgentCompetencyItems.length > 0;
   const topTabs = [
     // Clearance Form sign-off is HOTC/HOFO-only and the whole tab's GET is
     // blocked for Cabin Attendant Manager (see crew.js blockCaManager on
@@ -1050,9 +1115,10 @@ export function CrewDetail() {
     { key: 'currency', label: 'Check Forms' },
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
+    { key: 'competencies', label: competenciesNeedAttention ? 'Competencies ⚠' : 'Competencies' },
     ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),
     ...(isAdmin ? [{ key: 'specialistTraining', label: 'Specialist Training' }] : []),
-    ...(isAdmin ? [{ key: 'documents', label: member.urgentDocuments?.length > 0 ? 'Documents ⚠' : 'Documents' }] : []),
+    ...(isAdmin ? [{ key: 'documents', label: 'Documents' }] : []),
   ];
 
   return (
@@ -1084,12 +1150,18 @@ export function CrewDetail() {
       {topTab === 'currency' && <CurrencyFolder member={member} initialSubTab={initialSubTab} />}
       {topTab === 'expiry' && (
         <ExpiryTab
-          member={member} onSaved={setMember} medical={medical} otherCompetencies={otherCompetencies}
-          onUpdateCompetency={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} competencyError={competencyError}
+          member={member} onSaved={setMember} medical={medical}
+          onUpdateCompetency={updateCompetency} competencyError={competencyError}
         />
       )}
       {topTab === 'medical' && medical && (
         <MedicalTab medical={medical} onUpdate={updateCompetency} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
+      )}
+      {topTab === 'competencies' && (
+        <CompetenciesTab
+          competencies={otherCompetencies} onUpdate={updateCompetency} onAdd={addAdHocCompetency} onDelete={deleteAdHocCompetency}
+          unlocked={unlocked} setUnlocked={setUnlocked} competencyError={competencyError} archived={member.archived} isAdmin={isAdmin}
+        />
       )}
       {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
       {topTab === 'specialistTraining' && isAdmin && <SpecialistTrainingTab member={member} />}

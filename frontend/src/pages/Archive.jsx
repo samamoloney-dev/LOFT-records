@@ -94,7 +94,6 @@ function ArchivedDocuments() {
             <div style={{ fontWeight: 500 }}>{d.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
               {d.crewMemberName} · {d.fileName}
-              {d.expiryDate ? ` · Expired ${formatDate(d.expiryDate)}` : ''}
               {d.archivedAt ? ` · Archived ${formatDate(d.archivedAt)}` : ''}
             </div>
           </div>

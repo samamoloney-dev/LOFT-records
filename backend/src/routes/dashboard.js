@@ -39,7 +39,9 @@ function crewLinkForItem(memberId, label) {
   const subTab = CHECK_SUB_TABS[label];
   if (subTab) return `/crew/${memberId}?top=currency&sub=${subTab}`;
   if (label === 'Medical') return `/crew/${memberId}?top=medical`;
-  return `/crew/${memberId}?top=expiry`;
+  // Everything else here is a competency (catalog-driven or a one-off ad
+  // hoc one) - those live on their own Competencies tab now, not Expiration.
+  return `/crew/${memberId}?top=competencies`;
 }
 
 // A crew member's currency/competency items aren't fleet-specific
@@ -379,25 +381,14 @@ router.get('/summary', async (req, res) => {
     };
   });
 
-  // Manually-entered document expiry dates (crew_documents.expiry_date -
-  // see crew.js's urgentDocumentsFor, already filtered to urgent statuses
-  // there) surfacing on the same Needs Attention list as every other
-  // due-date in this app, per the operator's explicit request.
-  const documentAttention = members.flatMap((m) => (m.urgentDocuments || []).map((d) => ({ ...d, member: m })));
-
   const needsAttention = [
     ...clearanceAlerts,
     ...upgradeReadyAlerts,
-    ...documentAttention.map((d) => {
-      const days = daysOverdue(d.expiryDate);
-      return {
-        key: `document:${d.id}`,
-        text: days >= 0
-          ? `${d.member.name} — ${d.name} — expired ${days} day${days === 1 ? '' : 's'} ago`
-          : `${d.member.name} — ${d.name} — expires in ${-days} day${-days === 1 ? '' : 's'}`,
-        linkTo: `/crew/${d.member.id}?top=documents`,
-      };
-    }),
+    // overdueAttention/notCompletedAttention/dueSoonAttention already cover
+    // competencies (including one-off ones assigned to a single crew
+    // member - see crew.js's activeCompetencies/itemsFor) alongside
+    // EP/IPC/PC/Line Check, since they're all drawn from the same allItems
+    // list - nothing extra needed here for those to alert on this page.
     ...overdueAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: i.dueDate

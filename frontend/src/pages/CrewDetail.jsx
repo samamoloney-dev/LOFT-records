@@ -436,6 +436,19 @@ function nameFromFileName(fileName) {
 function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, onUnarchive, onRemove }) {
   const [name, setName] = useState(doc.name);
   useEffect(() => setName(doc.name), [doc.name]);
+  // Same onBlur-commit pattern as name above (and Phase4Form/CtlForm's
+  // SectorFields, LandingAssessmentForm) - a date input isn't actually
+  // "atomic" the way a date *picker* click is: typing a year digit by
+  // digit fires an onChange on every keystroke, including intermediate
+  // states where the browser reports an empty/incomplete value before the
+  // year is fully typed. Committing straight to the server on every one of
+  // those (the previous behaviour) saved expiryDate as null mid-type, and
+  // the resulting round-trip reset this controlled input's value back to
+  // blank - wiping out the day/month already entered and making it look
+  // like the year could never be typed at all. Local state absorbs every
+  // keystroke; only the finished value is saved, on blur.
+  const [expiryDate, setExpiryDate] = useState(doc.expiryDate ? doc.expiryDate.slice(0, 10) : '');
+  useEffect(() => setExpiryDate(doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''), [doc.expiryDate]);
 
   return (
     <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -455,8 +468,9 @@ function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, on
           <div className="field" style={{ marginBottom: 0 }}>
             <label style={{ fontSize: 10 }}>Expiry date</label>
             <input
-              type="date" value={doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''} disabled={member.archived}
-              onChange={(e) => onSetExpiry(doc, e.target.value)}
+              type="date" value={expiryDate} disabled={member.archived}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              onBlur={() => { if (expiryDate !== (doc.expiryDate ? doc.expiryDate.slice(0, 10) : '')) onSetExpiry(doc, expiryDate); }}
             />
           </div>
         )}

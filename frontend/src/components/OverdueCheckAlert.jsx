@@ -44,10 +44,10 @@ export function OverdueCheckAlert() {
       {rows.map((r) => (
         <Link
           key={r.id}
-          to={`/crew/${r.crewMemberId}?top=currency`}
+          to={r.linkTo}
           style={{ display: 'block', fontSize: 13, color: 'inherit', padding: '3px 0' }}
         >
-          {r.crewMemberName} · {r.label} · scheduled {formatDate(r.scheduledDate)} ({r.daysOverdue} day{r.daysOverdue === 1 ? '' : 's'} overdue)
+          {r.subjectName} · {r.label} · {r.label === 'Check to Line' ? 'last sector' : 'scheduled'} {formatDate(r.scheduledDate)} ({r.daysOverdue} day{r.daysOverdue === 1 ? '' : 's'} overdue)
           {r.assignedTo === user.id ? ' · assigned to you' : r.assignedToName ? ` · assigned to ${r.assignedToName}` : ' · unassigned'}
         </Link>
       ))}

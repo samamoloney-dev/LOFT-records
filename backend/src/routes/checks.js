@@ -217,28 +217,66 @@ function daysBetweenDates(fromStr, toStr) {
 // never open. "Today" is Australia/Perth (see currency.js's
 // localDateString), matching every other due-date calculation in this app,
 // rather than the server's own UTC clock.
+//
+// Covers the four recurrent check types (details.date - see
+// daysBetweenDates' own comment) and Check to Line (check_to_line_forms),
+// per the operator's explicit request that this also apply to CTL. Unlike
+// the recurrent checks, a CTL form has no single scheduled date - it's
+// filled in progressively over weeks of line training, not booked with an
+// examiner for one day - so per the operator's explicit choice its trigger
+// is instead the most recent flight sector date logged on the form
+// (sector_details.sectors12/34.date, see CtlForm.jsx) still sitting
+// uncompleted a day later. That catches a CTL that's actually finished
+// flying but never signed off, without falsely flagging one still
+// genuinely mid-training with no recent sector yet.
 router.get('/alerts/overdue-completion', async (req, res) => {
-  const { rows } = await pool.query(
+  const { rows: checkRows } = await pool.query(
     `SELECT id, crew_member_id, check_type, details, crew_member_name, assigned_to, assigned_to_name
      FROM checks
      WHERE completed_at IS NULL AND archived = false
        AND check_type IN ('EMERGENCY_PROCEDURES', 'RECURRENT_SIMULATOR', 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK')`,
   );
+  const { rows: ctlRows } = await pool.query(
+    `SELECT ctl.id, ctl.trainee_id, ctl.sector_details, ctl.assigned_to, ctl.assigned_to_name,
+            t.first_name, t.last_name
+     FROM check_to_line_forms ctl
+     JOIN trainees t ON t.id = ctl.trainee_id
+     WHERE ctl.completed_at IS NULL AND ctl.archived = false`,
+  );
+
   const today = localDateString();
-  const overdue = rows
+  const overdueChecks = checkRows
     .map(rowToCamel)
     .filter((c) => c.details?.date && daysBetweenDates(c.details.date, today) >= 1)
     .map((c) => ({
       id: c.id,
-      crewMemberId: c.crewMemberId,
-      crewMemberName: c.crewMemberName,
       label: alertLabelFor(c.checkType, c.details),
+      subjectName: c.crewMemberName,
       scheduledDate: c.details.date,
       daysOverdue: daysBetweenDates(c.details.date, today),
       assignedTo: c.assignedTo,
       assignedToName: c.assignedToName,
-    }))
-    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+      linkTo: `/crew/${c.crewMemberId}?top=currency`,
+    }));
+  const overdueCtl = ctlRows
+    .map(rowToCamel)
+    .map((c) => {
+      const sectors = c.sectorDetails || {};
+      const lastSectorDate = [sectors.sectors12?.date, sectors.sectors34?.date].filter(Boolean).sort().pop();
+      return { ...c, lastSectorDate };
+    })
+    .filter((c) => c.lastSectorDate && daysBetweenDates(c.lastSectorDate, today) >= 1)
+    .map((c) => ({
+      id: c.id,
+      label: 'Check to Line',
+      subjectName: `${c.firstName} ${c.lastName}`,
+      scheduledDate: c.lastSectorDate,
+      daysOverdue: daysBetweenDates(c.lastSectorDate, today),
+      assignedTo: c.assignedTo,
+      assignedToName: c.assignedToName,
+      linkTo: `/trainees/${c.traineeId}`,
+    }));
+  const overdue = [...overdueChecks, ...overdueCtl].sort((a, b) => b.daysOverdue - a.daysOverdue);
 
   res.json({
     mine: overdue.filter((c) => c.assignedTo === req.user.id),

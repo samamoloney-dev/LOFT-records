@@ -405,13 +405,44 @@ function viewPdf(dataUri) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-// Scanned certificates (Dangerous Goods, First Aid, licences, etc.) - the
-// operator imports a PDF per certificate and can reopen it later. Unlike
-// Licence Photo (a single slot) this is an open-ended list, closer in shape
-// to Specialist Training's photos - but its own tab, since it applies to
-// every crew member (pilot and cabin attendant alike), not just pilots.
-function CertificatesTab({ member }) {
-  const [certificates, setCertificates] = useState([]);
+// Same status bands/colours as Currency Overview's own StatusPill
+// (frontend/src/pages/CurrencyOverview.jsx) - kept as a small local copy
+// rather than a shared import since only the four date-driven bands that
+// actually apply to a manually-entered expiry date are needed here (no
+// 'not_completed'/'in_training', which don't mean anything for a document).
+const DOCUMENT_STATUS_STYLES = {
+  overdue: { background: '#f8caca', color: '#7a1414', fontWeight: 700 },
+  important: { background: '#fbe1e1', color: '#9b2020' },
+  due_soon: { background: '#fdf2d0', color: '#8a6100' },
+  approaching: { background: '#fdf8d6', color: '#8a7f00' },
+  ok: { background: '#dff5e1', color: '#14632f' },
+};
+const DOCUMENT_STATUS_TEXT = {
+  overdue: 'Expired', important: 'Important', due_soon: 'Due Soon', approaching: 'Approaching', ok: 'Current',
+};
+function DocumentStatusPill({ status }) {
+  if (!status) return null;
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 500, ...DOCUMENT_STATUS_STYLES[status] }}>
+      {DOCUMENT_STATUS_TEXT[status]}
+    </span>
+  );
+}
+const URGENT_DOCUMENT_STATUSES = ['overdue', 'important', 'due_soon', 'approaching'];
+
+// Scanned documents (certificates, licences, contracts, whatever paperwork
+// the operator needs on file - renamed from "Certificates" since it's
+// broader than certifications alone) - the operator imports a PDF per
+// document and can reopen it later. Unlike Licence Photo (a single slot)
+// this is an open-ended list, closer in shape to Specialist Training's
+// photos - but its own tab, since it applies to every crew member (pilot
+// and cabin attendant alike), not just pilots. Expiry date is optional and
+// always manually typed in - there's no form this could be derived from,
+// unlike every other due-date in this app - and drives both this tab's own
+// alert banner below and the Home dashboard's Needs Attention list (see
+// backend/src/routes/crew.js urgentDocumentsFor/dashboard.js).
+function DocumentsTab({ member }) {
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -419,8 +450,8 @@ function CertificatesTab({ member }) {
 
   function load() {
     setLoading(true);
-    api.get(`/api/crew/${member.id}/certificates`)
-      .then(setCertificates)
+    api.get(`/api/crew/${member.id}/documents`)
+      .then(setDocuments)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
@@ -432,41 +463,64 @@ function CertificatesTab({ member }) {
     setBusy(true);
     try {
       const fileData = await readFileAsDataUrl(file);
-      await api.post(`/api/crew/${member.id}/certificates`, { name: name.trim(), fileName: file.name, fileData });
+      await api.post(`/api/crew/${member.id}/documents`, { name: name.trim(), fileName: file.name, fileData });
       setName('');
       load();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  async function view(cert) {
+  async function view(doc) {
     setError(null);
     try {
-      const full = await api.get(`/api/crew/${member.id}/certificates/${cert.id}`);
+      const full = await api.get(`/api/crew/${member.id}/documents/${doc.id}`);
       viewPdf(full.fileData);
     } catch (err) { setError(err.message); }
   }
 
-  async function remove(cert) {
-    if (!window.confirm(`Delete "${cert.name}"? This cannot be undone.`)) return;
+  async function setExpiry(doc, expiryDate) {
     setError(null);
     try {
-      await api.delete(`/api/crew/${member.id}/certificates/${cert.id}`);
-      setCertificates((cs) => cs.filter((c) => c.id !== cert.id));
+      const updated = await api.patch(`/api/crew/${member.id}/documents/${doc.id}`, { expiryDate: expiryDate || null });
+      setDocuments((ds) => ds.map((d) => (d.id === doc.id ? updated : d)));
+    } catch (err) { setError(err.message); }
+  }
+
+  async function remove(doc) {
+    if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await api.delete(`/api/crew/${member.id}/documents/${doc.id}`);
+      setDocuments((ds) => ds.filter((d) => d.id !== doc.id));
     } catch (err) { setError(err.message); }
   }
 
   if (loading) return <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>;
 
+  const urgentDocuments = documents.filter((d) => URGENT_DOCUMENT_STATUSES.includes(d.status));
+
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-        Scanned certificates on file for this crew member - imported as PDFs, click a certificate to view it.
+        Scanned documents on file for this crew member - imported as PDFs, click a document to view it.
       </div>
+
+      {urgentDocuments.length > 0 && (
+        <div className="card" style={{ background: 'var(--bg-danger)', color: 'var(--text-danger)', marginBottom: '1rem' }}>
+          <div style={{ fontWeight: 500, marginBottom: 4 }}>
+            {urgentDocuments.length} document{urgentDocuments.length === 1 ? '' : 's'} need{urgentDocuments.length === 1 ? 's' : ''} attention
+          </div>
+          {urgentDocuments.map((d) => (
+            <div key={d.id} style={{ fontSize: 13 }}>
+              {d.name} - {d.status === 'overdue' ? 'expired' : 'expires'} {formatDate(d.expiryDate)}
+            </div>
+          ))}
+        </div>
+      )}
 
       {!member.archived && (
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="field">
-            <label>Certificate name</label>
+            <label>Document name</label>
             <input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods Certificate" />
           </div>
           <div className="field">
@@ -475,25 +529,33 @@ function CertificatesTab({ member }) {
               type="file" accept="application/pdf" disabled={busy || !name.trim()}
               onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(f); }}
             />
-            {!name.trim() && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Name the certificate above before choosing a file.</div>}
+            {!name.trim() && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Name the document above before choosing a file.</div>}
           </div>
         </div>
       )}
       {error && <div className="error-text">{error}</div>}
 
-      {certificates.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No certificates on file yet.</div>
-      ) : certificates.map((cert) => (
-        <div key={cert.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {documents.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No documents on file yet.</div>
+      ) : documents.map((doc) => (
+        <div key={doc.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontWeight: 500 }}>{cert.name}</div>
+            <div style={{ fontWeight: 500 }}>{doc.name}</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {cert.fileName} · Added {formatDate(cert.createdAt)}{cert.uploadedByName ? ` by ${cert.uploadedByName}` : ''}
+              {doc.fileName} · Added {formatDate(doc.createdAt)}{doc.uploadedByName ? ` by ${doc.uploadedByName}` : ''}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => view(cert)}>View</button>
-            {!member.archived && <button className="danger" onClick={() => remove(cert)}>Delete</button>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label style={{ fontSize: 10 }}>Expiry date</label>
+              <input
+                type="date" value={doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''} disabled={member.archived}
+                onChange={(e) => setExpiry(doc, e.target.value)}
+              />
+            </div>
+            <DocumentStatusPill status={doc.status} />
+            <button onClick={() => view(doc)}>View</button>
+            {!member.archived && <button className="danger" onClick={() => remove(doc)}>Delete</button>}
           </div>
         </div>
       ))}
@@ -889,7 +951,7 @@ export function CrewDetail() {
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),
     ...(isPilot ? [{ key: 'licencePhoto', label: 'Licence Photo' }] : []),
     ...(isAdmin ? [{ key: 'specialistTraining', label: 'Specialist Training' }] : []),
-    ...(isAdmin ? [{ key: 'certificates', label: 'Certificates' }] : []),
+    ...(isAdmin ? [{ key: 'documents', label: member.urgentDocuments?.length > 0 ? 'Documents ⚠' : 'Documents' }] : []),
   ];
 
   return (
@@ -930,7 +992,7 @@ export function CrewDetail() {
       )}
       {topTab === 'licencePhoto' && isPilot && <LicencePhotoTab member={member} onSaved={setMember} />}
       {topTab === 'specialistTraining' && isAdmin && <SpecialistTrainingTab member={member} />}
-      {topTab === 'certificates' && isAdmin && <CertificatesTab member={member} />}
+      {topTab === 'documents' && isAdmin && <DocumentsTab member={member} />}
     </div>
   );
 }

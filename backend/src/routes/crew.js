@@ -470,9 +470,27 @@ async function allItemsFor(member, currency, inLoft) {
   return itemsFor(member, currency, inLoft);
 }
 
+// Manually-entered document expiry dates (crew_documents.expiry_date - see
+// the Documents tab route block below) that count as urgent by the same
+// statusFor bands as every other due-date in this app - drives the
+// Documents tab's own "⚠" warning (see CrewDetail.jsx topTabs) the same
+// way urgentItems already drives the Expiration tab's, and feeds the Home
+// dashboard's Needs Attention list (see dashboard.js) with enough detail
+// (name, expiry date) to build a real alert row rather than just a flag.
+async function urgentDocumentsFor(crewMemberId) {
+  const { rows } = await pool.query(
+    'SELECT id, name, expiry_date FROM crew_documents WHERE crew_member_id = $1 AND expiry_date IS NOT NULL',
+    [crewMemberId],
+  );
+  return rows
+    .map((r) => ({ id: r.id, name: r.name, expiryDate: r.expiry_date, status: statusFor(r.expiry_date) }))
+    .filter((d) => isUrgent(d.status));
+}
+
 async function withCurrency(member) {
-  const [planned, upgradeTraineeId, loftTraineeIds] = await Promise.all([
+  const [planned, upgradeTraineeId, loftTraineeIds, urgentDocuments] = await Promise.all([
     plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), allLinkedTraineeIds(member.id, member.traineeId),
+    urgentDocumentsFor(member.id),
   ]);
   // See activeUpgradeTraineeId above - falls back to an in-progress upgrade
   // trainee record when this crew profile has no direct trainee_id link of
@@ -593,6 +611,10 @@ async function withCurrency(member) {
     // most recent first. Empty for a crew profile that's never been
     // through LOFT at all.
     loftTraineeIds,
+    // Drives the Documents tab's own "⚠" warning icon (CrewDetail.jsx
+    // topTabs) and the Home dashboard's Needs Attention list (dashboard.js)
+    // - see urgentDocumentsFor above.
+    urgentDocuments,
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
     allItems: await allItemsFor(member, currency, inLoft),
@@ -1217,79 +1239,120 @@ router.delete('/:id/competencies/:competencyId', requireRole(...ADMIN_ROLES), as
   res.status(204).end();
 });
 
-// Scanned certificates (Dangerous Goods, First Aid, licences, etc.) - a
+// Scanned documents (certificates, licences, contracts, whatever paperwork
+// the operator needs on file - renamed from "Certificates" per the
+// operator's explicit request, broader than certifications alone) - a
 // crew member can hold several, each imported as a PDF scan and viewable
 // again later. List response omits file_data (kept lightweight, same
 // reasoning as excluding licencePhoto from the roster list above) - the
-// full PDF is only fetched when a specific certificate is actually opened.
-router.get('/:id/certificates', async (req, res) => {
+// full PDF is only fetched when a specific document is actually opened.
+// expiryDate is optional and manually typed in (there's no form this
+// could be derived from, unlike every other due-date in this app) - see
+// urgentDocumentsFor above for how it feeds the tab's own warning icon and
+// dashboard.js for how it feeds the Home dashboard's Needs Attention list.
+router.get('/:id/documents', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
-    `SELECT id, name, file_name, uploaded_by_name, created_at FROM crew_certificates
+    `SELECT id, name, file_name, expiry_date, uploaded_by_name, created_at FROM crew_documents
      WHERE crew_member_id = $1 ORDER BY created_at DESC`,
     [member.id],
   );
-  res.json(rows.map(rowToCamel));
+  res.json(rows.map(rowToCamel).map(withDocumentStatus));
 });
 
-router.get('/:id/certificates/:certificateId', async (req, res) => {
+router.get('/:id/documents/:documentId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
-    'SELECT * FROM crew_certificates WHERE id = $1 AND crew_member_id = $2',
-    [req.params.certificateId, member.id],
+    'SELECT * FROM crew_documents WHERE id = $1 AND crew_member_id = $2',
+    [req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   res.json(rowToCamel(rows[0]));
 });
 
-const certificateSchema = z.object({
+// Same statusFor bands as every other due-date in this app, computed here
+// rather than left to the frontend to reimplement - null when there's no
+// expiry date to judge (most documents won't have one).
+function withDocumentStatus(d) {
+  return { ...d, status: d.expiryDate ? statusFor(d.expiryDate) : null };
+}
+
+const documentSchema = z.object({
   name: z.string().min(1),
   fileName: z.string().min(1),
   fileData: z.string().min(1),
+  expiryDate: z.string().nullable().optional(),
 });
 
-router.post('/:id/certificates', async (req, res) => {
+router.post('/:id/documents', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
 
-  const parsed = certificateSchema.safeParse(req.body);
+  const parsed = documentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_certificates (crew_member_id, name, file_name, file_data, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id, name, file_name, uploaded_by_name, created_at`,
-    [member.id, d.name, d.fileName, d.fileData, req.user.name],
+    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, expiry_date, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, file_name, expiry_date, uploaded_by_name, created_at`,
+    [member.id, d.name, d.fileName, d.fileData, d.expiryDate || null, req.user.name],
   );
   await logAction({
-    userId: req.user.id, action: 'CREATE', targetTable: 'crew_certificates', targetId: rows[0].id,
-    description: `Uploaded certificate "${d.name}" for ${member.name}`,
+    userId: req.user.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,
+    description: `Uploaded document "${d.name}" for ${member.name}`,
   });
-  res.status(201).json(rowToCamel(rows[0]));
+  res.status(201).json(withDocumentStatus(rowToCamel(rows[0])));
 });
 
-router.delete('/:id/certificates/:certificateId', async (req, res) => {
+// Editing the expiry date only, once entered - see documentSchema above,
+// the operator types this in by hand and will need to correct/renew it
+// over time without re-uploading the PDF itself.
+const documentExpirySchema = z.object({ expiryDate: z.string().nullable() });
+
+router.patch('/:id/documents/:documentId', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const parsed = documentExpirySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { rows } = await pool.query(
+    `UPDATE crew_documents SET expiry_date = $1 WHERE id = $2 AND crew_member_id = $3
+     RETURNING id, name, file_name, expiry_date, uploaded_by_name, created_at`,
+    [parsed.data.expiryDate || null, req.params.documentId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
+    description: `Set expiry date for "${rows[0].name}" (${member.name})`,
+  });
+  res.json(withDocumentStatus(rowToCamel(rows[0])));
+});
+
+router.delete('/:id/documents/:documentId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
 
   const { rows } = await pool.query(
-    'DELETE FROM crew_certificates WHERE id = $1 AND crew_member_id = $2 RETURNING name',
-    [req.params.certificateId, member.id],
+    'DELETE FROM crew_documents WHERE id = $1 AND crew_member_id = $2 RETURNING name',
+    [req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({
-    userId: req.user.id, action: 'DELETE', targetTable: 'crew_certificates', targetId: req.params.certificateId,
-    description: `Deleted certificate "${rows[0].name}" for ${member.name}`,
+    userId: req.user.id, action: 'DELETE', targetTable: 'crew_documents', targetId: req.params.documentId,
+    description: `Deleted document "${rows[0].name}" for ${member.name}`,
   });
   res.status(204).end();
 });

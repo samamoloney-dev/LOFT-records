@@ -379,9 +379,25 @@ router.get('/summary', async (req, res) => {
     };
   });
 
+  // Manually-entered document expiry dates (crew_documents.expiry_date -
+  // see crew.js's urgentDocumentsFor, already filtered to urgent statuses
+  // there) surfacing on the same Needs Attention list as every other
+  // due-date in this app, per the operator's explicit request.
+  const documentAttention = members.flatMap((m) => (m.urgentDocuments || []).map((d) => ({ ...d, member: m })));
+
   const needsAttention = [
     ...clearanceAlerts,
     ...upgradeReadyAlerts,
+    ...documentAttention.map((d) => {
+      const days = daysOverdue(d.expiryDate);
+      return {
+        key: `document:${d.id}`,
+        text: days >= 0
+          ? `${d.member.name} — ${d.name} — expired ${days} day${days === 1 ? '' : 's'} ago`
+          : `${d.member.name} — ${d.name} — expires in ${-days} day${-days === 1 ? '' : 's'}`,
+        linkTo: `/crew/${d.member.id}?top=documents`,
+      };
+    }),
     ...overdueAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: i.dueDate

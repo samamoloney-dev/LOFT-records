@@ -34,7 +34,7 @@ const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // Default 100kb is too small for the IPC licence-photo capture (a
 // compressed base64 JPEG, see checks.js PATCH /:id/licence-photo) - bumped
-// again for crew certificate PDFs (crew.js POST /:id/certificates), which
+// again for crew document PDFs (crew.js POST /:id/documents), which
 // can run several MB for a multi-page scan and aren't compressed
 // client-side the way photos are.
 app.use(express.json({ limit: '20mb' }));

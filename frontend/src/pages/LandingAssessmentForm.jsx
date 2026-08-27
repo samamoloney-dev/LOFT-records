@@ -60,12 +60,18 @@ function ObservationSector({ index, value, disabled, onChange }) {
   // keystroke) - buffered in local state and only saved on blur instead,
   // same fix as CtlForm.jsx/Phase4Form.jsx's Route fields.
   const [route, setRoute] = useState(v.route || '');
+  // Date has the same problem in a worse form - a date input fires
+  // onChange on every keystroke while typing a year digit by digit,
+  // including intermediate states the browser reports as empty before the
+  // year is fully typed, and each of those was round-tripping straight to
+  // the server (see DocumentsTab's identical fix in CrewDetail.jsx).
+  const [date, setDate] = useState(v.date || '');
 
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Sector {index + 1}</div>
       <div className="grid2">
-        <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
+        <div className="field"><label>Date</label><input type="date" disabled={disabled} value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => update('date', date)} /></div>
         <div className="field"><label>Route</label><input disabled={disabled} value={route} onChange={(e) => setRoute(e.target.value)} onBlur={() => update('route', route)} /></div>
       </div>
     </div>
@@ -85,12 +91,18 @@ function DemonstrationSector({ index, value, disabled, onChange }) {
   const [airport, setAirport] = useState(v.airport || '');
   const [rwy, setRwy] = useState(v.rwy || '');
   const [wind, setWind] = useState(v.wind || '');
+  // Date has the same problem in a worse form - a date input fires
+  // onChange on every keystroke while typing a year digit by digit,
+  // including intermediate states the browser reports as empty before the
+  // year is fully typed, and each of those was round-tripping straight to
+  // the server (see DocumentsTab's identical fix in CrewDetail.jsx).
+  const [date, setDate] = useState(v.date || '');
 
   return (
     <div className="card">
       <div style={{ fontWeight: 500, marginBottom: 6 }}>Flight {index + 1}</div>
       <div className="grid2">
-        <div className="field"><label>Date</label><input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} /></div>
+        <div className="field"><label>Date</label><input type="date" disabled={disabled} value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => update('date', date)} /></div>
         <div className="field"><label>Airport</label><input disabled={disabled} value={airport} onChange={(e) => setAirport(e.target.value)} onBlur={() => update('airport', airport)} /></div>
       </div>
       <div className="grid2">
@@ -260,7 +272,11 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
               </div>
               <div className="field">
                 <label>Date</label>
-                <input type="date" disabled={locked} value={form.releaseDate || ''} onChange={(e) => save({ releaseDate: e.target.value })} />
+                <input
+                  type="date" disabled={locked} value={form.releaseDate || ''}
+                  onChange={(e) => setData((d) => ({ ...d, form: { ...d.form, releaseDate: e.target.value } }))}
+                  onBlur={() => save({ releaseDate: form.releaseDate })}
+                />
               </div>
             </div>
             <div className="field" style={{ marginTop: 8 }}>

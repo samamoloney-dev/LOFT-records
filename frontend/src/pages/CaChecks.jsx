@@ -168,7 +168,22 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             </div>
             <div className="field">
               <label>Date check conducted</label>
-              <input type="date" disabled={!!selected.completedAt} value={d.date || ''} onChange={(e) => patchDetails(selected, { date: e.target.value })} />
+              {/* Was a controlled input saving straight to the server on every
+                  onChange - typing a year digit by digit fires onChange on
+                  every keystroke, including intermediate states the browser
+                  reports as empty before the year is fully typed, and the
+                  round-trip reset this field mid-type (see DocumentsTab's
+                  identical fix in CrewDetail.jsx). This sits inside a
+                  conditional render (`if (selected)` above), so a local
+                  useState buffer isn't available here without restructuring
+                  the component - defaultValue + onBlur (uncontrolled, only
+                  committed once editing is done) fixes it without that.
+                  key={selected.id} forces a fresh mount (and fresh
+                  defaultValue) when switching to a different check. */}
+              <input
+                type="date" disabled={!!selected.completedAt} defaultValue={d.date || ''} key={selected.id}
+                onBlur={(e) => { if (e.target.value !== (d.date || '')) patchDetails(selected, { date: e.target.value }); }}
+              />
             </div>
           </div>
         </div>

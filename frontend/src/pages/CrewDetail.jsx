@@ -252,17 +252,25 @@ function DeleteArchivedCrewButton({ member, onDelete }) {
 // Currency Overview as "Planned for X".
 function PlannedDateEditor({ crewMemberId, checkKey, plannedDate, onSaved, disabled }) {
   const [value, setValue] = useState(plannedDate ? plannedDate.slice(0, 10) : '');
+  useEffect(() => setValue(plannedDate ? plannedDate.slice(0, 10) : ''), [plannedDate]);
 
-  async function save(next) {
-    setValue(next);
-    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { plannedDate: next || null });
+  // Was saving straight to the server on every onChange - typing a year
+  // digit by digit fires onChange on every keystroke, including
+  // intermediate states the browser reports as empty before the year is
+  // fully typed, and the resulting round-trip reset this controlled input
+  // back to blank mid-type (see DocumentRow's identical fix above). Only
+  // commits on blur now.
+  async function commit() {
+    const current = plannedDate ? plannedDate.slice(0, 10) : '';
+    if (value === current) return;
+    const updated = await api.put(`/api/crew/${crewMemberId}/planned-checks/${checkKey}`, { plannedDate: value || null });
     onSaved(updated);
   }
 
   return (
     <div>
       <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
-      <input type="date" value={value} disabled={disabled} onChange={(e) => save(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
+      <input type="date" value={value} disabled={disabled} onChange={(e) => setValue(e.target.value)} onBlur={commit} style={{ fontSize: 11, padding: '4px 6px' }} />
     </div>
   );
 }
@@ -303,10 +311,14 @@ function ReasonEditor({ crewMemberId, checkKey, reason, onSaved, disabled }) {
 function MedicalBox({ medical, onUpdate, disabled }) {
   const status = competencyStatus(medical.dueDate);
   const [value, setValue] = useState(medical.plannedDate ? medical.plannedDate.slice(0, 10) : '');
+  useEffect(() => setValue(medical.plannedDate ? medical.plannedDate.slice(0, 10) : ''), [medical.plannedDate]);
 
-  async function savePlanned(next) {
-    setValue(next);
-    await onUpdate(medical.competencyTypeId, { plannedDate: next || null });
+  // Same fix as PlannedDateEditor above - only commits on blur, not on
+  // every keystroke, so typing a year doesn't get reset mid-type.
+  async function savePlanned() {
+    const current = medical.plannedDate ? medical.plannedDate.slice(0, 10) : '';
+    if (value === current) return;
+    await onUpdate(medical.competencyTypeId, { plannedDate: value || null });
   }
 
   return (
@@ -314,7 +326,7 @@ function MedicalBox({ medical, onUpdate, disabled }) {
       <DueBadge label="Medical" info={{ dueDate: medical.dueDate, status, completedDate: medical.completedDate, plannedDate: medical.plannedDate }} />
       <div style={{ marginTop: 4 }}>
         <label style={{ display: 'block', fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Plan a date</label>
-        <input type="date" value={value} disabled={disabled} onChange={(e) => savePlanned(e.target.value)} style={{ fontSize: 11, padding: '4px 6px' }} />
+        <input type="date" value={value} disabled={disabled} onChange={(e) => setValue(e.target.value)} onBlur={savePlanned} style={{ fontSize: 11, padding: '4px 6px' }} />
       </div>
     </div>
   );

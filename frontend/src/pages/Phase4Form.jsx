@@ -33,6 +33,13 @@ function SectorFields({ label, value, disabled, onChange }) {
   const [route, setRoute] = useState(v.route || '');
   const [aircraft, setAircraft] = useState(v.aircraft || '');
   const [thisFlight, setThisFlight] = useState(v.thisFlight || '');
+  // Date wasn't included in the fix above, but has the same problem in a
+  // worse form - a date input fires onChange on every keystroke while
+  // typing a year digit by digit, including intermediate states the
+  // browser reports as empty before the year is fully typed, and each of
+  // those was round-tripping straight to the server (see DocumentsTab's
+  // identical fix in CrewDetail.jsx).
+  const [date, setDate] = useState(v.date || '');
 
   return (
     <div className="card">
@@ -50,7 +57,7 @@ function SectorFields({ label, value, disabled, onChange }) {
       <div className="grid2">
         <div className="field">
           <label>Date</label>
-          <input type="date" disabled={disabled} value={v.date || ''} onChange={(e) => update('date', e.target.value)} />
+          <input type="date" disabled={disabled} value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => update('date', date)} />
         </div>
         <div className="field">
           <label>Flight time (this flight)</label>

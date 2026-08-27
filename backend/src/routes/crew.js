@@ -479,7 +479,7 @@ async function allItemsFor(member, currency, inLoft) {
 // (name, expiry date) to build a real alert row rather than just a flag.
 async function urgentDocumentsFor(crewMemberId) {
   const { rows } = await pool.query(
-    'SELECT id, name, expiry_date FROM crew_documents WHERE crew_member_id = $1 AND expiry_date IS NOT NULL',
+    'SELECT id, name, expiry_date FROM crew_documents WHERE crew_member_id = $1 AND expiry_date IS NOT NULL AND archived = false',
     [crewMemberId],
   );
   return rows
@@ -1256,9 +1256,9 @@ router.get('/:id/documents', async (req, res) => {
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
-    `SELECT id, name, file_name, expiry_date, uploaded_by_name, created_at FROM crew_documents
-     WHERE crew_member_id = $1 ORDER BY created_at DESC`,
-    [member.id],
+    `SELECT id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at FROM crew_documents
+     WHERE crew_member_id = $1 AND archived = $2 ORDER BY created_at DESC`,
+    [member.id, req.query.archived === 'true'],
   );
   res.json(rows.map(rowToCamel).map(withDocumentStatus));
 });
@@ -1302,7 +1302,7 @@ router.post('/:id/documents', async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, expiry_date, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, file_name, expiry_date, uploaded_by_name, created_at`,
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
     [member.id, d.name, d.fileName, d.fileData, d.expiryDate || null, req.user.name],
   );
   await logAction({
@@ -1312,10 +1312,15 @@ router.post('/:id/documents', async (req, res) => {
   res.status(201).json(withDocumentStatus(rowToCamel(rows[0])));
 });
 
-// Editing the expiry date only, once entered - see documentSchema above,
-// the operator types this in by hand and will need to correct/renew it
-// over time without re-uploading the PDF itself.
-const documentExpirySchema = z.object({ expiryDate: z.string().nullable() });
+// Editing the name and/or expiry date of an already-uploaded document - the
+// operator types the expiry in by hand and will need to correct/renew it
+// over time without re-uploading the PDF, and name is editable too since a
+// bulk multi-file upload (see CrewDetail.jsx DocumentsTab) auto-derives a
+// name from each file's filename, which sometimes needs a quick fix.
+const documentUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  expiryDate: z.string().nullable().optional(),
+});
 
 router.patch('/:id/documents/:documentId', async (req, res) => {
   const member = await findCrewMember(req.params.id);
@@ -1323,18 +1328,70 @@ router.patch('/:id/documents/:documentId', async (req, res) => {
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
   if (!assertNotArchived(member, res)) return;
 
-  const parsed = documentExpirySchema.safeParse(req.body);
+  const parsed = documentUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const entries = Object.entries(parsed.data);
+  if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+  const columnMap = { name: 'name', expiryDate: 'expiry_date' };
+  const setClauses = entries.map(([key], i) => `${columnMap[key]} = $${i + 1}`);
+  const values = entries.map(([key, value]) => (key === 'expiryDate' ? (value || null) : value));
+  values.push(req.params.documentId, member.id);
 
   const { rows } = await pool.query(
-    `UPDATE crew_documents SET expiry_date = $1 WHERE id = $2 AND crew_member_id = $3
-     RETURNING id, name, file_name, expiry_date, uploaded_by_name, created_at`,
-    [parsed.data.expiryDate || null, req.params.documentId, member.id],
+    `UPDATE crew_documents SET ${setClauses.join(', ')} WHERE id = $${values.length - 1} AND crew_member_id = $${values.length}
+     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
+    values,
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
-    description: `Set expiry date for "${rows[0].name}" (${member.name})`,
+    description: `Updated document "${rows[0].name}" (${member.name})`,
+  });
+  res.json(withDocumentStatus(rowToCamel(rows[0])));
+});
+
+// Files an expired document away once it's been dealt with (renewed
+// elsewhere, superseded, no longer needed) - per the operator's explicit
+// request, only offered on the Documents tab for an actually-expired
+// document, not every document. Archived documents drop off this crew
+// member's active list and Needs Attention, but stay reachable via the
+// "Show archived" toggle here and the global search on the Archive page
+// (see GET /documents/archived below) - nothing is ever deleted by this.
+router.post('/:id/documents/:documentId/archive', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const { rows } = await pool.query(
+    `UPDATE crew_documents SET archived = true, archived_at = now() WHERE id = $1 AND crew_member_id = $2
+     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
+    [req.params.documentId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
+    description: `Archived document "${rows[0].name}" (${member.name})`,
+  });
+  res.json(withDocumentStatus(rowToCamel(rows[0])));
+});
+
+router.post('/:id/documents/:documentId/unarchive', async (req, res) => {
+  const member = await findCrewMember(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Not found' });
+  if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
+  if (!assertNotArchived(member, res)) return;
+
+  const { rows } = await pool.query(
+    `UPDATE crew_documents SET archived = false, archived_at = null WHERE id = $1 AND crew_member_id = $2
+     RETURNING id, name, file_name, expiry_date, archived, archived_at, uploaded_by_name, created_at`,
+    [req.params.documentId, member.id],
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: req.params.documentId,
+    description: `Unarchived document "${rows[0].name}" (${member.name})`,
   });
   res.json(withDocumentStatus(rowToCamel(rows[0])));
 });
@@ -1355,6 +1412,38 @@ router.delete('/:id/documents/:documentId', async (req, res) => {
     description: `Deleted document "${rows[0].name}" for ${member.name}`,
   });
   res.status(204).end();
+});
+
+// Global search across every archived document on every crew member, for
+// the Archive page's own Documents tab - per the operator's explicit
+// requirement that an archived document must stay findable later, since
+// once it's filed away under one crew member's profile there's no other
+// way to relocate it without remembering exactly whose it was. Matches
+// loosely against either the document's own name or the crew member's
+// name (whichever the operator actually remembers), capped at 100 results
+// since this has no pagination UI. Deliberately does not include file_data
+// (kept lightweight, matching the per-member list route above) - the
+// frontend fetches the full PDF via the existing per-member GET route
+// once a specific result is picked.
+router.get('/documents/archived', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const q = (req.query.q || '').trim();
+  const params = [];
+  let where = 'cd.archived = true';
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` AND (cd.name ILIKE $${params.length} OR (cm.first_name || ' ' || cm.last_name) ILIKE $${params.length})`;
+  }
+  const { rows } = await pool.query(
+    `SELECT cd.id, cd.crew_member_id, cd.name, cd.file_name, cd.expiry_date, cd.archived_at, cd.uploaded_by_name,
+            cm.first_name, cm.last_name
+     FROM crew_documents cd
+     JOIN crew_members cm ON cm.id = cd.crew_member_id
+     WHERE ${where}
+     ORDER BY cd.archived_at DESC NULLS LAST
+     LIMIT 100`,
+    params,
+  );
+  res.json(rows.map(rowToCamel).map((d) => ({ ...d, crewMemberName: `${d.firstName} ${d.lastName}` })));
 });
 
 // Clearance Form - the paper trail (SA 539 for cabin attendants, SA 586 for

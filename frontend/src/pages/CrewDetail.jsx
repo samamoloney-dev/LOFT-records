@@ -21,6 +21,7 @@ import { UPGRADE_VARIANTS, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPET
 import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
 import { printCrewFile } from '../lib/printCrewFile';
+import { viewPdf } from '../lib/pdf';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 // Narrower than ADMIN_ROLES (excludes Alternate) - only these three can
@@ -392,19 +393,6 @@ function readFileAsDataUrl(file) {
   });
 }
 
-// Opens a base64 data-URI PDF in a new tab via a Blob/object URL rather than
-// navigating directly to the (potentially several-MB) data: URI itself,
-// which some browsers cap or refuse for large URLs.
-function viewPdf(dataUri) {
-  const [, base64] = dataUri.split(',');
-  const bytes = atob(base64);
-  const array = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) array[i] = bytes.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([array], { type: 'application/pdf' }));
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
-
 // Same status bands/colours as Currency Overview's own StatusPill
 // (frontend/src/pages/CurrencyOverview.jsx) - kept as a small local copy
 // rather than a shared import since only the four date-driven bands that
@@ -430,6 +418,63 @@ function DocumentStatusPill({ status }) {
 }
 const URGENT_DOCUMENT_STATUSES = ['overdue', 'important', 'due_soon', 'approaching'];
 
+// Strips the extension and turns dashes/underscores into spaces (e.g.
+// "dangerous-goods_cert.pdf" -> "dangerous goods cert") so a bulk multi-file
+// upload doesn't leave every document named after its raw filename - the
+// operator can still rename any of them afterward (see DocumentRow below).
+function nameFromFileName(fileName) {
+  return fileName.replace(/\.pdf$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || fileName;
+}
+
+// Local name field with onBlur-triggered save (mirrors FlightRow.jsx's
+// established safe pattern for a text field sitting inside a frequently
+// re-rendered list - saving on every keystroke via a direct value+onChange
+// here caused exactly this kind of field to lose characters mid-type
+// elsewhere in this app, see Phase4Form.jsx/CtlForm.jsx's SectorFields fix).
+// Expiry date doesn't need the same treatment - picking a date is one
+// atomic action, not continuous typing.
+function DocumentRow({ doc, member, onView, onRename, onSetExpiry, onArchive, onUnarchive, onRemove }) {
+  const [name, setName] = useState(doc.name);
+  useEffect(() => setName(doc.name), [doc.name]);
+
+  return (
+    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <input
+          value={name} disabled={member.archived} style={{ fontWeight: 500 }}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => { if (name.trim() && name !== doc.name) onRename(doc, name.trim()); else setName(doc.name); }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+          {doc.fileName} · Added {formatDate(doc.createdAt)}{doc.uploadedByName ? ` by ${doc.uploadedByName}` : ''}
+          {doc.archived && doc.archivedAt ? ` · Archived ${formatDate(doc.archivedAt)}` : ''}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!doc.archived && (
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label style={{ fontSize: 10 }}>Expiry date</label>
+            <input
+              type="date" value={doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''} disabled={member.archived}
+              onChange={(e) => onSetExpiry(doc, e.target.value)}
+            />
+          </div>
+        )}
+        <DocumentStatusPill status={doc.status} />
+        <button onClick={() => onView(doc)}>View</button>
+        {doc.archived ? (
+          !member.archived && <button onClick={() => onUnarchive(doc)}>Unarchive</button>
+        ) : (
+          <>
+            {doc.status === 'overdue' && !member.archived && <button onClick={() => onArchive(doc)}>Archive</button>}
+            {!member.archived && <button className="danger" onClick={() => onRemove(doc)}>Delete</button>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Scanned documents (certificates, licences, contracts, whatever paperwork
 // the operator needs on file - renamed from "Certificates" since it's
 // broader than certifications alone) - the operator imports a PDF per
@@ -446,27 +491,41 @@ function DocumentsTab({ member }) {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   function load() {
     setLoading(true);
-    api.get(`/api/crew/${member.id}/documents`)
+    api.get(`/api/crew/${member.id}/documents?archived=${showArchived}`)
       .then(setDocuments)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
-  useEffect(load, [member.id]);
+  useEffect(load, [member.id, showArchived]);
 
-  async function upload(file) {
-    if (!file || !name.trim()) return;
+  // Accepts one file or many - a single file still respects the typed
+  // Document name above (so the existing single-upload flow feels
+  // unchanged), but multiple files are always named from their own
+  // filenames, since typing one name for a batch wouldn't make sense.
+  // Uploaded sequentially (not Promise.all) so "Uploading 3 of 12…" is
+  // meaningful and a failure partway through doesn't silently interleave
+  // with ones still in flight.
+  async function uploadFiles(files) {
+    if (!files || files.length === 0) return;
     setError(null);
     setBusy(true);
     try {
-      const fileData = await readFileAsDataUrl(file);
-      await api.post(`/api/crew/${member.id}/documents`, { name: name.trim(), fileName: file.name, fileData });
+      for (let i = 0; i < files.length; i++) {
+        setProgress(files.length > 1 ? { done: i, total: files.length } : null);
+        const file = files[i];
+        const docName = files.length === 1 && name.trim() ? name.trim() : nameFromFileName(file.name);
+        const fileData = await readFileAsDataUrl(file);
+        await api.post(`/api/crew/${member.id}/documents`, { name: docName, fileName: file.name, fileData });
+      }
       setName('');
       load();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+    } catch (err) { setError(err.message); } finally { setBusy(false); setProgress(null); }
   }
 
   async function view(doc) {
@@ -477,11 +536,35 @@ function DocumentsTab({ member }) {
     } catch (err) { setError(err.message); }
   }
 
+  async function rename(doc, newName) {
+    setError(null);
+    try {
+      const updated = await api.patch(`/api/crew/${member.id}/documents/${doc.id}`, { name: newName });
+      setDocuments((ds) => ds.map((d) => (d.id === doc.id ? updated : d)));
+    } catch (err) { setError(err.message); }
+  }
+
   async function setExpiry(doc, expiryDate) {
     setError(null);
     try {
       const updated = await api.patch(`/api/crew/${member.id}/documents/${doc.id}`, { expiryDate: expiryDate || null });
       setDocuments((ds) => ds.map((d) => (d.id === doc.id ? updated : d)));
+    } catch (err) { setError(err.message); }
+  }
+
+  async function archive(doc) {
+    setError(null);
+    try {
+      await api.post(`/api/crew/${member.id}/documents/${doc.id}/archive`);
+      setDocuments((ds) => ds.filter((d) => d.id !== doc.id));
+    } catch (err) { setError(err.message); }
+  }
+
+  async function unarchive(doc) {
+    setError(null);
+    try {
+      await api.post(`/api/crew/${member.id}/documents/${doc.id}/unarchive`);
+      setDocuments((ds) => ds.filter((d) => d.id !== doc.id));
     } catch (err) { setError(err.message); }
   }
 
@@ -496,12 +579,15 @@ function DocumentsTab({ member }) {
 
   if (loading) return <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading…</div>;
 
-  const urgentDocuments = documents.filter((d) => URGENT_DOCUMENT_STATUSES.includes(d.status));
+  const urgentDocuments = showArchived ? [] : documents.filter((d) => URGENT_DOCUMENT_STATUSES.includes(d.status));
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-        Scanned documents on file for this crew member - imported as PDFs, click a document to view it.
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: '1rem' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Scanned documents on file for this crew member - imported as PDFs, click a document to view it.
+        </div>
+        <button onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Show active' : 'Show archived'}</button>
       </div>
 
       {urgentDocuments.length > 0 && (
@@ -517,47 +603,36 @@ function DocumentsTab({ member }) {
         </div>
       )}
 
-      {!member.archived && (
+      {!member.archived && !showArchived && (
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="field">
             <label>Document name</label>
             <input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods Certificate" />
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Only used when importing a single file - select several PDFs at once and each is named from its own filename instead (rename any of them afterward below).
+            </div>
           </div>
           <div className="field">
-            <label>{busy ? 'Uploading…' : 'Import PDF'}</label>
+            <label>{busy ? (progress ? `Uploading ${progress.done + 1} of ${progress.total}…` : 'Uploading…') : 'Import PDF(s)'}</label>
             <input
-              type="file" accept="application/pdf" disabled={busy || !name.trim()}
-              onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; upload(f); }}
+              type="file" accept="application/pdf" multiple disabled={busy}
+              onChange={(e) => { const files = [...e.target.files]; e.target.value = ''; uploadFiles(files); }}
             />
-            {!name.trim() && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Name the document above before choosing a file.</div>}
           </div>
         </div>
       )}
       {error && <div className="error-text">{error}</div>}
 
       {documents.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No documents on file yet.</div>
-      ) : documents.map((doc) => (
-        <div key={doc.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <div style={{ fontWeight: 500 }}>{doc.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {doc.fileName} · Added {formatDate(doc.createdAt)}{doc.uploadedByName ? ` by ${doc.uploadedByName}` : ''}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label style={{ fontSize: 10 }}>Expiry date</label>
-              <input
-                type="date" value={doc.expiryDate ? doc.expiryDate.slice(0, 10) : ''} disabled={member.archived}
-                onChange={(e) => setExpiry(doc, e.target.value)}
-              />
-            </div>
-            <DocumentStatusPill status={doc.status} />
-            <button onClick={() => view(doc)}>View</button>
-            {!member.archived && <button className="danger" onClick={() => remove(doc)}>Delete</button>}
-          </div>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+          {showArchived ? 'No archived documents.' : 'No documents on file yet.'}
         </div>
+      ) : documents.map((doc) => (
+        <DocumentRow
+          key={doc.id} doc={doc} member={member}
+          onView={view} onRename={rename} onSetExpiry={setExpiry}
+          onArchive={archive} onUnarchive={unarchive} onRemove={remove}
+        />
       ))}
     </div>
   );

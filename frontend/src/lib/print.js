@@ -246,10 +246,10 @@ export function openPrintWindow(title, bodyHtml) {
   setTimeout(doPrint, 300);
 }
 
-// A completion certificate (Emergency Procedures/Life Jacket/Smoke & Fire/
-// F100 Slide Training - see printBuilders.js buildSafetyEquipmentCertificateHtml)
-// looks nothing like the checklist-report forms above (single decorative
-// page, no letterhead/footer/pagination), so it gets its own minimal window
+// A completion certificate (see printBuilders.js buildCertificateHtml,
+// CertificateGenerator.jsx) looks nothing like the checklist-report forms
+// above (single decorative page, no letterhead/footer/pagination), so it
+// gets its own minimal window
 // opener rather than forcing PRINT_STYLES' report layout onto it.
 const CERTIFICATE_STYLES = `
   @page { size: A4 landscape; margin: 12mm; }

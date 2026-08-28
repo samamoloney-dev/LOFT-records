@@ -18,6 +18,7 @@ import { Planning } from './pages/Planning';
 import { SyllabusAdmin, ContentApprovalAlert } from './pages/SyllabusAdmin';
 import { ContinuousImprovement } from './pages/ContinuousImprovement';
 import { MeetingMinutesList, MeetingMinutesDetail, MeetingMinutesAlert } from './pages/MeetingMinutes';
+import { CertificateGenerator } from './pages/CertificateGenerator';
 import { OverdueCheckAlert } from './components/OverdueCheckAlert';
 import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
@@ -94,6 +95,7 @@ function Shell({ children }) {
     CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && { to: '/continuous-improvement', label: 'Continuous Improvement' },
     SYLLABUS_ADMIN_ROLES.includes(user.role) && { to: '/syllabus', label: 'Syllabus' },
     ADMIN_ROLES.includes(user.role) && { to: '/archive', label: 'Archive' },
+    ADMIN_ROLES.includes(user.role) && { to: '/certificates', label: 'Certificates' },
     user.role !== 'TRAINEE' && { to: '/meeting-minutes', label: 'Meeting Minutes' },
   ].filter(Boolean);
 
@@ -173,6 +175,7 @@ export default function App() {
                 <Route path="/trainees/:id" element={<TraineeDetail />} />
                 <Route path="/syllabus" element={<ProtectedRoute roles={SYLLABUS_ADMIN_ROLES}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />
+                <Route path="/certificates" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><CertificateGenerator /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Staff /></ProtectedRoute>} />
                 <Route path="/fs-staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><FsStaff /></ProtectedRoute>} />
                 <Route path="/checks" element={<Checks />} />

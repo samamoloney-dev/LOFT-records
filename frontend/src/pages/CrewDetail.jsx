@@ -651,9 +651,10 @@ function DocumentsTab({ member }) {
 // authority rules and are conducted the same way - per the operator's
 // explicit request that all four live together under one tab, matching the
 // operator's own Skippers certificate template, which certifies all of
-// them together too (see printBuilders.js buildSafetyEquipmentCertificateHtml).
-// F100 Slide Training only offered for a crew member actually on the Fokker
-// 100 fleet - mirrors crew.js safetyEquipmentCurrency's own fleet scoping.
+// them together too (see the standalone Certificate Generator tool,
+// CertificateGenerator.jsx). F100 Slide Training only offered for a crew
+// member actually on the Fokker 100 fleet - mirrors crew.js
+// safetyEquipmentCurrency's own fleet scoping.
 function EmergencyProceduresGroup({ member, showArchived }) {
   const isFokker100 = member.fleets.includes('FOKKER_100') || member.fleets.includes('CA_FOKKER_100');
   const innerTabs = [

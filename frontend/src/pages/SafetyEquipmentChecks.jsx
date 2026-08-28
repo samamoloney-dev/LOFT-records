@@ -6,9 +6,6 @@ import { AssessorPicker } from '../components/AssessorPicker';
 import { PinSignature } from '../components/PinSignature';
 import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
-import { PrintButton } from '../components/PrintButton';
-import { openCertificateWindow } from '../lib/print';
-import { buildSafetyEquipmentCertificateHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 
@@ -156,14 +153,6 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
     catch (err) { setError(err.message); }
   }
 
-  // Certificate matches the operator's Skippers template - ticks whichever
-  // of the master checklist lines this completed check corresponds to (see
-  // buildSafetyEquipmentCertificateHtml), Valid From/To from completedAt
-  // and the check's own renewal cycle (never for a once-off check).
-  function printCertificate(check) {
-    openCertificateWindow(`Certificate - ${crewMemberName}`, buildSafetyEquipmentCertificateHtml(check, crewMemberName));
-  }
-
   if (selected) {
     const d = selected.details || {};
     const allItemsAnswered = config.items.every((item) => d.items?.[item.id] !== undefined);
@@ -173,7 +162,6 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
-            {selected.result === 'PASS' && <PrintButton label="Print Certificate" onPrint={() => printCertificate(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}

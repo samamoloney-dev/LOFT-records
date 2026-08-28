@@ -9,8 +9,8 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { PrintButton } from '../components/PrintButton';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
-import { openPrintWindow, openCertificateWindow } from '../lib/print';
-import { buildEpCheckHtml, buildSafetyEquipmentCertificateHtml } from '../lib/printBuilders';
+import { openPrintWindow } from '../lib/print';
+import { buildEpCheckHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
@@ -139,10 +139,6 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
     openPrintWindow(`EP Check - ${check.details?.name || ''}`, buildEpCheckHtml(check, epItems));
   }
 
-  function printCertificate(check) {
-    openCertificateWindow(`Certificate - ${check.details?.name || ''}`, buildSafetyEquipmentCertificateHtml(check, check.details?.name));
-  }
-
   function toggleType(type) {
     setNewForm((f) => ({
       ...f,
@@ -160,7 +156,6 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
           <button onClick={() => setSelectedId(null)}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
             {(selected.archived || selected.completedAt) && <PrintButton onPrint={() => printCheck(selected)} />}
-            {selected.result === 'PASS' && <PrintButton label="Print Certificate" onPrint={() => printCertificate(selected)} />}
             <ArchiveButton
               archived={selected.archived}
               canArchive={!!selected.result}

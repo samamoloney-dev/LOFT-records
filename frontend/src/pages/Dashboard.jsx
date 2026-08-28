@@ -184,29 +184,6 @@ function RecentActivityPanel({ data, navigate }) {
   );
 }
 
-// Manual trigger for the daily competency digest email (see
-// backend/src/lib/digest.js) - lets HOTC/HOFO/Flight Ops Admin/Alternate
-// confirm it's actually configured (RESEND_API_KEY set on the backend)
-// rather than only finding out at 6am whether it worked.
-function SendDigestButton() {
-  const [status, setStatus] = useState(null);
-
-  async function send() {
-    setStatus('sending');
-    try {
-      const res = await api.post('/api/digest/send-now');
-      setStatus(res.sent > 0 ? `Sent to ${res.sent} recipient${res.sent === 1 ? '' : 's'}` : 'No HOTC/HOFO/Flight Ops Admin/Alternate recipients found');
-    } catch (err) { setStatus(err.message); }
-  }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <button onClick={send} disabled={status === 'sending'}>{status === 'sending' ? 'Sending…' : 'Send Digest Now'}</button>
-      {status && status !== 'sending' && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{status}</span>}
-    </div>
-  );
-}
-
 export function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -230,10 +207,9 @@ export function Dashboard() {
           <div style={{ fontSize: 18, fontWeight: 600 }}>Welcome back, {user.name}</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{formatUserRole(user.role)} · {formatDate(new Date().toISOString())}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => navigate('/checks')}>Add Check</button>
           <button onClick={() => navigate('/planning')}>Go to Planning</button>
-          <SendDigestButton />
         </div>
       </div>
 

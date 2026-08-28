@@ -147,6 +147,18 @@ function canAccessCompetencyChecks(user) {
   return canAccessChecks(user) || user.role === 'CA_MANAGER';
 }
 
+// Certificate Generator (frontend/src/pages/CertificateGenerator.jsx) -
+// per the operator's explicit request, HOTC/HOFO/Flight Ops Admin/
+// Alternate/Ground Instructor plus anyone individually ticked for
+// Emergency Procedures checkAccess ("EP trainers" - same flag
+// isGroundInstructorCheckEligible above checks), not everyone who can
+// merely view/manage the checklist itself (that stays ADMIN_ROLES-only,
+// same as every other Syllabus tab section - see certificate-checklist.js).
+const CERTIFICATE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'GROUND_INSTRUCTOR'];
+function canAccessCertificates(user) {
+  return CERTIFICATE_ROLES.includes(user.role) || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+}
+
 function isCaOnlyRole(user) {
   return CA_ONLY_ROLES.includes(user.role);
 }
@@ -190,6 +202,7 @@ module.exports = {
   PRE_SIM_ASSESSOR_ROLES,
   LANDING_ASSESSMENT_EDIT_ROLES,
   isGroundInstructorCheckEligible,
+  canAccessCertificates,
   PERSONNEL_AIR_COMPETENCY_ROLES,
   PERSONNEL_AIR_COMPETENCY_SECTION,
   UPGRADE_CHECKER_ROLES,

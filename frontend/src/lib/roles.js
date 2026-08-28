@@ -39,6 +39,18 @@ export function isGroundInstructorCheckEligible(user) {
     || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
 }
 
+// Certificate Generator - HOTC/HOFO/Flight Ops Admin/Alternate/Ground
+// Instructor plus anyone individually ticked for Emergency Procedures
+// checkAccess ("EP trainers" - same flag isGroundInstructorCheckEligible
+// above checks), per the operator's explicit request. Managing the
+// checklist itself (Syllabus tab) stays ADMIN_ROLES-only - this only gates
+// the generator page/GET endpoint. Mirrors backend/src/middleware/
+// roles.js's canAccessCertificates.
+const CERTIFICATE_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'GROUND_INSTRUCTOR'];
+export function canAccessCertificates(user) {
+  return CERTIFICATE_ROLES.includes(user.role) || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+}
+
 // Mirrors backend/src/middleware/roles.js's CHECK_ROLES (canAccessChecks) -
 // who can conduct/assess a check generally, as opposed to who a given check
 // applies to.

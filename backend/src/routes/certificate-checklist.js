@@ -3,7 +3,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, canAccessCertificates } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -12,11 +12,15 @@ const router = express.Router();
 // frontend/src/pages/CertificateGenerator.jsx) - the operator's own
 // Skippers paper certificate template's line items, editable here per the
 // operator's explicit request to add/remove courses as required, rather
-// than the fixed list this used to be (see 0110 migration).
+// than the fixed list this used to be (see 0110 migration). Managing this
+// list stays ADMIN_ROLES-only (same as every other Syllabus tab section -
+// see the per-route requireRole below), but reading it to actually
+// generate a certificate is open to the broader canAccessCertificates
+// group per the operator's explicit request.
 router.use(requireAuth);
-router.use(requireRole(...ADMIN_ROLES));
 
 router.get('/', async (req, res) => {
+  if (!canAccessCertificates(req.user)) return res.status(403).json({ error: 'Forbidden' });
   const includeArchived = req.query.includeArchived === 'true';
   const { rows } = await pool.query(
     `SELECT * FROM certificate_checklist_items ${includeArchived ? '' : 'WHERE archived = false'} ORDER BY sort_order ASC, created_at ASC`,
@@ -26,7 +30,7 @@ router.get('/', async (req, res) => {
 
 const createSchema = z.object({ label: z.string().min(1) });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -47,7 +51,7 @@ const updateSchema = z.object({
   archived: z.boolean().optional(),
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -73,7 +77,7 @@ router.patch('/:id', async (req, res) => {
 // (the certificate is a print-time snapshot, not stored anywhere), so
 // there's nothing to cascade or lose by removing it outright. Archive is
 // still offered as the non-destructive default in the UI.
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const { rows } = await pool.query('DELETE FROM certificate_checklist_items WHERE id = $1 RETURNING label', [req.params.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({

@@ -1354,6 +1354,102 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   res.json(rowToCamel(rows[0]));
 });
 
+// Bulk import of crew competency dates from a spreadsheet (see
+// frontend/src/pages/BulkImportCompetencies.jsx) - the counterpart to
+// Currency Overview's own CSV export. Matches each row to a crew member (by
+// ARN, falling back to name) and an existing competency type (by name);
+// unlike bulk crew import, nothing new is ever created here beyond a date
+// upsert, since every active competency type already applies to every crew
+// member automatically. A row naming one of the recurrent checks (EP/IPC/
+// PC/Line Check/Life Jacket/Smoke & Fire/F100 Slide - not competency_types-
+// backed, see CURRENCY_LABELS) is reported as skipped rather than a
+// confusing failure, since re-importing Currency Overview's own export
+// unmodified will always include those.
+const NON_COMPETENCY_LABELS = new Set([
+  'emergency procedures', 'ipc', 'proficiency check', 'line check',
+  'life jacket training', 'smoke & fire training', 'f100 slide training',
+]);
+
+router.post('/competencies/bulk-import', blockCaManager, async (req, res) => {
+  const rowsInput = Array.isArray(req.body.rows) ? req.body.rows : null;
+  if (!rowsInput) return res.status(400).json({ error: 'rows must be an array' });
+  if (rowsInput.length === 0) return res.status(400).json({ error: 'No rows to import' });
+  if (rowsInput.length > 1000) return res.status(400).json({ error: 'Maximum 1000 rows per import - split into smaller batches' });
+
+  const [{ rows: memberRows }, { rows: typeRows }] = await Promise.all([
+    pool.query(`${CREW_SELECT} WHERE crew_members.archived = false`),
+    pool.query('SELECT id, name FROM competency_types'),
+  ]);
+  const members = memberRows.map(serializeCrewMember);
+  const memberByArn = new Map(members.filter((m) => m.arn).map((m) => [m.arn.trim().toLowerCase(), m]));
+  const memberByName = new Map(members.map((m) => [m.name.trim().toLowerCase(), m]));
+  const typeByName = new Map(typeRows.map((t) => [t.name.trim().toLowerCase(), t]));
+
+  const results = [];
+  for (let i = 0; i < rowsInput.length; i++) {
+    // +2 so this matches the spreadsheet row the operator would count by
+    // eye (1-indexed, plus the header row).
+    const rowNumber = i + 2;
+    const r = rowsInput[i] || {};
+    const arnKey = (r.arn || '').trim().toLowerCase();
+    const nameKey = (r.crewMemberName || '').trim().toLowerCase();
+    const member = (arnKey && memberByArn.get(arnKey)) || memberByName.get(nameKey);
+    const competencyName = (r.competencyName || '').trim();
+    const type = typeByName.get(competencyName.toLowerCase());
+
+    if (!member) {
+      results.push({ row: rowNumber, name: r.crewMemberName || r.arn || null, status: 'error', error: 'No matching crew member found (checked ARN, then name)' });
+      continue;
+    }
+    if (!type) {
+      if (NON_COMPETENCY_LABELS.has(competencyName.toLowerCase())) {
+        results.push({ row: rowNumber, name: member.name, competency: competencyName, status: 'skipped', error: 'Not a competency (recurrent check) - not handled by this import' });
+      } else {
+        results.push({ row: rowNumber, name: member.name, competency: competencyName, status: 'error', error: `No competency type named "${competencyName}" - check spelling or add it on the Syllabus tab` });
+      }
+      continue;
+    }
+    if (!r.completedDate && !r.dueDate) {
+      results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'skipped', error: 'No completed or due date given' });
+      continue;
+    }
+
+    // Mirrors the single-row PUT's own HOTC/HOFO-only-once-saved rule
+    // (see PUT /:id/competencies/:competencyTypeId above) - doesn't touch
+    // na/plannedDate/courseSent at all (unlike that route), since this
+    // import has no column for them and shouldn't silently reset them.
+    const { rows: existingRows } = await pool.query(
+      'SELECT completed_date, due_date, planned_date FROM crew_competencies WHERE crew_member_id = $1 AND competency_type_id = $2',
+      [member.id, type.id],
+    );
+    const existing = existingRows[0];
+    const hasSavedDates = existing && (existing.completed_date || existing.due_date || existing.planned_date);
+    const allowedRoles = type.name === 'Refresher Training' ? ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'] : ['HOTC', 'HOFO'];
+    if (hasSavedDates && !allowedRoles.includes(req.user.role)) {
+      results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'error', error: `Only ${allowedRoles.join(', ')} can change a competency date once it has been saved` });
+      continue;
+    }
+
+    await pool.query(
+      `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (crew_member_id, competency_type_id)
+       DO UPDATE SET completed_date = $3, due_date = $4`,
+      [member.id, type.id, r.completedDate || null, r.dueDate || null],
+    );
+    results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'imported' });
+  }
+
+  const imported = results.filter((r2) => r2.status === 'imported').length;
+  const skipped = results.filter((r2) => r2.status === 'skipped').length;
+  const failed = results.filter((r2) => r2.status === 'error').length;
+  await logAction({
+    userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies',
+    description: `Bulk-imported ${imported} competency date(s)`,
+  });
+  res.json({ imported, skipped, failed, results });
+});
+
 // One-off competencies assigned to a single crew member rather than every
 // crew member on the catalog - per the operator's explicit request, for a
 // requirement that only applies to specific chosen pilots/cabin attendants

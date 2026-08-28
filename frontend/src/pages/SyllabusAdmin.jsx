@@ -1317,6 +1317,95 @@ function CompetencyTypesSection() {
   );
 }
 
+// Master checklist for the Certificate Generator (frontend/src/pages/
+// CertificateGenerator.jsx) - the operator's own Skippers paper
+// certificate template's line items, editable here per the operator's
+// explicit request to add/remove courses as required (see 0110 migration -
+// this used to be a fixed list hardcoded in printBuilders.js). No
+// fleet/role scoping like competency types - just a name and an order.
+function CertificateChecklistSection() {
+  const [items, setItems] = useState([]);
+  const [label, setLabel] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/certificate-checklist?includeArchived=true').then(setItems).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function addItem(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    setError(null);
+    try {
+      await api.post('/api/certificate-checklist', { label: label.trim() });
+      setLabel('');
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function saveLabel(id) {
+    if (!editingLabel.trim()) return;
+    setError(null);
+    try {
+      await api.patch(`/api/certificate-checklist/${id}`, { label: editingLabel.trim() });
+      setEditingId(null);
+      load();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(item) {
+    setError(null);
+    try { await api.patch(`/api/certificate-checklist/${item.id}`, { archived: !item.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function remove(item) {
+    if (!window.confirm(`Permanently delete "${item.label}" from the certificate checklist? This cannot be undone.`)) return;
+    setError(null);
+    try { await api.delete(`/api/certificate-checklist/${item.id}`); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        The full list of courses offered as tickable lines on a Certificate Generator certificate - archiving one hides it from new certificates without affecting any already printed.
+      </div>
+      <form className="card" onSubmit={addItem}>
+        <div className="field"><label>Add a checklist item</label><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. CPR Training" required /></div>
+        <button type="submit" className="primary">Add</button>
+      </form>
+      {error && <div className="error-text">{error}</div>}
+
+      {items.map((item) => (
+        <div key={item.id} className="card" style={{ cursor: 'default' }}>
+          {editingId === item.id ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ flex: 1 }} value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} />
+              <button onClick={() => saveLabel(item.id)}>Save</button>
+              <button onClick={() => setEditingId(null)}>Cancel</button>
+            </div>
+          ) : (
+            <div className="row" style={{ cursor: 'default' }}>
+              <div style={{ flex: 1, fontWeight: 500, opacity: item.archived ? 0.6 : 1 }}>
+                {item.label}{item.archived ? ' (archived)' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setEditingId(item.id); setEditingLabel(item.label); }}>Edit</button>
+                <button onClick={() => toggleArchive(item)}>{item.archived ? 'Unarchive' : 'Archive'}</button>
+                <button className="danger" onClick={() => remove(item)}>Delete</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const CHANGE_TABLE_LABELS = { syllabus_items: 'LOFT Package item', ground_school_items: 'Ground school item' };
 const CHANGE_ACTION_LABELS = { CREATE: 'Add', UPDATE: 'Update', DELETE: 'Delete' };
 
@@ -1439,6 +1528,7 @@ export function SyllabusAdmin() {
       { key: 'syllabus', label: 'LOFT Package' },
       { key: 'check-forms', label: 'Check Forms' },
       { key: 'competencies', label: 'Competencies' },
+      { key: 'certificates', label: 'Certificate Checklist' },
       ...(canReviewChanges ? [{ key: 'approvals', label: 'Pending Approvals' }] : []),
       ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
     ];
@@ -1451,6 +1541,7 @@ export function SyllabusAdmin() {
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
       {tab === 'check-forms' && !isCaManager && <CheckFormItemsSection />}
       {tab === 'competencies' && !isCaManager && <CompetencyTypesSection />}
+      {tab === 'certificates' && !isCaManager && <CertificateChecklistSection />}
       {tab === 'approvals' && canReviewChanges && <PendingApprovalsSection />}
       {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>

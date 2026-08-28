@@ -44,33 +44,18 @@ export function buildEpCheckHtml(check, epItems) {
 }
 
 // ---- Completion certificate (CertificateGenerator.jsx) ----
-// Matches the operator's own Skippers paper certificate template - a fixed
-// master checklist of every safety-equipment/emergency-procedures item
-// Skippers certifies. Manually driven (name, which line(s) were completed,
-// validity dates) rather than derived from a specific check record - the
-// operator asked for the simpler standalone tool instead, since it works
-// for any crew member regardless of whether a matching check exists in
-// this app at all. Embraer 120/Cessna 441 Conquest are on the paper
-// template but aren't fleets this app otherwise tracks - included here
-// only because the paper original has them, same as every other line.
-export const CERTIFICATE_CHECKLIST = [
-  { key: 'ep', label: 'Emergency Procedures Training' },
-  { key: 'epF100', label: 'Fokker 100 Emergency Procedures' },
-  { key: 'epDash8', label: 'Dash 8 Emergency Procedures Training' },
-  { key: 'epEmbraer120', label: 'Embraer 120 Emergency Procedures Training' },
-  { key: 'epMetro', label: 'Fairchild Metroliner 23 Emergency Procedures Training' },
-  { key: 'epCessna441', label: 'Cessna 441 Conquest Emergency Procedures Training' },
-  { key: 'lifeJacket', label: 'Life Jacket Training (Wet Drill)' },
-  { key: 'f100Slide', label: 'Fokker 100 Slide Training' },
-  { key: 'englishProficiency', label: 'English Language Proficiency' },
-  { key: 'liveFire', label: 'Live Fire Fighting Exercise' },
-  { key: 'smokeFire', label: 'Smoke Fire Fighting Exercise' },
-];
-
-export function buildCertificateHtml({ name, tickedKeys, validFrom, validTo, assessorName }) {
+// Matches the operator's own Skippers paper certificate template. `items`
+// is the admin-editable master checklist (see SyllabusAdmin.jsx
+// CertificateChecklistSection / GET /api/certificate-checklist) - no
+// longer a fixed list hardcoded here, per the operator's explicit request
+// to add/remove courses from the Syllabus tab as required. Manually driven
+// (name, which line(s) were completed, validity dates) rather than derived
+// from a specific check record - works for any crew member regardless of
+// whether a matching check exists in this app at all.
+export function buildCertificateHtml({ name, items, tickedKeys, validFrom, validTo, assessorName }) {
   const ticked = new Set(tickedKeys);
-  const checklistHtml = CERTIFICATE_CHECKLIST
-    .map((item) => `<div><span class="box">[${ticked.has(item.key) ? '✓' : ' '}]</span> ${item.label}</div>`)
+  const checklistHtml = items
+    .map((item) => `<div><span class="box">[${ticked.has(item.id) ? '✓' : ' '}]</span> ${item.label}</div>`)
     .join('');
   return `
     <img class="cert-logo" src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />

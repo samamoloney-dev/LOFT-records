@@ -8,6 +8,7 @@ import { ExportCsvButton } from '../components/ExportCsvButton';
 import { openPrintWindow } from '../lib/print';
 import { buildCurrencyOverviewHtml } from '../lib/printBuilders';
 import { downloadCsv } from '../lib/exportCsv';
+import { BulkImportCompetencies } from './BulkImportCompetencies';
 
 // Overdue and not-yet-completed rank above the three graduated advance-
 // warning bands (important > due_soon > approaching - closest deadline
@@ -226,6 +227,10 @@ export function CurrencyOverview() {
   const [rosteredFilter, setRosteredFilter] = useState(
     ROSTERED_FILTERS.some((f) => f.key === requestedRostered) ? requestedRostered : 'all',
   );
+  // The counterpart to Export CSV below - swaps the whole page over to the
+  // bulk import tool rather than adding a whole separate route/nav item for
+  // what's really just the reverse of the same export/import pair.
+  const [showImport, setShowImport] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -242,6 +247,17 @@ export function CurrencyOverview() {
   }, []);
 
   if (error) return <div className="error-text">{error}</div>;
+
+  if (showImport) {
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+          <button onClick={() => setShowImport(false)}>Back to Currency Overview</button>
+        </div>
+        <BulkImportCompetencies />
+      </div>
+    );
+  }
 
   // "Not Yet Rostered" only ever means something for items that actually
   // need action - current/in-training rows have no rostering concept, so
@@ -319,6 +335,7 @@ export function CurrencyOverview() {
           Every recurrent check and competency across the roster - not yet completed and overdue items need attention first
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowImport(true)}>Bulk Import</button>
           <ExportCsvButton onExport={exportCsv} />
           <PrintButton onPrint={printReport} />
         </div>

@@ -21,6 +21,12 @@ export function CertificateGenerator() {
   const [ticked, setTicked] = useState([]);
   const [validFrom, setValidFrom] = useState(todayIso());
   const [validTo, setValidTo] = useState('');
+  // Explicit "No Expiry" toggle - per the operator's explicit request,
+  // rather than leaving the date field blank meaning the same thing
+  // implicitly (which read as an unfinished field, not a deliberate
+  // choice, e.g. for a once-off course like Life Jacket Training that
+  // never needs renewing).
+  const [noExpiry, setNoExpiry] = useState(false);
   const [assessorName, setAssessorName] = useState('');
   const [error, setError] = useState(null);
 
@@ -39,7 +45,7 @@ export function CertificateGenerator() {
       items: checklist,
       tickedKeys: ticked,
       validFrom: validFrom ? new Date(validFrom) : null,
-      validTo: validTo ? new Date(validTo) : null,
+      validTo: noExpiry || !validTo ? null : new Date(validTo),
       assessorName,
     }));
   }
@@ -67,7 +73,17 @@ export function CertificateGenerator() {
         </div>
         <div className="grid2">
           <div className="field"><label>Valid From</label><input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></div>
-          <div className="field"><label>Expiry (Valid To)</label><input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} /></div>
+          <div className="field">
+            <label>Expiry (Valid To)</label>
+            <input type="date" value={validTo} disabled={noExpiry} onChange={(e) => setValidTo(e.target.value)} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12, cursor: 'pointer' }}>
+              <input
+                type="checkbox" style={{ width: 'auto' }} checked={noExpiry}
+                onChange={(e) => { setNoExpiry(e.target.checked); if (e.target.checked) setValidTo(''); }}
+              />
+              No Expiry
+            </label>
+          </div>
         </div>
         <div className="field"><label>Assessor name</label><input value={assessorName} onChange={(e) => setAssessorName(e.target.value)} /></div>
         <button type="submit" className="primary" disabled={!name.trim() || ticked.length === 0}>Generate Certificate</button>

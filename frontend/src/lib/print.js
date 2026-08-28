@@ -267,7 +267,6 @@ const CERTIFICATE_STYLES = `
   .cert-name { font-size: 26px; font-weight: 700; margin: 4px 0 10px; letter-spacing: 0.02em; }
   .cert-subheading { font-size: 14px; margin-bottom: 14px; }
   .cert-checklist { text-align: left; margin: 0 auto 14px; font-size: 13px; line-height: 1.9; }
-  .cert-checklist .box { display: inline-block; width: 16px; font-weight: 700; }
   .cert-conducted { font-size: 11px; color: #333; margin-bottom: auto; }
   .cert-footer-row { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; margin-top: 18px; }
   .cert-dates { text-align: left; font-size: 12px; line-height: 1.8; }

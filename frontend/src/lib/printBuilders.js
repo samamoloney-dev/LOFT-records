@@ -54,8 +54,14 @@ export function buildEpCheckHtml(check, epItems) {
 // whether a matching check exists in this app at all.
 export function buildCertificateHtml({ name, items, tickedKeys, validFrom, validTo, assessorName }) {
   const ticked = new Set(tickedKeys);
+  // Only the ticked course(s) actually appear on the printed certificate -
+  // per the operator's explicit request, not the full master checklist
+  // with unticked boxes alongside them - and as plain wording, with no
+  // checkbox glyph at all, since a line that's there at all already means
+  // it was completed.
   const checklistHtml = items
-    .map((item) => `<div><span class="box">[${ticked.has(item.id) ? '✓' : ' '}]</span> ${item.label}</div>`)
+    .filter((item) => ticked.has(item.id))
+    .map((item) => `<div>${item.label}</div>`)
     .join('');
   return `
     <img class="cert-logo" src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />

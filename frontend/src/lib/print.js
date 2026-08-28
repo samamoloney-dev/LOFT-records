@@ -246,6 +246,51 @@ export function openPrintWindow(title, bodyHtml) {
   setTimeout(doPrint, 300);
 }
 
+// A completion certificate (Emergency Procedures/Life Jacket/Smoke & Fire/
+// F100 Slide Training - see printBuilders.js buildSafetyEquipmentCertificateHtml)
+// looks nothing like the checklist-report forms above (single decorative
+// page, no letterhead/footer/pagination), so it gets its own minimal window
+// opener rather than forcing PRINT_STYLES' report layout onto it.
+const CERTIFICATE_STYLES = `
+  @page { size: A4 landscape; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; margin: 0; padding: 0; }
+  .cert-border {
+    border: 3px solid #14213d; padding: 6px; height: calc(100vh - 24mm);
+  }
+  .cert-inner {
+    border: 1px solid #14213d; height: 100%; display: flex; flex-direction: column;
+    align-items: center; padding: 22px 40px; text-align: center;
+  }
+  .cert-logo { height: 60px; margin-bottom: 6px; }
+  .cert-intro { font-style: italic; font-size: 15px; margin: 10px 0 4px; }
+  .cert-name { font-size: 26px; font-weight: 700; margin: 4px 0 10px; letter-spacing: 0.02em; }
+  .cert-subheading { font-size: 14px; margin-bottom: 14px; }
+  .cert-checklist { text-align: left; margin: 0 auto 14px; font-size: 13px; line-height: 1.9; }
+  .cert-checklist .box { display: inline-block; width: 16px; font-weight: 700; }
+  .cert-conducted { font-size: 11px; color: #333; margin-bottom: auto; }
+  .cert-footer-row { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; margin-top: 18px; }
+  .cert-dates { text-align: left; font-size: 12px; line-height: 1.8; }
+  .cert-dates b { display: inline-block; width: 90px; }
+  .cert-sig { text-align: center; font-size: 12px; position: relative; min-width: 220px; }
+  .cert-sig .watermark {
+    position: absolute; right: 0; bottom: 24px; font-size: 22px; font-weight: 700;
+    color: #cfe0f0; letter-spacing: 0.03em; transform: rotate(-4deg); z-index: 0;
+  }
+  .cert-sig .sig-name { font-family: 'Brush Script MT', cursive; font-size: 20px; position: relative; z-index: 1; }
+  .cert-sig .sig-role { border-top: 1px solid #333; margin-top: 4px; padding-top: 4px; }
+`;
+
+export function openCertificateWindow(title, bodyHtml) {
+  const win = window.open('', '_blank', 'width=1100,height=800');
+  if (!win) return;
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${CERTIFICATE_STYLES}</style></head><body><div class="cert-border"><div class="cert-inner">${bodyHtml}</div></div></body></html>`);
+  win.document.close();
+  const doPrint = () => { try { win.focus(); win.print(); } catch { /* window may already be closed */ } };
+  win.onload = doPrint;
+  setTimeout(doPrint, 300);
+}
+
 export function section(title, rows) {
   const body = rows
     .filter(([, value]) => value !== undefined)

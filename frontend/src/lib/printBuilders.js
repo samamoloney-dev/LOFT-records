@@ -16,6 +16,7 @@ import {
 import { formatDate, formatUserRole } from './format';
 import { competencyStatus } from './dueStatus';
 import { visibleCheckFormItems } from './checkFormItems';
+import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
 
 // ---- Emergency Procedures (EpChecks.jsx) ----
 export function buildEpCheckHtml(check, epItems) {
@@ -39,6 +40,90 @@ export function buildEpCheckHtml(check, epItems) {
     ])}
     <div class="disclaimer">We, the undersigned, do hereby mutually agree upon and accept the comment written in this document as being a correct and honest account of the performance of the Applicant in each and every procedure carried out.</div>
     ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+  `;
+}
+
+// ---- Completion certificate (EpChecks.jsx, SafetyEquipmentChecks.jsx) ----
+// Matches the operator's own Skippers paper certificate template - a fixed
+// master checklist of every safety-equipment/emergency-procedures item
+// Skippers certifies, with whichever line(s) this particular completed
+// check corresponds to ticked. Embraer 120/Cessna 441 Conquest are on the
+// paper template but aren't fleets this app tracks at all, so those two
+// lines are never ticked from here - only ever true on the paper original.
+const CERTIFICATE_CHECKLIST = [
+  { key: 'ep', label: 'Emergency Procedures Training' },
+  { key: 'epF100', label: 'Fokker 100 Emergency Procedures' },
+  { key: 'epDash8', label: 'Dash 8 Emergency Procedures Training' },
+  { key: 'epEmbraer120', label: 'Embraer 120 Emergency Procedures Training' },
+  { key: 'epMetro', label: 'Fairchild Metroliner 23 Emergency Procedures Training' },
+  { key: 'epCessna441', label: 'Cessna 441 Conquest Emergency Procedures Training' },
+  { key: 'lifeJacket', label: 'Life Jacket Training (Wet Drill)' },
+  { key: 'f100Slide', label: 'Fokker 100 Slide Training' },
+  { key: 'englishProficiency', label: 'English Language Proficiency' },
+  { key: 'liveFire', label: 'Live Fire Fighting Exercise' },
+  { key: 'smokeFire', label: 'Smoke Fire Fighting Exercise' },
+];
+
+// Which checklist key(s) this particular completed check ticks off.
+function certificateTickedKeysFor(check) {
+  const d = check.details || {};
+  if (check.checkType === 'EMERGENCY_PROCEDURES') {
+    const keys = ['ep'];
+    if (d.actype === 'Fokker 100') keys.push('epF100');
+    if (d.actype === 'Dash 8') keys.push('epDash8');
+    if (d.actype === 'Metro') keys.push('epMetro');
+    return keys;
+  }
+  if (check.checkType === 'LIFE_JACKET') return ['lifeJacket'];
+  if (check.checkType === 'F100_SLIDE_TRAINING') return ['f100Slide'];
+  if (check.checkType === 'SMOKE_FIRE_TRAINING') {
+    const keys = [];
+    if (d.items?.liveFireFighting === 'S') keys.push('liveFire');
+    if (d.items?.simulatedSmoke === 'S') keys.push('smokeFire');
+    return keys;
+  }
+  return [];
+}
+
+// Valid From is the date the check was actually conducted; Valid To is that
+// plus the check's own renewal cycle (see crew.js safetyEquipmentCurrency/
+// currency.js nextDueRolling for the same 365-day EP / 3-year Smoke & Fire
+// and F100 Slide cycles) - null for Life Jacket, which never expires once
+// passed, per the operator's explicit rule.
+function certificateValidityFor(check) {
+  if (!check.completedAt) return { validFrom: null, validTo: null };
+  const validFrom = new Date(check.completedAt);
+  if (check.checkType === 'LIFE_JACKET') return { validFrom, validTo: null };
+  const days = check.checkType === 'EMERGENCY_PROCEDURES' ? 365 : 1095;
+  return { validFrom, validTo: new Date(validFrom.getTime() + days * 24 * 60 * 60 * 1000) };
+}
+
+export function buildSafetyEquipmentCertificateHtml(check, crewMemberName) {
+  const d = check.details || {};
+  const ticked = new Set(certificateTickedKeysFor(check));
+  const { validFrom, validTo } = certificateValidityFor(check);
+  const checklistHtml = CERTIFICATE_CHECKLIST
+    .map((item) => `<div><span class="box">[${ticked.has(item.key) ? '✓' : ' '}]</span> ${item.label}</div>`)
+    .join('');
+  const assessorName = d.assessorSig || d.assessor || check.assignedToName || '';
+  return `
+    <img class="cert-logo" src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />
+    <div class="cert-intro">This is to certify that</div>
+    <div class="cert-name">${(crewMemberName || '').toUpperCase()}</div>
+    <div class="cert-subheading">Has successfully completed the following</div>
+    <div class="cert-checklist">${checklistHtml}</div>
+    <div class="cert-conducted">Conducted by Skippers Aviation PTY LTD</div>
+    <div class="cert-footer-row">
+      <div class="cert-dates">
+        <div><b>Valid From</b> ${validFrom ? formatDate(validFrom) : '—'}</div>
+        <div><b>Valid To</b> ${validTo ? formatDate(validTo) : 'No expiry'}</div>
+      </div>
+      <div class="cert-sig">
+        <div class="watermark">S.A. SIGNATURE</div>
+        <div class="sig-name">${assessorName || ' '}</div>
+        <div class="sig-role">Assessor</div>
+      </div>
+    </div>
   `;
 }
 

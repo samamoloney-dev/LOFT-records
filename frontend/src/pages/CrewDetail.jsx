@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { ADMIN_ROLES } from '../lib/checkAccess';
 import { EpChecks } from './EpChecks';
+import { SafetyEquipmentCheckForm } from './SafetyEquipmentChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
@@ -645,19 +646,55 @@ function DocumentsTab({ member }) {
   );
 }
 
+// Emergency Procedures, grouped with the 3 safety-equipment checks (Life
+// Jacket, Smoke & Fire Training, F100 Slide Training) that share its exact
+// authority rules and are conducted the same way - per the operator's
+// explicit request that all four live together under one tab, matching the
+// operator's own Skippers certificate template, which certifies all of
+// them together too (see printBuilders.js buildSafetyEquipmentCertificateHtml).
+// F100 Slide Training only offered for a crew member actually on the Fokker
+// 100 fleet - mirrors crew.js safetyEquipmentCurrency's own fleet scoping.
+function EmergencyProceduresGroup({ member, showArchived }) {
+  const isFokker100 = member.fleets.includes('FOKKER_100') || member.fleets.includes('CA_FOKKER_100');
+  const innerTabs = [
+    { key: 'ep', label: 'Emergency Procedures' },
+    { key: 'lifeJacket', label: 'Life Jacket' },
+    { key: 'smokeFire', label: 'Smoke & Fire Training' },
+    ...(isFokker100 ? [{ key: 'f100Slide', label: 'F100 Slide Training' }] : []),
+  ];
+  const [innerTab, setInnerTab] = useState('ep');
+  const name = member.name;
+  const fleet = member.fleets.length === 1 ? member.fleets[0] : undefined;
+
+  return (
+    <div>
+      <TabBar tabs={innerTabs} active={innerTab} onSelect={setInnerTab} />
+      {innerTab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {innerTab === 'lifeJacket' && <SafetyEquipmentCheckForm configKey="LIFE_JACKET" appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {innerTab === 'smokeFire' && <SafetyEquipmentCheckForm configKey="SMOKE_FIRE_TRAINING" appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {innerTab === 'f100Slide' && isFokker100 && <SafetyEquipmentCheckForm configKey="F100_SLIDE_TRAINING" appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+    </div>
+  );
+}
+
 // Recurrent checks archived from here (once redone/superseded) still need to
 // be visible from this person's own profile, not just the general Archive
 // tab - this toggle flips the archived prop the check list already supports.
 function CurrencyFolder({ member, initialSubTab }) {
   const isPilot = member.type === 'PILOT';
+  // Drives this sub-tab's own "⚠" - Emergency Procedures plus the 3
+  // safety-equipment checks grouped with it (see EmergencyProceduresGroup/
+  // crew.js urgentSafetyEquipmentItemsFor), independent of the Expiration/
+  // Competencies tabs' own warning icons.
+  const epLabel = member.urgentSafetyEquipmentItems?.length > 0 ? 'Emergency Procedures ⚠' : 'Emergency Procedures';
   const subTabs = isPilot
     ? [
-      { key: 'ep', label: 'Emergency Procedures' }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' },
+      { key: 'ep', label: epLabel }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' },
       // Only shown once an admin has allocated this pilot to a Captain
       // upgrade (see CrewInfoEditor) - not offered to every pilot.
       ...(member.captainInTraining ? [{ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' }] : []),
     ]
-    : [{ key: 'ep', label: 'Emergency Procedures' }, { key: 'linecheck', label: 'Line Check' }];
+    : [{ key: 'ep', label: epLabel }, { key: 'linecheck', label: 'Line Check' }];
   const [subTab, setSubTab] = useState(subTabs.some((t) => t.key === initialSubTab) ? initialSubTab : 'ep');
   const [showArchived, setShowArchived] = useState(false);
 
@@ -676,7 +713,7 @@ function CurrencyFolder({ member, initialSubTab }) {
         </button>
       </div>
 
-      {subTab === 'ep' && <EpChecks appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'ep' && <EmergencyProceduresGroup member={member} showArchived={showArchived} />}
       {subTab === 'ipc' && isPilot && <ProficiencyChecks variant="IPC_PC" label="IPC" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}

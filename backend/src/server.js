@@ -26,6 +26,9 @@ const meetingMinutesRoutes = require('./routes/meeting-minutes');
 const contentChangeRoutes = require('./routes/content-changes');
 const syllabiRoutes = require('./routes/syllabi');
 const specialistTrainingRoutes = require('./routes/specialist-training');
+const digestRoutes = require('./routes/digest');
+const { scheduleDailyDigest } = require('./lib/digestScheduler');
+const { sendCompetencyDigest } = require('./lib/digest');
 
 const app = express();
 
@@ -65,6 +68,7 @@ app.use('/api/meeting-minutes', meetingMinutesRoutes);
 app.use('/api/content-changes', contentChangeRoutes);
 app.use('/api/syllabi', syllabiRoutes);
 app.use('/api/specialist-training', specialistTrainingRoutes);
+app.use('/api/digest', digestRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
@@ -75,6 +79,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 4000;
 if (require.main === module) {
   app.listen(PORT, () => console.log(`LOFT Records API listening on :${PORT}`));
+  // Daily competency digest to HOTC/HOFO/Flight Ops Admin/Alternate - see
+  // lib/digestScheduler.js. Only runs when this file is actually the
+  // running server (not under test), same guard as app.listen above.
+  scheduleDailyDigest(sendCompetencyDigest);
 }
 
 module.exports = app;

@@ -25,7 +25,10 @@ function canAccessCheckType(user, checkType) {
   if (checkType === 'RECURRENT_SIMULATOR') {
     return canAccessChecks(user) || user.role === 'SIMULATOR_ONLY';
   }
-  if (checkType === 'EMERGENCY_PROCEDURES') {
+  // Life Jacket/Smoke & Fire/F100 Slide Training are grouped with Emergency
+  // Procedures under the crew profile's own tab (see CrewDetail.jsx) and
+  // share its exact authority rules, per the operator's explicit request.
+  if (checkType === 'EMERGENCY_PROCEDURES' || checkType === 'LIFE_JACKET' || checkType === 'SMOKE_FIRE_TRAINING' || checkType === 'F100_SLIDE_TRAINING') {
     // Cabin Attendant Manager is authorised to train and check Emergency
     // Procedures for all pilots and cabin crew, unconditionally - not just
     // when ticked on their staff profile (that tick system is for everyone
@@ -97,6 +100,9 @@ const CHECK_TYPE_LABELS = {
   EMERGENCY_PROCEDURES: 'Emergency Procedures',
   CABIN_ATTENDANT_LINE_CHECK: 'Cabin Attendant Line Check',
   PILOT_LINE_CHECK: 'Pilot Line Check',
+  LIFE_JACKET: 'Life Jacket Training',
+  SMOKE_FIRE_TRAINING: 'Smoke & Fire Training',
+  F100_SLIDE_TRAINING: 'F100 Slide Training',
   CAPTAIN_IN_TRAINING: 'Captain in Training Assessment',
   UPGRADE_RECORD: 'Upgrade Record',
 };
@@ -302,7 +308,7 @@ router.get('/:id', async (req, res) => {
 const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
   crewMemberId: z.string().uuid().optional(),
-  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD']),
+  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),

@@ -24,6 +24,20 @@ services:
         value: 4000
       - key: NODE_ENV
         value: production
+      # Required for the daily competency digest email (see
+      # backend/src/lib/email.js) - set manually in the Render dashboard,
+      # not generated here, since it's the operator's own Resend account
+      # credential. The digest silently skips sending (logs a warning)
+      # until this is set.
+      - key: RESEND_API_KEY
+        sync: false
+      # Optional - defaults to Resend's own sandbox sender, which only
+      # delivers to the Resend account's own verified address. Set this to
+      # a "Name <address@yourdomain>" once a sending domain is verified in
+      # Resend, so the digest can actually reach HOTC/HOFO/Flight Ops
+      # Admin/Alternate's real inboxes.
+      - key: DIGEST_FROM_EMAIL
+        sync: false
 
   - type: web
     name: loft-records-frontend

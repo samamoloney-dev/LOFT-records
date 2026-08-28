@@ -348,7 +348,17 @@ const CURRENCY_LABELS = {
   ipc: 'IPC',
   proficiencyCheck: 'Proficiency Check',
   lineCheck: 'Line Check',
+  lifeJacket: 'Life Jacket Training',
+  smokeFireTraining: 'Smoke & Fire Training',
+  f100SlideTraining: 'F100 Slide Training',
 };
+
+// The 3 new safety-equipment checks grouped with Emergency Procedures under
+// the crew profile's new "Emergency Procedures & Safety Equipment" tab (see
+// CrewDetail.jsx) - kept out of the Expiration tab's own badge (see
+// urgentCoreItemsFor below), which only ever covers EP/IPC/PC/Line Check/
+// Medical, since there'd be nowhere on that tab to show them.
+const SAFETY_EQUIPMENT_LABELS = [CURRENCY_LABELS.lifeJacket, CURRENCY_LABELS.smokeFireTraining, CURRENCY_LABELS.f100SlideTraining];
 
 // Every active competency type applies to every crew member automatically
 // (see 0037_competency_types.sql) - this is a LEFT JOIN so a type with no
@@ -509,7 +519,49 @@ async function urgentCompetencyItemsFor(member, currency, inLoft) {
 async function urgentCoreItemsFor(member, currency, inLoft) {
   const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
   const medical = fromCompetencies.filter((i) => i.label === 'Medical');
-  return [...fromCurrency, ...medical].filter((i) => isUrgent(i.status));
+  const core = fromCurrency.filter((i) => !SAFETY_EQUIPMENT_LABELS.includes(i.label));
+  return [...core, ...medical].filter((i) => isUrgent(i.status));
+}
+
+// Emergency Procedures plus the 3 safety-equipment checks it's grouped with
+// on the crew profile's own tab (see CrewDetail.jsx) - drives that tab's
+// own "⚠" warning icon, independent of the Expiration tab's above (which
+// deliberately excludes these three).
+async function urgentSafetyEquipmentItemsFor(member, currency, inLoft) {
+  const { fromCurrency } = await itemsFor(member, currency, inLoft);
+  const labels = [CURRENCY_LABELS.emergencyProcedures, ...SAFETY_EQUIPMENT_LABELS];
+  return fromCurrency.filter((i) => labels.includes(i.label) && isUrgent(i.status));
+}
+
+// Fetches/computes Life Jacket, Smoke & Fire Training and F100 Slide
+// Training the same way EP/IPC/etc. are computed above, but shared between
+// the pilot and cabin attendant branches of withCurrency below since all
+// three apply to either crew type identically (no seed dates - these are
+// new check types with no pre-app history to backfill).
+async function safetyEquipmentCurrency(member) {
+  const [lifeJacketChk, smokeFireChk, f100SlideChk, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
+    lastCompletedCheck(member.id, 'LIFE_JACKET'),
+    lastCompletedCheck(member.id, 'SMOKE_FIRE_TRAINING'),
+    lastCompletedCheck(member.id, 'F100_SLIDE_TRAINING'),
+    hasInProgressCheck(member.id, 'LIFE_JACKET'),
+    hasInProgressCheck(member.id, 'SMOKE_FIRE_TRAINING'),
+    hasInProgressCheck(member.id, 'F100_SLIDE_TRAINING'),
+  ]);
+  // Once-off, per the operator's explicit rule ("once completed it is not
+  // required to be done again") - a 100-year rolling window stands in for
+  // "no expiry" rather than adding a whole separate never-expires code path
+  // through dueInfo/statusFor for just this one check.
+  const lifeJacket = dueInfo(nextDueRolling(lifeJacketChk, 36500), lifeJacketChk, null, null, lifeJacketIssued);
+  // 3-yearly, per the operator's explicit rule.
+  const smokeFireTraining = dueInfo(nextDueRolling(smokeFireChk, 1095), smokeFireChk, null, null, smokeFireIssued);
+  // Fokker 100 specific - only tracked for crew actually on that fleet, so
+  // it never falsely reads "overdue" for someone who'll never need it.
+  // itemsFor's fromCurrency mapping already skips a null entry here (see
+  // its `.filter(([, info]) => !!info)`), same as any other optional
+  // currency field.
+  const isFokker100 = member.fleets?.includes('FOKKER_100') || member.fleets?.includes('CA_FOKKER_100');
+  const f100SlideTraining = isFokker100 ? dueInfo(nextDueRolling(f100SlideChk, 1095), f100SlideChk, null, null, f100SlideIssued) : null;
+  return { lifeJacket, smokeFireTraining, f100SlideTraining };
 }
 
 async function withCurrency(member) {
@@ -525,6 +577,7 @@ async function withCurrency(member) {
   // Only set for pilots - see lastPcOnly below and planning.js's IPC/PC
   // Spacing report, the sole consumer.
   let ipcPcRaw = null;
+  const safetyEquipment = await safetyEquipmentCurrency(member);
 
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete, epIssued, ipcIssued, pcIssued, lineCheckIssued] = await Promise.all([
@@ -605,6 +658,7 @@ async function withCurrency(member) {
       // EP/IPC/PC already use), rather than leaving them stuck reading
       // "never completed" forever despite a real completed check on file.
       lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, loftGateReason, lineCheckIssued),
+      ...safetyEquipment,
     };
   } else {
     const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete] = await Promise.all([
@@ -619,6 +673,7 @@ async function withCurrency(member) {
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
       lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, trainingGateReason(groundSchoolIncomplete, inLoft), lineCheckIssued),
+      ...safetyEquipment,
     };
   }
 
@@ -644,6 +699,10 @@ async function withCurrency(member) {
     // Drives the Competencies tab's own "⚠" warning icon (CrewDetail.jsx
     // topTabs) - see urgentCompetencyItemsFor above.
     urgentCompetencyItems: await urgentCompetencyItemsFor(member, currency, inLoft),
+    // Drives the Emergency Procedures & Safety Equipment tab's own "⚠"
+    // warning icon (CrewDetail.jsx topTabs) - see
+    // urgentSafetyEquipmentItemsFor above.
+    urgentSafetyEquipmentItems: await urgentSafetyEquipmentItemsFor(member, currency, inLoft),
     ipcPcRaw,
   };
 }

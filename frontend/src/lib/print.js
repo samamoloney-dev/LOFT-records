@@ -274,7 +274,7 @@ const CERTIFICATE_STYLES = `
   .cert-sig { text-align: center; font-size: 12px; position: relative; min-width: 220px; }
   .cert-sig .watermark {
     position: absolute; right: 0; bottom: 24px; font-size: 22px; font-weight: 700;
-    color: #cfe0f0; letter-spacing: 0.03em; transform: rotate(-4deg); z-index: 0;
+    color: #cfe0f0; letter-spacing: 0.03em; z-index: 0;
   }
   .cert-sig .sig-name { font-family: 'Brush Script MT', cursive; font-size: 20px; position: relative; z-index: 1; }
   .cert-sig .sig-role { border-top: 1px solid #333; margin-top: 4px; padding-top: 4px; }

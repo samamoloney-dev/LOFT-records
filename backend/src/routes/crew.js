@@ -1357,33 +1357,47 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
 // Bulk import of crew competency dates from a spreadsheet (see
 // frontend/src/pages/BulkImportCompetencies.jsx) - the counterpart to
 // Currency Overview's own CSV export. Matches each row to a crew member (by
-// ARN, falling back to name) and an existing competency type (by name);
-// unlike bulk crew import, nothing new is ever created here beyond a date
-// upsert, since every active competency type already applies to every crew
-// member automatically. A row naming one of the recurrent checks (EP/IPC/
-// PC/Line Check/Life Jacket/Smoke & Fire/F100 Slide - not competency_types-
-// backed, see CURRENCY_LABELS) is reported as skipped rather than a
-// confusing failure, since re-importing Currency Overview's own export
-// unmodified will always include those.
+// ARN, falling back to name), then either an existing competency type (by
+// name - applies to every eligible crew member) or, failing that, an
+// existing one-off/ad-hoc competency already on that specific crew
+// member's own Competencies tab (by name, scoped to that one person - see
+// the ad-hoc competency routes below). Either way this only ever updates
+// an existing row's dates - it never creates a brand new one-off
+// competency from a row that matches nothing, the same way it never
+// creates a new competency type, so a typo'd name fails loudly instead of
+// silently filing a garbage one-off entry. A row naming one of the
+// recurrent checks (EP/IPC/PC/Line Check/Life Jacket/Smoke & Fire/F100
+// Slide - not crew_competencies-backed at all, see CURRENCY_LABELS) is
+// reported as skipped rather than a confusing failure, since re-importing
+// Currency Overview's own export unmodified will always include those.
+// Gated to ADMIN_ROLES (not just blockCaManager) since updating a one-off
+// competency requires that everywhere else in this app (see the ad-hoc
+// PUT route below) - broader access here would be a backdoor around that.
 const NON_COMPETENCY_LABELS = new Set([
   'emergency procedures', 'ipc', 'proficiency check', 'line check',
   'life jacket training', 'smoke & fire training', 'f100 slide training',
 ]);
 
-router.post('/competencies/bulk-import', blockCaManager, async (req, res) => {
+router.post('/competencies/bulk-import', requireRole(...ADMIN_ROLES), async (req, res) => {
   const rowsInput = Array.isArray(req.body.rows) ? req.body.rows : null;
   if (!rowsInput) return res.status(400).json({ error: 'rows must be an array' });
   if (rowsInput.length === 0) return res.status(400).json({ error: 'No rows to import' });
   if (rowsInput.length > 1000) return res.status(400).json({ error: 'Maximum 1000 rows per import - split into smaller batches' });
 
-  const [{ rows: memberRows }, { rows: typeRows }] = await Promise.all([
+  const [{ rows: memberRows }, { rows: typeRows }, { rows: adHocRows }] = await Promise.all([
     pool.query(`${CREW_SELECT} WHERE crew_members.archived = false`),
     pool.query('SELECT id, name FROM competency_types'),
+    pool.query('SELECT id, crew_member_id, name FROM crew_competencies WHERE competency_type_id IS NULL'),
   ]);
   const members = memberRows.map(serializeCrewMember);
   const memberByArn = new Map(members.filter((m) => m.arn).map((m) => [m.arn.trim().toLowerCase(), m]));
   const memberByName = new Map(members.map((m) => [m.name.trim().toLowerCase(), m]));
   const typeByName = new Map(typeRows.map((t) => [t.name.trim().toLowerCase(), t]));
+  // Keyed by crew member + name, not name alone - a one-off competency is
+  // only ever scoped to the single person it was created for, unlike a
+  // catalog type, so the same name could legitimately exist for two
+  // different crew members as two unrelated rows.
+  const adHocByMemberAndName = new Map(adHocRows.map((a) => [`${a.crew_member_id}::${a.name.trim().toLowerCase()}`, a]));
 
   const results = [];
   for (let i = 0; i < rowsInput.length; i++) {
@@ -1395,49 +1409,67 @@ router.post('/competencies/bulk-import', blockCaManager, async (req, res) => {
     const nameKey = (r.crewMemberName || '').trim().toLowerCase();
     const member = (arnKey && memberByArn.get(arnKey)) || memberByName.get(nameKey);
     const competencyName = (r.competencyName || '').trim();
-    const type = typeByName.get(competencyName.toLowerCase());
 
     if (!member) {
       results.push({ row: rowNumber, name: r.crewMemberName || r.arn || null, status: 'error', error: 'No matching crew member found (checked ARN, then name)' });
       continue;
     }
-    if (!type) {
+
+    const type = typeByName.get(competencyName.toLowerCase());
+    const adHoc = !type && adHocByMemberAndName.get(`${member.id}::${competencyName.toLowerCase()}`);
+
+    if (!type && !adHoc) {
       if (NON_COMPETENCY_LABELS.has(competencyName.toLowerCase())) {
         results.push({ row: rowNumber, name: member.name, competency: competencyName, status: 'skipped', error: 'Not a competency (recurrent check) - not handled by this import' });
       } else {
-        results.push({ row: rowNumber, name: member.name, competency: competencyName, status: 'error', error: `No competency type named "${competencyName}" - check spelling or add it on the Syllabus tab` });
+        results.push({ row: rowNumber, name: member.name, competency: competencyName, status: 'error', error: `No competency named "${competencyName}" found for ${member.name} (checked catalog types and their own one-off competencies) - check spelling, or add it on the Syllabus tab (catalog) or their own Competencies tab (one-off) first` });
       }
       continue;
     }
     if (!r.completedDate && !r.dueDate) {
-      results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'skipped', error: 'No completed or due date given' });
+      results.push({ row: rowNumber, name: member.name, competency: type ? type.name : adHoc.name, status: 'skipped', error: 'No completed or due date given' });
       continue;
     }
 
-    // Mirrors the single-row PUT's own HOTC/HOFO-only-once-saved rule
-    // (see PUT /:id/competencies/:competencyTypeId above) - doesn't touch
-    // na/plannedDate/courseSent at all (unlike that route), since this
-    // import has no column for them and shouldn't silently reset them.
-    const { rows: existingRows } = await pool.query(
-      'SELECT completed_date, due_date, planned_date FROM crew_competencies WHERE crew_member_id = $1 AND competency_type_id = $2',
-      [member.id, type.id],
-    );
-    const existing = existingRows[0];
-    const hasSavedDates = existing && (existing.completed_date || existing.due_date || existing.planned_date);
-    const allowedRoles = type.name === 'Refresher Training' ? ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'] : ['HOTC', 'HOFO'];
-    if (hasSavedDates && !allowedRoles.includes(req.user.role)) {
-      results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'error', error: `Only ${allowedRoles.join(', ')} can change a competency date once it has been saved` });
-      continue;
-    }
+    if (type) {
+      // Mirrors the single-row PUT's own HOTC/HOFO-only-once-saved rule
+      // (see PUT /:id/competencies/:competencyTypeId above) - doesn't
+      // touch na/plannedDate/courseSent at all (unlike that route), since
+      // this import has no column for them and shouldn't silently reset
+      // them.
+      const { rows: existingRows } = await pool.query(
+        'SELECT completed_date, due_date, planned_date FROM crew_competencies WHERE crew_member_id = $1 AND competency_type_id = $2',
+        [member.id, type.id],
+      );
+      const existing = existingRows[0];
+      const hasSavedDates = existing && (existing.completed_date || existing.due_date || existing.planned_date);
+      const allowedRoles = type.name === 'Refresher Training' ? ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'] : ['HOTC', 'HOFO'];
+      if (hasSavedDates && !allowedRoles.includes(req.user.role)) {
+        results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'error', error: `Only ${allowedRoles.join(', ')} can change a competency date once it has been saved` });
+        continue;
+      }
 
-    await pool.query(
-      `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (crew_member_id, competency_type_id)
-       DO UPDATE SET completed_date = $3, due_date = $4`,
-      [member.id, type.id, r.completedDate || null, r.dueDate || null],
-    );
-    results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'imported' });
+      await pool.query(
+        `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (crew_member_id, competency_type_id)
+         DO UPDATE SET completed_date = $3, due_date = $4`,
+        [member.id, type.id, r.completedDate || null, r.dueDate || null],
+      );
+      results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'imported' });
+    } else {
+      // One-off competencies have no once-saved lock of their own (see the
+      // ad-hoc PUT route below) - ADMIN_ROLES-only is already enforced for
+      // this whole endpoint above, so no further per-row permission check
+      // is needed here. Only touches completed_date/due_date, not
+      // name/planned_date, so it can't accidentally rename the row or
+      // clobber a planned date this import has no column for.
+      await pool.query(
+        'UPDATE crew_competencies SET completed_date = $1, due_date = $2 WHERE id = $3',
+        [r.completedDate || null, r.dueDate || null, adHoc.id],
+      );
+      results.push({ row: rowNumber, name: member.name, competency: adHoc.name, status: 'imported' });
+    }
   }
 
   const imported = results.filter((r2) => r2.status === 'imported').length;

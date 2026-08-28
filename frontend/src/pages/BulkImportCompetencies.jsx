@@ -121,9 +121,11 @@ export function BulkImportCompetencies() {
           Upload an Excel (.xlsx) or CSV file - one row per crew member/competency. Expected columns: Crew
           Member (or ARN - pilots), Competency (must match an existing competency name exactly, e.g.
           "Dangerous Goods"), Completed Date, Due Date. This accepts Currency Overview's own "Export CSV"
-          file unchanged - export, edit in Excel, then re-import. Only updates competencies already set up
-          on the Syllabus tab - it won't create new ones, and rows for Emergency Procedures/IPC/Proficiency
-          Check/Line Check/Life Jacket/Smoke & Fire/F100 Slide (not competencies) are skipped, not failed.
+          file unchanged - export, edit in Excel, then re-import. Matches either a catalog competency (set
+          up on the Syllabus tab) or a one-off competency already on that crew member's own Competencies
+          tab - either way it only ever updates an existing one's dates, it won't create a new competency
+          type or one-off competency from scratch. Rows for Emergency Procedures/IPC/Proficiency Check/Line
+          Check/Life Jacket/Smoke & Fire/F100 Slide (not competencies) are skipped, not failed.
         </div>
         <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => handleFile(e.target.files[0])} />
         {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}

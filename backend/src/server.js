@@ -27,6 +27,7 @@ const contentChangeRoutes = require('./routes/content-changes');
 const syllabiRoutes = require('./routes/syllabi');
 const specialistTrainingRoutes = require('./routes/specialist-training');
 const certificateChecklistRoutes = require('./routes/certificate-checklist');
+const documentNameRoutes = require('./routes/document-names');
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/api/content-changes', contentChangeRoutes);
 app.use('/api/syllabi', syllabiRoutes);
 app.use('/api/specialist-training', specialistTrainingRoutes);
 app.use('/api/certificate-checklist', certificateChecklistRoutes);
+app.use('/api/document-names', documentNameRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

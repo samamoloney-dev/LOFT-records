@@ -521,6 +521,7 @@ function DocumentsTab({ member }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
+  const [nameOptions, setNameOptions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
@@ -534,6 +535,12 @@ function DocumentsTab({ member }) {
       .finally(() => setLoading(false));
   }
   useEffect(load, [member.id, showArchived]);
+  // The dropdown list itself is managed from the Syllabus tab's Documents
+  // section (see SyllabusAdmin.jsx DocumentNamesSection) - previously free
+  // text, per the operator's explicit request.
+  useEffect(() => {
+    api.get('/api/document-names').then(setNameOptions).catch(() => {});
+  }, []);
 
   // Accepts one file or many - a single file still respects the typed
   // Document name above (so the existing single-upload flow feels
@@ -615,9 +622,12 @@ function DocumentsTab({ member }) {
         <div className="card" style={{ marginBottom: '1rem' }}>
           <div className="field">
             <label>Document name</label>
-            <input value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods Certificate" />
+            <select value={name} disabled={busy} onChange={(e) => setName(e.target.value)}>
+              <option value="">— Select document name —</option>
+              {nameOptions.map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}
+            </select>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Only used when importing a single file - select several PDFs at once and each is named from its own filename instead (rename any of them afterward below).
+              Only used when importing a single file - select several PDFs at once and each is named from its own filename instead (rename any of them afterward below). This list is managed from the Syllabus tab's Documents section.
             </div>
           </div>
           <div className="field">

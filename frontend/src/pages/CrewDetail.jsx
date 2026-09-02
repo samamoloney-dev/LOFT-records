@@ -539,7 +539,12 @@ function DocumentsTab({ member }) {
   // section (see SyllabusAdmin.jsx DocumentNamesSection) - previously free
   // text, per the operator's explicit request.
   useEffect(() => {
-    api.get('/api/document-names').then(setNameOptions).catch(() => {});
+    // Alphabetical here specifically - the Syllabus tab's own list stays in
+    // whatever order items were added (matches every other admin list in
+    // this app), but a long dropdown is much easier to scan sorted by name.
+    api.get('/api/document-names')
+      .then((items) => setNameOptions([...items].sort((a, b) => a.label.localeCompare(b.label))))
+      .catch(() => {});
   }, []);
 
   // Accepts one file or many - a single file still respects the typed

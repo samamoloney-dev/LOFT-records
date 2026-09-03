@@ -47,6 +47,25 @@ const AVSYS_COMPLIANCE_MAP = {
   [normalizeName('Maintenance Authority & Part 42 Training F100')]: 'Maintenance Authority & Part 42 Training',
   [normalizeName('Maintenance Authority & Part 42 Training M23')]: 'Maintenance Authority & Part 42 Training',
   [normalizeName('UPRT Course')]: 'UPRT',
+  [normalizeName('Human Factors - 1')]: 'Human Factors - 1',
+  [normalizeName('Human Factors - 2')]: 'Human Factors - 2',
+  [normalizeName('Human Factors - 3')]: 'Human Factors - 3',
+  [normalizeName('SMS Recurrent Training')]: 'SMS Recurrent Training',
+  [normalizeName('Drug & Alcohol Training')]: 'Drug & Alcohol Training',
+  [normalizeName('Skippers Aviation Fatigue Management')]: 'Skippers Aviation Fatigue Management',
+  [normalizeName('C-FIT')]: 'C-FIT',
+  [normalizeName('Provide First Aid')]: 'Provide First Aid',
+  [normalizeName('CPR Refresher')]: 'CPR Refresher',
+  [normalizeName('Professional Development Program - FER')]: 'Professional Development Program - FER',
+  [normalizeName('Competency of Ground Instructor')]: 'Competency of Ground Instructor',
+  [normalizeName('Train & Check involving Safety or Emerg Equip')]: 'Train & Check involving Safety or Emerg Equip',
+  [normalizeName('Flight Instructor S&P Check')]: 'Flight Instructor S&P Check',
+  [normalizeName('DAMP Supervisor')]: 'DAMP Supervisor',
+  [normalizeName('CAO 20.11 Instruction')]: 'CAO 20.11 Instruction',
+  // Raw text is "FIR (Instructor PC) (2555)" - the qualifier group and the
+  // period group are both stripped by parseAvsysCompliance, same as every
+  // other compliance's "( PW BC )"-style qualifier, leaving just "FIR".
+  [normalizeName('FIR')]: 'FIR',
 };
 
 // e.g. "Dash 8 Check ( PW BC ) (730)" -> { baseName: 'Dash 8 Check', periodDays: 730 }.
@@ -237,9 +256,14 @@ export function BulkImportCompetencies() {
           Also accepts AvSys's "Crew Compliances Due" report (.htm) directly - only these compliance types
           are recognised and imported, everything else in the report is skipped: Medical, Dangerous Goods,
           3 Yearly Smoke &amp; Fire Training, ASIC Renewal, EFB Training, Examiner Proficiency Check, Human
-          Factors Supervisory, Maintenance Authority &amp; Part 42 Training (any fleet), UPRT Course. The
-          report has no completed date, so it's derived as the due date minus that compliance's own stated
-          renewal period.
+          Factors Supervisory, Maintenance Authority &amp; Part 42 Training (any fleet), UPRT Course, Human
+          Factors - 1/2/3, SMS Recurrent Training, Drug &amp; Alcohol Training, Skippers Aviation Fatigue
+          Management, C-FIT, Provide First Aid, CPR Refresher, Professional Development Program - FER,
+          Competency of Ground Instructor, Train &amp; Check involving Safety or Emerg Equip, Flight
+          Instructor S&amp;P Check, DAMP Supervisor, CAO 20.11 Instruction, FIR. Recurrent-check dates
+          (Emergency Procedures/IPC/Proficiency Check/Line Check/RHS Check) aren't competencies and are
+          always skipped here. The report has no completed date, so it's derived as the due date minus
+          that compliance's own stated renewal period.
         </div>
         <input type="file" accept=".xlsx,.xls,.csv,.htm,.html" onChange={(e) => handleFile(e.target.files[0])} />
         {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}

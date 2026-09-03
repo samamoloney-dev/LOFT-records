@@ -20,6 +20,103 @@ const HEADER_MAP = {
   duedate: 'dueDate', due: 'dueDate',
 };
 
+// AvSys "Crew Compliances Due" daily report (.htm export) - each row's
+// Compliance cell is "<name> ( <qualifier codes> ) (<period days>)" and
+// Name cell is "SURNAME Firstname". Casing doesn't matter for matching
+// (the backend lowercases both crew name and competency name), only the
+// word order and spelling do, so no need to re-case the surname.
+function normalizeName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Only the compliance types that map onto an actual FS competency type are
+// listed here - Emergency Procedures/IPC/Proficiency Check/Line Check are
+// recurrent-check dates on the crew record itself (not competencies), and
+// everything else in the report has no matching FS competency type yet -
+// both are deliberately skipped during import (per the operator's explicit
+// "disregard for now"), not guessed at.
+const AVSYS_COMPLIANCE_MAP = {
+  [normalizeName('Medical')]: 'Medical',
+  [normalizeName('Dangerous Goods')]: 'Dangerous Goods Awareness',
+  [normalizeName('3 Yearly Smoke & Fire Training')]: '3 Yearly Smoke and Fire',
+  [normalizeName('ASIC Renewal')]: 'ASIC',
+  [normalizeName('EFB Training')]: 'EFB Administrator Training',
+  [normalizeName('Examiner Proficiency Check')]: 'EPC - Examiner Proficiency Check',
+  [normalizeName('Human Factors Supervisory')]: 'Human Factors (Supervisory)',
+  [normalizeName('Maintenance Authority & Part 42 Training DASH')]: 'Maintenance Authority & Part 42 Training',
+  [normalizeName('Maintenance Authority & Part 42 Training F100')]: 'Maintenance Authority & Part 42 Training',
+  [normalizeName('Maintenance Authority & Part 42 Training M23')]: 'Maintenance Authority & Part 42 Training',
+  [normalizeName('UPRT Course')]: 'UPRT',
+};
+
+// e.g. "Dash 8 Check ( PW BC ) (730)" -> { baseName: 'Dash 8 Check', periodDays: 730 }.
+// The qualifier group(s) in the middle and the period group at the end are
+// both just "(...)" - only the last one is ever numeric, so it's taken as
+// the period and every parenthesised group is stripped from the name.
+function parseAvsysCompliance(raw) {
+  const text = String(raw || '').trim();
+  const groups = [...text.matchAll(/\(([^)]*)\)/g)].map((m) => m[1]);
+  const periodDigits = (groups[groups.length - 1] || '').match(/\d+/);
+  return {
+    baseName: text.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim(),
+    periodDays: periodDigits ? parseInt(periodDigits[0], 10) : null,
+  };
+}
+
+// "UNDERWOOD Garry" -> "Garry Underwood" - surname is however many leading
+// all-caps tokens there are (handles multi-word surnames), first name is
+// whatever's left.
+function parseAvsysCrewName(raw) {
+  const tokens = String(raw || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return tokens.join(' ');
+  let split = 0;
+  while (split < tokens.length - 1 && tokens[split] === tokens[split].toUpperCase()) split++;
+  return `${tokens.slice(split).join(' ')} ${tokens.slice(0, split).join(' ')}`.trim();
+}
+
+function parseAvsysDateDue(raw) {
+  const m = String(raw || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
+function subtractDays(isoDate, days) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+// The report has no "completed date" field, only a due date - completed is
+// derived as (due date - the compliance's own stated renewal period), which
+// is already embedded per-row in the Compliance cell (see
+// parseAvsysCompliance) rather than assumed globally.
+function parseAvsysHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const trs = [...doc.querySelectorAll('tr')].filter((tr) => tr.querySelectorAll('td').length >= 8);
+  const best = new Map();
+  let scanned = 0;
+  for (const tr of trs) {
+    scanned++;
+    const cells = tr.querySelectorAll('td');
+    const { baseName, periodDays } = parseAvsysCompliance(cells[1]?.textContent);
+    const competencyName = AVSYS_COMPLIANCE_MAP[normalizeName(baseName)];
+    if (!competencyName) continue;
+    const crewMemberName = parseAvsysCrewName(cells[3]?.textContent);
+    const dueDate = parseAvsysDateDue(cells[5]?.textContent);
+    if (!crewMemberName || !dueDate) continue;
+    const completedDate = periodDays ? subtractDays(dueDate, periodDays) : null;
+    // Same crew member can show up under more than one of the 3 fleet
+    // variants of Maintenance Authority & Part 42 Training, which all map
+    // onto FS's single (non-fleet-specific) competency type - keep the
+    // soonest due date on a clash rather than whichever happened to parse last.
+    const key = `${crewMemberName.toLowerCase()}::${competencyName.toLowerCase()}`;
+    const existing = best.get(key);
+    if (!existing || dueDate < existing.dueDate) {
+      best.set(key, { crewMemberName, arn: '', competencyName, completedDate, dueDate });
+    }
+  }
+  return { rows: [...best.values()], scanned };
+}
+
 function findHeaderRowIndex(sheet, maxScan = 5) {
   const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
   for (let i = 0; i < Math.min(maxScan, grid.length); i++) {
@@ -74,6 +171,16 @@ export function BulkImportCompetencies() {
     if (!file) return;
     setFileName(file.name);
     try {
+      if (/\.html?$/i.test(file.name)) {
+        const { rows: mapped, scanned } = parseAvsysHtml(await file.text());
+        if (mapped.length === 0) {
+          setError(`Found ${scanned} compliance row(s) in this report, but none matched a supported competency type (see the mapping list above) or had a usable due date.`);
+          return;
+        }
+        setFileName(`${file.name} (${mapped.length} of ${scanned} compliance rows matched a supported competency type)`);
+        setRows(mapped);
+        return;
+      }
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -126,8 +233,15 @@ export function BulkImportCompetencies() {
           tab - either way it only ever updates an existing one's dates, it won't create a new competency
           type or one-off competency from scratch. Rows for Emergency Procedures/IPC/Proficiency Check/Line
           Check/Life Jacket/Smoke & Fire/F100 Slide (not competencies) are skipped, not failed.
+          <br /><br />
+          Also accepts AvSys's "Crew Compliances Due" report (.htm) directly - only these compliance types
+          are recognised and imported, everything else in the report is skipped: Medical, Dangerous Goods,
+          3 Yearly Smoke &amp; Fire Training, ASIC Renewal, EFB Training, Examiner Proficiency Check, Human
+          Factors Supervisory, Maintenance Authority &amp; Part 42 Training (any fleet), UPRT Course. The
+          report has no completed date, so it's derived as the due date minus that compliance's own stated
+          renewal period.
         </div>
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => handleFile(e.target.files[0])} />
+        <input type="file" accept=".xlsx,.xls,.csv,.htm,.html" onChange={(e) => handleFile(e.target.files[0])} />
         {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
       </div>
 

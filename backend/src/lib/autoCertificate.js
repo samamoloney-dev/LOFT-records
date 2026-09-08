@@ -81,10 +81,15 @@ async function fileAutomaticCertificate(check, actingUser) {
   });
 
   const fileName = `${check.crewMemberName} - ${rule.documentName} Certificate.pdf`;
+  // crew_documents.file_data is always a full data URI, never bare base64 -
+  // manual uploads store whatever FileReader.readAsDataURL() produces (see
+  // CrewDetail.jsx readFileAsDataUrl), and the viewer (lib/pdf.js viewPdf)
+  // assumes that shape (splits on the first comma) rather than checking it.
+  const fileData = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
   const { rows } = await pool.query(
     `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [check.crewMemberId, rule.documentName, fileName, pdfBuffer.toString('base64'), actingUser.name],
+    [check.crewMemberId, rule.documentName, fileName, fileData, actingUser.name],
   );
   await logAction({
     userId: actingUser.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,

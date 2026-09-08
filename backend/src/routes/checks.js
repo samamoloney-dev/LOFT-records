@@ -8,6 +8,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
 const { localDateString } = require('../lib/currency');
+const { fileAutomaticCertificate } = require('../lib/autoCertificate');
 
 const router = express.Router();
 
@@ -552,6 +553,19 @@ router.patch('/:id', async (req, res) => {
     const seatCheck = Array.isArray(updated.details?.seatCheck) ? updated.details.seatCheck : [];
     if (seatCheck.includes('Other Seat')) {
       await revalidateRhsCompetency(updated.assignedTo, updated.completedAt);
+    }
+  }
+
+  // Auto-file a certificate for EP/Life Jacket/Smoke & Fire/F100 Slide the
+  // moment they're passed - see lib/autoCertificate.js. A bonus side effect
+  // of completing the check, not the completion itself, so a failure here
+  // is logged rather than allowed to fail the check save the user is
+  // actually waiting on.
+  if (d.result === 'PASS') {
+    try {
+      await fileAutomaticCertificate(updated, req.user);
+    } catch (err) {
+      console.error('Failed to auto-file certificate', err);
     }
   }
 

@@ -72,12 +72,18 @@ async function fileAutomaticCertificate(check, actingUser) {
   const validFrom = check.completedAt || new Date();
   const validTo = rule.expiryDays ? addDays(validFrom, rule.expiryDays) : null;
 
+  // EpChecks.jsx and SafetyEquipmentChecks.jsx never set the check's own
+  // top-level assessor_name column - the assessor picked via AssessorPicker
+  // is stored in details.assessor instead (alongside details.assessorId/
+  // assessorArn), so that's the real source of truth here. assessorName is
+  // kept as a fallback in case some other path onto these check types ever
+  // does set the column directly.
   const pdfBuffer = await buildCertificatePdfBuffer({
     name: check.crewMemberName,
     items,
     validFrom,
     validTo,
-    assessorName: check.assessorName,
+    assessorName: check.details?.assessor || check.assessorName,
   });
 
   const fileName = `${check.crewMemberName} - ${rule.documentName} Certificate.pdf`;

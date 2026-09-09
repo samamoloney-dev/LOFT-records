@@ -6,16 +6,20 @@ const { logAction } = require('./audit');
 // course and whichever fleet-specific type(s) were actually ticked on the
 // same certificate - e.g. a candidate checked on both Fokker 100 and Dash 8
 // in the same session gets "Emergency Procedures Training", "Fokker 100
-// Emergency Procedures" AND "Dash 8 Emergency Procedures" together, per the
-// operator's explicit example. Which fleet(s) were covered lives in
+// Emergency Procedures" AND "Dash 8 Emergency Procedures Training" together,
+// per the operator's explicit example. Which fleet(s) were covered lives in
 // details.types (EpChecks.jsx's "Check type (select all that apply)"
 // multi-select, EP_TYPES there) - NOT the check's own top-level fleet
 // column, which that form never sets at all. Exact spelling/spacing here
-// must match EP_TYPES in EpChecks.jsx ('Dash8' has no space).
+// must match EP_TYPES in EpChecks.jsx ('Dash8' has no space). The label
+// text on the right must match the admin-managed Certificate Generator
+// checklist (see certificate-checklist.js / the Syllabus tab's Certificates
+// section) word for word, per the operator's explicit request - checked
+// live via GET /api/certificate-checklist, not just eyeballed.
 const EP_TYPE_FLEET_LABELS = {
-  Dash8: 'Dash 8 Emergency Procedures',
+  Dash8: 'Dash 8 Emergency Procedures Training',
   'Fokker 100': 'Fokker 100 Emergency Procedures',
-  Metro: 'Metro 23 Emergency Procedures',
+  Metro: 'Fairchild Metroliner 23 Emergency Procedures Training',
 };
 
 // Which checks.js check types get an automatic certificate filed onto the
@@ -40,17 +44,20 @@ const CERTIFICATE_RULES = {
     documentName: 'Emergency Procedures',
   },
   LIFE_JACKET: {
-    items: () => ['Life Jacket / Wet Drill Training'],
+    items: () => ['Life Jacket Training (Wet Drill)'],
     expiryDays: null,
     documentName: 'Wet Drill Training',
   },
+  // Two separate checklist items, not one - matches the two items the check
+  // form itself requires an S/X/N entry for (details.items.liveFireFighting
+  // and details.items.simulatedSmoke in SafetyEquipmentChecks.jsx).
   SMOKE_FIRE_TRAINING: {
-    items: () => ['3 Yearly Smoke & Fire Training'],
+    items: () => ['Live Fire Fighting Exercise', 'Simulated Fire Fighting in Smoke Environment'],
     expiryDays: 1095,
     documentName: '3 Yearly Smoke & Fire',
   },
   F100_SLIDE_TRAINING: {
-    items: () => ['F100 Slide Training'],
+    items: () => ['Fokker 100 Slide Training'],
     expiryDays: 1095,
     documentName: 'F100 Slide Training',
   },

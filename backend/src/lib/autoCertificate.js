@@ -3,19 +3,19 @@ const { buildCertificatePdfBuffer } = require('./certificate');
 const { logAction } = require('./audit');
 
 // A completed Emergency Procedures check always certifies both the generic
-// course and the type-specific one on the same certificate - e.g. a Fokker
-// 100 pilot's EP completion ticks "Emergency Procedures Training" AND
-// "Fokker 100 Emergency Procedures" together, per the operator's explicit
-// example. Cabin Attendant fleet variants (CA_DASH_8/CA_FOKKER_100) train on
-// the same aircraft type's procedures as their pilot counterparts, so they
-// share the same label. Metro 23 has no CA variant (cabin crew don't crew
-// that fleet), matching FLEET_VALUES elsewhere in this app.
-const EP_FLEET_LABELS = {
-  DASH_8: 'Dash 8 Emergency Procedures',
-  CA_DASH_8: 'Dash 8 Emergency Procedures',
-  FOKKER_100: 'Fokker 100 Emergency Procedures',
-  CA_FOKKER_100: 'Fokker 100 Emergency Procedures',
-  METRO_23: 'Metro 23 Emergency Procedures',
+// course and whichever fleet-specific type(s) were actually ticked on the
+// same certificate - e.g. a candidate checked on both Fokker 100 and Dash 8
+// in the same session gets "Emergency Procedures Training", "Fokker 100
+// Emergency Procedures" AND "Dash 8 Emergency Procedures" together, per the
+// operator's explicit example. Which fleet(s) were covered lives in
+// details.types (EpChecks.jsx's "Check type (select all that apply)"
+// multi-select, EP_TYPES there) - NOT the check's own top-level fleet
+// column, which that form never sets at all. Exact spelling/spacing here
+// must match EP_TYPES in EpChecks.jsx ('Dash8' has no space).
+const EP_TYPE_FLEET_LABELS = {
+  Dash8: 'Dash 8 Emergency Procedures',
+  'Fokker 100': 'Fokker 100 Emergency Procedures',
+  Metro: 'Metro 23 Emergency Procedures',
 };
 
 // Which checks.js check types get an automatic certificate filed onto the
@@ -25,10 +25,17 @@ const EP_FLEET_LABELS = {
 // Jacket / Wet Drill Training never expires). documentName must match an
 // option on the Documents tab's dropdown (see document-names.js) for a
 // human re-filing the same kind of document later to see the same choice,
-// though crew_documents.name itself is just plain text either way.
+// though crew_documents.name itself is just plain text either way. Each
+// items() takes the whole check (camelCased row) rather than a single
+// field, since EP needs to read details.types while the others don't need
+// anything beyond the check type itself.
 const CERTIFICATE_RULES = {
   EMERGENCY_PROCEDURES: {
-    items: (fleet) => ['Emergency Procedures Training', EP_FLEET_LABELS[fleet]].filter(Boolean),
+    items: (check) => {
+      const types = Array.isArray(check.details?.types) ? check.details.types : [];
+      const fleetLines = types.map((t) => EP_TYPE_FLEET_LABELS[t]).filter(Boolean);
+      return ['Emergency Procedures Training', ...fleetLines];
+    },
     expiryDays: 365,
     documentName: 'Emergency Procedures',
   },
@@ -68,7 +75,7 @@ async function fileAutomaticCertificate(check, actingUser) {
   const rule = CERTIFICATE_RULES[check.checkType];
   if (!rule || !check.crewMemberId) return;
 
-  const items = rule.items(check.fleet);
+  const items = rule.items(check);
   const validFrom = check.completedAt || new Date();
   const validTo = rule.expiryDays ? addDays(validFrom, rule.expiryDays) : null;
 

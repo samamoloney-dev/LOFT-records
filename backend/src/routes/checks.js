@@ -459,23 +459,41 @@ router.patch('/:id', async (req, res) => {
   // SETUP PHASE ONLY - remove this block once the operator confirms they've
   // gone live (see memory: setup_phase_signature_assumption). While
   // backfilling historical completions with no real signature captured at
-  // the time, auto-fill the assessor/candidate signature with their already-
-  // known names the moment a check of one of these four types is completed,
-  // rather than leaving them blank - per the operator's explicit request.
-  // Never overwrites a signature that's genuinely already there (e.g. a
-  // check actually signed via PinSignature).
+  // the time, auto-fill the assessor/examiner and candidate/applicant
+  // signature with their already-known names the moment a check of one of
+  // these types is completed, rather than leaving them blank - per the
+  // operator's explicit request (initially EP/Life Jacket/Smoke & Fire/F100
+  // Slide, then extended to Line Check/IPC/PC). Never overwrites a signature
+  // that's genuinely already there (e.g. a check actually signed via
+  // PinSignature). Two different field-naming conventions exist across
+  // check forms - assessor/candidate (EP family, both Line Checks) vs
+  // examiner/applicant (RECURRENT_SIMULATOR, shared by IPC and PC via
+  // details.variant).
   const SETUP_PHASE_AUTO_SIGN = true;
+  const ASSESSOR_CANDIDATE_SIGN_TYPES = new Set([
+    ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
+  ]);
   let detailsToSave = d.details ? { ...existing.details, ...d.details } : null;
-  if (SETUP_PHASE_AUTO_SIGN && d.result && CERTIFICATE_RULES[existing.checkType]) {
+  if (SETUP_PHASE_AUTO_SIGN && d.result) {
     const base = detailsToSave || existing.details || {};
     const now = new Date().toISOString();
-    detailsToSave = {
-      ...base,
-      assessorSig: base.assessorSig || base.assessor || null,
-      assessorSigAt: base.assessorSigAt || now,
-      candidateSig: base.candidateSig || existing.crewMemberName || null,
-      candidateSigAt: base.candidateSigAt || now,
-    };
+    if (ASSESSOR_CANDIDATE_SIGN_TYPES.has(existing.checkType)) {
+      detailsToSave = {
+        ...base,
+        assessorSig: base.assessorSig || base.assessor || null,
+        assessorSigAt: base.assessorSigAt || now,
+        candidateSig: base.candidateSig || existing.crewMemberName || null,
+        candidateSigAt: base.candidateSigAt || now,
+      };
+    } else if (existing.checkType === 'RECURRENT_SIMULATOR') {
+      detailsToSave = {
+        ...base,
+        examinerSig: base.examinerSig || base.examinerName || null,
+        examinerSigAt: base.examinerSigAt || now,
+        applicantSig: base.applicantSig || base.applicantName || existing.crewMemberName || null,
+        applicantSigAt: base.applicantSigAt || now,
+      };
+    }
   }
 
   const updateSql = `UPDATE checks SET

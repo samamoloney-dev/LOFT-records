@@ -8,7 +8,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
 const { localDateString } = require('../lib/currency');
-const { fileAutomaticCertificate } = require('../lib/autoCertificate');
+const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCertificate');
 
 const router = express.Router();
 
@@ -722,6 +722,53 @@ router.post('/:id/apply-upgrade', async (req, res) => {
     description: `Updated ${updatedUserRows[0].name}'s staff role to ${variantConfig.targetRole} (${variantConfig.label})`,
   });
   res.json(rowToCamel(rows[0]));
+});
+
+// One-off/rerunnable backfill for the four check types that auto-file a
+// certificate on completion (see lib/autoCertificate.js) - fills in
+// certificates for completions that predate the feature (or happened while
+// it had a bug), skipping any crew member/type combo that already has one
+// filed (matched on name + the exact auto-generated file name, so a
+// manually-uploaded document with a coincidentally matching name is left
+// alone). Safe to run again later as more historical dates get entered -
+// it only ever adds what's missing.
+router.post('/backfill-auto-certificates', async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can run this' });
+
+  const types = Object.keys(CERTIFICATE_RULES);
+  const { rows: checkRows } = await pool.query(
+    `SELECT * FROM checks WHERE check_type::text = ANY($1) AND result = 'PASS' AND archived = false AND crew_member_id IS NOT NULL`,
+    [types],
+  );
+
+  const results = [];
+  for (const row of checkRows) {
+    const check = rowToCamel(row);
+    const rule = CERTIFICATE_RULES[check.checkType];
+    const fileName = `${check.crewMemberName} - ${rule.documentName} Certificate.pdf`;
+    const { rows: existingDocs } = await pool.query(
+      `SELECT id FROM crew_documents WHERE crew_member_id = $1 AND name = $2 AND file_name = $3 AND archived = false`,
+      [check.crewMemberId, rule.documentName, fileName],
+    );
+    if (existingDocs.length > 0) {
+      results.push({ crewMemberName: check.crewMemberName, documentName: rule.documentName, status: 'already filed' });
+      continue;
+    }
+    try {
+      await fileAutomaticCertificate(check, req.user);
+      results.push({ crewMemberName: check.crewMemberName, documentName: rule.documentName, status: 'filed' });
+    } catch (err) {
+      results.push({ crewMemberName: check.crewMemberName, documentName: rule.documentName, status: 'failed', error: err.message });
+    }
+  }
+
+  res.json({
+    total: results.length,
+    filed: results.filter((r) => r.status === 'filed').length,
+    alreadyFiled: results.filter((r) => r.status === 'already filed').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    results,
+  });
 });
 
 router.post('/:id/archive', async (req, res) => {

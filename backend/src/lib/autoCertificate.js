@@ -103,4 +103,4 @@ async function fileAutomaticCertificate(check, actingUser) {
   });
 }
 
-module.exports = { fileAutomaticCertificate };
+module.exports = { fileAutomaticCertificate, CERTIFICATE_RULES };

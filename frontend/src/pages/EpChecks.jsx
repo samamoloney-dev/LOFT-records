@@ -15,10 +15,10 @@ import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 
-const EP_TYPES = ['Theory', 'Slide', 'Life Jacket', 'Metro', 'Dash8', 'Fokker 100'];
+const EP_TYPES = ['Theory', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
 
-const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, lifeJacketDate: '', scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
+const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
 // record - mirrors backend/src/routes/checks.js POST /.
@@ -202,27 +202,6 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="card">
-          <div className="field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <label style={{ margin: 0 }}>Life Jacket Training (Wet Drill) date — initial qualification only</label>
-              <button
-                type="button"
-                className={`tick-btn ${d.lifeJacketNa ? 'active-pass' : ''}`}
-                disabled={!!selected.completedAt}
-                onClick={() => patchDetails(selected, { lifeJacketNa: !d.lifeJacketNa, ...(d.lifeJacketNa ? {} : { lifeJacketDate: '' }) })}
-              >N/A</button>
-            </div>
-            <input
-              key={`lifeJacketDate-${d.lifeJacketNa}`}
-              type="date"
-              defaultValue={d.lifeJacketDate}
-              disabled={!!selected.completedAt || d.lifeJacketNa}
-              onBlur={(e) => patchDetails(selected, { lifeJacketDate: e.target.value })}
-            />
-          </div>
         </div>
 
         <div className="card">

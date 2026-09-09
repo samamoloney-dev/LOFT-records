@@ -32,7 +32,6 @@ export function buildEpCheckHtml(check, epItems) {
     ])}
     ${section('Assessment items', itemRows)}
     ${section('Assessment', [
-      ['Life Jacket Training (Wet Drill) date', d.lifeJacketNa ? 'N/A' : d.lifeJacketDate],
       ['Scenarios selected', d.scenarios],
       ['Comments', d.comments],
       ['Overall assessment', resultBadge(check.result)],

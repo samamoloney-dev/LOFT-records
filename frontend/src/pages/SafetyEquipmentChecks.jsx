@@ -59,7 +59,7 @@ export const SAFETY_EQUIPMENT_CONFIGS = {
   },
 };
 
-const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, assessorSig: '', candidateSig: '' });
+const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorArn: '', items: {}, assessorSig: '', candidateSig: '' });
 
 // crewMemberId/crewMemberName/fleet scope this to one Crew roster member's
 // own profile (see CrewDetail.jsx) - unlike EpChecks.jsx, these three never
@@ -174,7 +174,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{crewMemberName} — {config.label}</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}
+            {d.date ? formatDate(d.date) : 'No date'}
           </div>
         </div>
 
@@ -293,18 +293,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
             fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
-          <div className="grid2">
-            <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
-            <div className="field">
-              <label>Aircraft type</label>
-              <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>
-                <option value="">—</option>
-                <option value="Fokker 100">Fokker 100</option>
-                <option value="Dash 8">Dash 8</option>
-                <option value="Metro">Metro</option>
-              </select>
-            </div>
-          </div>
+          <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}
@@ -316,7 +305,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{crewMemberName}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {c.details?.actype || 'No aircraft type'} · {c.details?.date ? formatDate(c.details.date) : 'No date'}
+              {c.details?.date ? formatDate(c.details.date) : 'No date'}
             </div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}

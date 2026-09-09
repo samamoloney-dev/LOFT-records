@@ -456,6 +456,28 @@ router.patch('/:id', async (req, res) => {
     ? await resolveAssignee(d.assignedTo)
     : { assignedToName: null, assignedToArn: null, assignedToRole: null };
 
+  // SETUP PHASE ONLY - remove this block once the operator confirms they've
+  // gone live (see memory: setup_phase_signature_assumption). While
+  // backfilling historical completions with no real signature captured at
+  // the time, auto-fill the assessor/candidate signature with their already-
+  // known names the moment a check of one of these four types is completed,
+  // rather than leaving them blank - per the operator's explicit request.
+  // Never overwrites a signature that's genuinely already there (e.g. a
+  // check actually signed via PinSignature).
+  const SETUP_PHASE_AUTO_SIGN = true;
+  let detailsToSave = d.details ? { ...existing.details, ...d.details } : null;
+  if (SETUP_PHASE_AUTO_SIGN && d.result && CERTIFICATE_RULES[existing.checkType]) {
+    const base = detailsToSave || existing.details || {};
+    const now = new Date().toISOString();
+    detailsToSave = {
+      ...base,
+      assessorSig: base.assessorSig || base.assessor || null,
+      assessorSigAt: base.assessorSigAt || now,
+      candidateSig: base.candidateSig || existing.crewMemberName || null,
+      candidateSigAt: base.candidateSigAt || now,
+    };
+  }
+
   const updateSql = `UPDATE checks SET
        details = COALESCE($1, details),
        result = COALESCE($2, result),
@@ -469,7 +491,7 @@ router.patch('/:id', async (req, res) => {
        completed_by = $11
      WHERE id = $12 RETURNING *`;
   const updateParams = [
-    d.details ? JSON.stringify(d.details) : null,
+    detailsToSave ? JSON.stringify(detailsToSave) : null,
     d.result ?? null,
     d.score ?? null,
     d.completedAt ? new Date(d.completedAt) : null,

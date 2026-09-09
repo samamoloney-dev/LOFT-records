@@ -99,6 +99,26 @@ async function fileAutomaticCertificate(check, actingUser) {
   // CrewDetail.jsx readFileAsDataUrl), and the viewer (lib/pdf.js viewPdf)
   // assumes that shape (splits on the first comma) rather than checking it.
   const fileData = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
+
+  // A re-completion (e.g. an annual EP renewal) replaces the previous
+  // certificate of the same kind - archive it rather than leaving two
+  // active certificates with the same name sitting in the Documents tab,
+  // per the operator's explicit request. Matched on name + the exact
+  // auto-generated file name, same as the backfill endpoint's own "already
+  // filed" check, so a manually-uploaded document that happens to share a
+  // name is never touched.
+  const { rows: previous } = await pool.query(
+    `SELECT id FROM crew_documents WHERE crew_member_id = $1 AND name = $2 AND file_name = $3 AND archived = false`,
+    [check.crewMemberId, rule.documentName, fileName],
+  );
+  for (const prev of previous) {
+    await pool.query('UPDATE crew_documents SET archived = true, archived_at = now() WHERE id = $1', [prev.id]);
+    await logAction({
+      userId: actingUser.id, action: 'ARCHIVE', targetTable: 'crew_documents', targetId: prev.id,
+      description: `Archived superseded "${rule.documentName}" certificate for ${check.crewMemberName}`,
+    });
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,

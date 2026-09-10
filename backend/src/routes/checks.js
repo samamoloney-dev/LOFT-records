@@ -56,14 +56,6 @@ function canAccessCheckType(user, checkType) {
   if (checkType === 'UPGRADE_RECORD') {
     return isAdmin(user) || UPGRADE_CHECKER_ROLES.includes(user.role);
   }
-  // SETUP PHASE ONLY - see memory: setup_phase_signature_assumption. Shared
-  // by both pilots and cabin crew from one form (CrewDetail.jsx's
-  // CurrencyFolder), so access combines whoever could conduct either kind
-  // of Line Check, since this rule has no visibility into which crew type
-  // a given check actually belongs to.
-  if (checkType === 'CHECK_TO_LINE') {
-    return canAccessChecks(user) || user.role === 'CA_CHECKER' || user.role === 'CA_MANAGER' || (user.checkAccess || []).includes('LINE_CHECK');
-  }
   return canAccessChecks(user);
 }
 
@@ -112,7 +104,6 @@ const CHECK_TYPE_LABELS = {
   LIFE_JACKET: 'Life Jacket Training',
   SMOKE_FIRE_TRAINING: 'Smoke & Fire Training',
   F100_SLIDE_TRAINING: 'F100 Slide Training',
-  CHECK_TO_LINE: 'Check to Line',
   CAPTAIN_IN_TRAINING: 'Captain in Training Assessment',
   UPGRADE_RECORD: 'Upgrade Record',
 };
@@ -318,7 +309,7 @@ router.get('/:id', async (req, res) => {
 const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
   crewMemberId: z.string().uuid().optional(),
-  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING', 'CHECK_TO_LINE']),
+  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
@@ -480,7 +471,7 @@ router.patch('/:id', async (req, res) => {
   // details.variant).
   const SETUP_PHASE_AUTO_SIGN = true;
   const ASSESSOR_CANDIDATE_SIGN_TYPES = new Set([
-    ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK', 'CHECK_TO_LINE',
+    ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
   ]);
   let detailsToSave = d.details ? { ...existing.details, ...d.details } : null;
   if (SETUP_PHASE_AUTO_SIGN && d.result) {
@@ -615,28 +606,6 @@ router.patch('/:id', async (req, res) => {
       await fileAutomaticCertificate(updated, req.user);
     } catch (err) {
       console.error('Failed to auto-file certificate', err);
-    }
-  }
-
-  // SETUP PHASE ONLY - see memory: setup_phase_signature_assumption. A
-  // completed Check to Line sets the crew record's own anchor/seed field to
-  // match, exactly like the manual date field in CrewInfoEditor - this form
-  // is just a proper, auditable way of recording the same thing, per the
-  // operator's explicit request. Pilots use line_check_anchor_date (a
-  // fixed-anniversary schedule); cabin crew use seed_line_check_date (a
-  // simple rolling 365-day window) - see pilotLineCheckDue/withCurrency in
-  // crew.js. Same bonus-side-effect reasoning as the auto-certificate block
-  // above - logged, not allowed to fail the check save itself.
-  if (d.result === 'PASS' && updated.checkType === 'CHECK_TO_LINE' && updated.crewMemberId) {
-    try {
-      const { rows: crewRows } = await pool.query('SELECT type FROM crew_members WHERE id = $1', [updated.crewMemberId]);
-      const crewType = crewRows[0]?.type;
-      const column = crewType === 'PILOT' ? 'line_check_anchor_date' : crewType === 'CABIN_ATTENDANT' ? 'seed_line_check_date' : null;
-      if (column) {
-        await pool.query(`UPDATE crew_members SET ${column} = $1 WHERE id = $2`, [updated.completedAt, updated.crewMemberId]);
-      }
-    } catch (err) {
-      console.error('Failed to set Check to Line anchor/seed date', err);
     }
   }
 

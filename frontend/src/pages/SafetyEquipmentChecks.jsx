@@ -30,6 +30,7 @@ export const SAFETY_EQUIPMENT_CONFIGS = {
     items: [{ id: 'lifeJacket', description: 'Life Jacket Training (Wet Drill)' }],
     textFields: [],
     hasScore: false,
+    accessType: 'EMERGENCY_PROCEDURES',
   },
   SMOKE_FIRE_TRAINING: {
     checkType: 'SMOKE_FIRE_TRAINING',
@@ -44,6 +45,7 @@ export const SAFETY_EQUIPMENT_CONFIGS = {
       { id: 'comments', label: 'Comments' },
     ],
     hasScore: true,
+    accessType: 'EMERGENCY_PROCEDURES',
   },
   F100_SLIDE_TRAINING: {
     checkType: 'F100_SLIDE_TRAINING',
@@ -56,6 +58,27 @@ export const SAFETY_EQUIPMENT_CONFIGS = {
     items: [{ id: 'f100Slide', description: 'Fokker 100 Slide Training' }],
     textFields: [],
     hasScore: false,
+    accessType: 'EMERGENCY_PROCEDURES',
+  },
+  // SETUP PHASE ONLY - see memory: setup_phase_signature_assumption. A
+  // once-off alternative to the full recurrent Line Check form, for a new
+  // crew member who's only been checked to line in the past ~11 months and
+  // has no recurrent Line Check due yet - per the operator's explicit
+  // request for something "100% correct" rather than editing the crew
+  // record's date field directly. Completing this sets that date (see
+  // checks.js PATCH /:id's CHECK_TO_LINE side effect) exactly the same way,
+  // just via a proper auditable check form. No items to tick - it's just
+  // recording that the event happened and when. Shared by pilots and cabin
+  // crew (appliesTo is passed straight through from whichever profile it's
+  // opened from - see CrewDetail.jsx CurrencyFolder).
+  CHECK_TO_LINE: {
+    checkType: 'CHECK_TO_LINE',
+    label: 'Check to Line',
+    cycleText: 'Once-off - sets when their next Line Check is due, not required again itself',
+    items: [],
+    textFields: [],
+    hasScore: false,
+    accessType: 'LINE_CHECK',
   },
 };
 
@@ -182,26 +205,28 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType={config.accessType} fleet={fleet} onAssign={(s) => reassign(selected, s)} />
         </div>
 
-        <div className="card">
-          {config.items.map((item) => (
-            <div key={item.id} className="row" style={{ cursor: 'default' }}>
-              <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {['S', 'X', 'N'].map((v) => (
-                  <button
-                    key={v}
-                    disabled={!!selected.completedAt}
-                    className={`tick-btn ${d.items?.[item.id] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
-                    onClick={() => patchDetails(selected, { items: { ...d.items, [item.id]: d.items?.[item.id] === v ? undefined : v } })}
-                  >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N'}</button>
-                ))}
+        {config.items.length > 0 && (
+          <div className="card">
+            {config.items.map((item) => (
+              <div key={item.id} className="row" style={{ cursor: 'default' }}>
+                <div style={{ flex: 1, fontSize: 13 }}>{item.description}</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {['S', 'X', 'N'].map((v) => (
+                    <button
+                      key={v}
+                      disabled={!!selected.completedAt}
+                      className={`tick-btn ${d.items?.[item.id] === v ? (v === 'X' ? 'active-fail' : 'active-pass') : ''}`}
+                      onClick={() => patchDetails(selected, { items: { ...d.items, [item.id]: d.items?.[item.id] === v ? undefined : v } })}
+                    >{v === 'S' ? '✓' : v === 'X' ? '✗' : 'N'}</button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {config.textFields.length > 0 && (
           <div className="card">
@@ -215,7 +240,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
         )}
 
         <div className="card">
-          <AssessorPicker value={d.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+          <AssessorPicker value={d.assessorId} accessType={config.accessType} fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
           <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
             We the undersigned, do hereby mutually agree upon and accept the comments written in
             this document as being a correct and honest account of the performance of the trainee in
@@ -289,11 +314,11 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
           </div>
           <AssignedToPicker
             value={newForm.assignedTo}
-            accessType="EMERGENCY_PROCEDURES"
+            accessType={config.accessType}
             fleet={fleet}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
-          <AssessorPicker value={newForm.assessorId} accessType="EMERGENCY_PROCEDURES" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
+          <AssessorPicker value={newForm.assessorId} accessType={config.accessType} fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
           <button type="submit" className="primary">Create check record</button>
         </form>
       )}

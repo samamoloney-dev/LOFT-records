@@ -720,11 +720,13 @@ function CurrencyFolder({ member, initialSubTab }) {
   const subTabs = isPilot
     ? [
       { key: 'ep', label: epLabel }, { key: 'ipc', label: 'IPC' }, { key: 'pc', label: 'Proficiency Check' }, { key: 'linecheck', label: 'Line Check' },
+      // SETUP PHASE ONLY - see memory: setup_phase_signature_assumption.
+      { key: 'checkToLine', label: 'Check to Line' },
       // Only shown once an admin has allocated this pilot to a Captain
       // upgrade (see CrewInfoEditor) - not offered to every pilot.
       ...(member.captainInTraining ? [{ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' }] : []),
     ]
-    : [{ key: 'ep', label: epLabel }, { key: 'linecheck', label: 'Line Check' }];
+    : [{ key: 'ep', label: epLabel }, { key: 'linecheck', label: 'Line Check' }, { key: 'checkToLine', label: 'Check to Line' }];
   const [subTab, setSubTab] = useState(subTabs.some((t) => t.key === initialSubTab) ? initialSubTab : 'ep');
   const [showArchived, setShowArchived] = useState(false);
 
@@ -748,6 +750,9 @@ function CurrencyFolder({ member, initialSubTab }) {
       {subTab === 'pc' && isPilot && <ProficiencyChecks variant="PC" label="Proficiency Check" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'linecheck' && isPilot && <PilotLineCheck crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'checkToLine' && (
+        <SafetyEquipmentCheckForm configKey="CHECK_TO_LINE" appliesTo={member.type} crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />
+      )}
       {subTab === 'citPrelim' && isPilot && <CaptainInTrainingForm variant="PRELIMINARY" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'citFinal' && isPilot && <CaptainInTrainingForm variant="FINAL" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
     </div>

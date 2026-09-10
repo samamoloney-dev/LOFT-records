@@ -175,6 +175,10 @@ function allRows(member, codeMap) {
     // ReasonEditor/overdueReason) - only ever set on the recurrent
     // check items (EP/IPC/PC/Line Check), not ad-hoc competencies.
     overdueReason: item.overdueReason,
+    // e.g. Line Check's dual-fleet alternation note (see crew.js
+    // lineCheckFleetNote) - same free-text note DueBadge.jsx shows on the
+    // crew profile itself.
+    note: item.note,
     // Still has an active (non-archived) linked LOFT trainee record - see
     // backend/src/routes/crew.js withCurrency's inLoft. Flagged overdue
     // while still in training is often expected, not an oversight, so it
@@ -338,6 +342,7 @@ export function CurrencyOverview() {
               </div>
             )}
             {r.overdueReason && <span className="badge warn" style={{ marginTop: 4, display: 'inline-block' }}>{r.overdueReason}</span>}
+            {r.note && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{r.note}</div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {r.inLoft && r.status === 'overdue' && (

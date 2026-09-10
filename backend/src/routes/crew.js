@@ -124,6 +124,37 @@ async function lastCompletedCheck(crewMemberId, checkType, variant) {
   return rows[0]?.completed_at || null;
 }
 
+// Cabin Attendant Line Check only - which aircraft type (details.actype,
+// see CaChecks.jsx AIRCRAFT_TYPES) the most recent one was conducted on,
+// alongside its date. Used to enforce strict fleet alternation for a CA
+// qualified on both Dash 8 and Fokker 100 (see urgentLineCheckFleetFor
+// below) - a dual-fleet CA who keeps getting checked on the same fleet
+// would otherwise never trip a warning on the other one, since a plain
+// "last completed, any fleet" date can't tell the two apart.
+async function lastCompletedLineCheckWithFleet(crewMemberId) {
+  const { rows } = await pool.query(
+    `SELECT completed_at, details->>'actype' AS actype FROM checks
+     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NOT NULL AND archived = false
+     ORDER BY completed_at DESC LIMIT 1`,
+    [crewMemberId],
+  );
+  return rows[0] ? { completedAt: rows[0].completed_at, actype: rows[0].actype } : null;
+}
+
+// Forces strict alternation for a CA qualified on both Dash 8 and Fokker
+// 100, per the operator's explicit rule: whichever fleet WASN'T just
+// checked is due 365 days after that completion, regardless of when either
+// fleet was last individually checked - not two independent per-fleet
+// clocks. A CA qualified on only one of the two (or whose last check has no
+// recorded aircraft type - e.g. predates this field) falls back to no note
+// at all, same as before.
+function lineCheckFleetNote(member, lastLineCheck) {
+  const dualFleet = member.fleets.includes('DASH_8') && member.fleets.includes('FOKKER_100');
+  if (!dualFleet || !lastLineCheck?.actype) return null;
+  const nextFleet = lastLineCheck.actype === 'Fokker 100' ? 'Dash 8' : lastLineCheck.actype === 'Dash 8' ? 'Fokker 100' : null;
+  return nextFleet ? `${nextFleet} due next (alternating fleet)` : null;
+}
+
 // A planned check's own row (crew_planned_checks) is deleted the moment
 // "Create check form" turns it into a real check (see the create-check
 // route below) - so once that happens, dueInfo's plannedDate/
@@ -458,6 +489,11 @@ async function itemsFor(member, currency, inLoft) {
       // of which can exist without this being true yet. Competencies have
       // no equivalent concept, so this is only ever set here.
       rostered: info.rostered,
+      // e.g. Line Check's dual-fleet alternation note (see
+      // lineCheckFleetNote) - surfaced the same way DueBadge.jsx already
+      // shows it on the crew profile itself, so Currency Overview doesn't
+      // silently drop it.
+      note: info.note,
     }));
 
   // Includes ad-hoc competencies now (see activeCompetencies above) - a
@@ -661,18 +697,19 @@ async function withCurrency(member) {
       ...safetyEquipment,
     };
   } else {
-    const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete] = await Promise.all([
+    const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete, lastLineCheckWithFleet] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
       hasInProgressCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
       hasIncompleteGroundSchool(effectiveTraineeId),
+      lastCompletedLineCheckWithFleet(member.id),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, trainingGateReason(groundSchoolIncomplete, inLoft), lineCheckIssued),
+      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, trainingGateReason(groundSchoolIncomplete, inLoft), lineCheckIssued, lineCheckFleetNote(member, lastLineCheckWithFleet)),
       ...safetyEquipment,
     };
   }

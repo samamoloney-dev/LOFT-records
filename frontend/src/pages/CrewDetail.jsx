@@ -90,6 +90,7 @@ function initCrewInfoForm(member) {
   return {
     firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets,
     lineCheckAnchorDate: member.lineCheckAnchorDate ? member.lineCheckAnchorDate.slice(0, 10) : '',
+    seedLineCheckDate: member.seedLineCheckDate ? member.seedLineCheckDate.slice(0, 10) : '',
     captainInTraining: !!member.captainInTraining,
     newHirePilot: !!member.newHirePilot,
   };
@@ -119,7 +120,7 @@ function CrewInfoEditor({ member, onSaved }) {
           captainInTraining: form.captainInTraining,
           ...(canToggleNewHire ? { newHirePilot } : {}),
         }
-        : base;
+        : { ...base, seedLineCheckDate: form.seedLineCheckDate || null };
       onSaved(await api.patch(`/api/crew/${member.id}`, patch));
       setEditing(false);
     } catch (err) { setError(err.message); }
@@ -161,6 +162,19 @@ function CrewInfoEditor({ member, onSaved }) {
           <label>Initial Check to Line date</label>
           <input type="date" value={form.lineCheckAnchorDate} onChange={(e) => setForm({ ...form, lineCheckAnchorDate: e.target.value })} />
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will always be due 365 days on from this date, then every 365 days after.</div>
+        </div>
+      )}
+      {!isPilot && (
+        // SETUP PHASE ONLY - remove once the operator goes live (see memory:
+        // setup_phase_signature_assumption). A quick way to record just the
+        // Check to Line date for a CA who's only been checked to line
+        // recently and has no recurrent Cabin Attendant Line Check due yet,
+        // rather than having to fill out that full check form for
+        // something that isn't really a recurrent completion.
+        <div className="field">
+          <label>Initial Check to Line date</label>
+          <input type="date" value={form.seedLineCheckDate} onChange={(e) => setForm({ ...form, seedLineCheckDate: e.target.value })} />
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will be due 365 days from this date, until a real Line Check is completed.</div>
         </div>
       )}
       {isPilot && isAdmin && (

@@ -966,6 +966,15 @@ const updateSchema = z.object({
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']).optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1).optional(),
   lineCheckAnchorDate: z.string().nullable().optional(),
+  // Cabin Attendant equivalent of lineCheckAnchorDate above - was only ever
+  // settable at crew creation (see the bulk-import INSERT) with no way to
+  // add or correct it afterward. SETUP PHASE ONLY (see memory:
+  // setup_phase_signature_assumption and CrewInfoEditor's own comment) - a
+  // quick "just record the Check to Line date" alternative to filling out
+  // the full Cabin Attendant Line Check form for crew who've only been
+  // checked to line recently and have no recurrent check due yet. Remove
+  // once the operator goes live.
+  seedLineCheckDate: z.string().nullable().optional(),
   arn: z.string().min(1).optional(),
   // Links this crew profile to an existing staff account (see CREW_SELECT)
   // so name is read live from Staff instead of drifting out of sync.
@@ -999,6 +1008,7 @@ const COLUMN_MAP = {
   role: 'role',
   fleets: 'fleets',
   lineCheckAnchorDate: 'line_check_anchor_date',
+  seedLineCheckDate: 'seed_line_check_date',
   arn: 'arn',
   userId: 'user_id',
   captainInTraining: 'captain_in_training',

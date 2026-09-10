@@ -177,11 +177,22 @@ async function hasInProgressCheck(crewMemberId, checkType, variant) {
   return rows.length > 0;
 }
 
-async function completedPilotLineCheckCount(crewMemberId) {
+// pilotLineCheckDue below treats lineCheckAnchorDate as "check zero" (the
+// pilot's own initial Check to Line) and counts every completed
+// PILOT_LINE_CHECK since as one more 12-month cycle on top of it - so a
+// completed check on or before the anchor itself must NOT be counted, or
+// it's counted twice (once implicitly via the anchor, once explicitly via
+// this count), overshooting the due date by a full year. This only bites
+// when a pilot's very first real check gets backfilled at/before whatever
+// anchor date is already on file - the normal case (checks always
+// completed after the anchor, since it's set once at hire) was never
+// affected either way.
+async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL`,
-    [crewMemberId],
+     WHERE crew_member_id = $1 AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL
+       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz)`,
+    [crewMemberId, anchorDate || null],
   );
   return rows[0]?.n || 0;
 }
@@ -620,7 +631,7 @@ async function withCurrency(member) {
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'IPC_PC'),
       lastCompletedCheck(member.id, 'RECURRENT_SIMULATOR', 'PC'),
-      completedPilotLineCheckCount(member.id),
+      completedPilotLineCheckCount(member.id, member.lineCheckAnchorDate),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
       hasIncompleteGroundSchool(effectiveTraineeId),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
@@ -1323,7 +1334,7 @@ router.get('/:id/competencies', async (req, res) => {
   let lineCheckDueDate = null;
   if (member.type === 'PILOT') {
     const [lineCheckCount, lastLineCheckChk] = await Promise.all([
-      completedPilotLineCheckCount(member.id),
+      completedPilotLineCheckCount(member.id, member.lineCheckAnchorDate),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
     ]);
     lineCheckDueDate = pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk);

@@ -122,41 +122,17 @@ function StatusPill({ status }) {
 // rostering system (which tracks the same competencies by a short code
 // rather than this app's full label) - see Export CSV below. Anything not
 // listed here (an admin-added ad-hoc competency, or a future catalog type
-// added after this map was written) falls through to codeFor's generated
-// fallback instead of coming through blank.
-const COMPETENCY_CODE_MAP = {
-  'Emergency Procedures': 'EMERPRC',
-  IPC: 'IPCHECK',
-  'Proficiency Check': 'PROFCHK',
-  'Line Check': 'LINECHK',
-  'Cabin Attendant Line Check': 'CALNCHK',
-  Medical: 'MEDICAL',
-  'Refresher Training': 'REFRESH',
-  'Dangerous Goods': 'DANGGDS',
-  'First Aid': 'FIRSTAD',
-  'SMS Training': 'SMSTRNG',
-  'Fatigue Management': 'FATIGMT',
-  'Human Factor and NTS': 'HUMFCTR',
-  'Human Factor and NTS 2': 'HUMFCT2',
-  'Human Factor and NTS 3': 'HUMFCT3',
-  'Human Factor and NTS 4': 'HUMFCT4',
-  DAMP: 'DAMPPGM',
-  CFIT: 'CFITAWR',
-  'CPR Training': 'CPRTRNG',
-  'Smoke and Firing Training': 'SMKFIRE',
-  'EFB Training': 'EFBTRNG',
-  'Emergency Slide F100 & Safety Equipment': 'ESLIDF1',
-  'Maintenance Authority': 'MAINTAU',
-  UPRT: 'UPRTRNG',
-  'Right Hand Seat': 'RGHTHND',
-};
+// added after the label->code map was last edited) falls through to
+// codeFor's generated fallback instead of coming through blank. The map
+// itself is admin-editable now (see Syllabus tab's Course Codes section /
+// GET /api/course-codes) rather than hardcoded here.
 
-// Deterministic fallback for any label not in COMPETENCY_CODE_MAP above -
-// letters only, uppercased, truncated/padded to exactly 7 characters, so
-// every exported row always has some code rather than a blank one that'd
-// silently fail to match on the rostering side.
-function codeFor(label) {
-  if (COMPETENCY_CODE_MAP[label]) return COMPETENCY_CODE_MAP[label];
+// Deterministic fallback for any label with no row in the admin-managed
+// course_codes list - letters only, uppercased, truncated/padded to
+// exactly 7 characters, so every exported row always has some code rather
+// than a blank one that'd silently fail to match on the rostering side.
+function codeFor(label, codeMap) {
+  if (codeMap?.[label]) return codeMap[label];
   const letters = String(label || '').toUpperCase().replace(/[^A-Z]/g, '');
   return (letters + 'XXXXXXX').slice(0, 7);
 }
@@ -167,7 +143,7 @@ function codeFor(label) {
 // picture is visible here rather than just the problems. A planned date
 // doesn't change the status (it's still due) - it's just shown alongside
 // it as a reminder it's in hand.
-function allRows(member) {
+function allRows(member, codeMap) {
   return member.allItems.map((item) => ({
     memberId: member.id,
     name: member.name,
@@ -176,7 +152,7 @@ function allRows(member) {
     fleets: member.fleets,
     fleet: member.fleets.map(formatFleet).join(', '),
     item: item.label,
-    itemCode: codeFor(item.label),
+    itemCode: codeFor(item.label, codeMap),
     dueDate: item.dueDate,
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
@@ -237,9 +213,11 @@ export function CurrencyOverview() {
     Promise.all([
       api.get('/api/crew?type=PILOT'),
       api.get('/api/crew?type=CABIN_ATTENDANT'),
+      api.get('/api/course-codes'),
     ])
-      .then(([pilots, cabinAttendants]) => {
-        const flattened = [...pilots, ...cabinAttendants].flatMap(allRows);
+      .then(([pilots, cabinAttendants, courseCodes]) => {
+        const codeMap = Object.fromEntries(courseCodes.map((c) => [c.label, c.code]));
+        const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m, codeMap));
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);
       })

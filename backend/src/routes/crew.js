@@ -641,15 +641,22 @@ async function withCurrency(member) {
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
     const ipc = latestOf(ipcChk, member.seedIpcDate);
-    // An IPC's requirements cover a Proficiency Check too (it includes a
-    // licence reissue on top of what a PC alone would test), so completing
-    // one resets the PC's 365-day clock as well - not just a dedicated
-    // PC-variant check. The reverse doesn't hold: a plain PC doesn't touch
-    // the IPC's own due date above. Uses ipc (already seed-aware) rather
-    // than the raw ipcChk, so a pilot whose qualifying IPC was entered as a
-    // one-off seed date (e.g. onboarded before this app existed) still gets
-    // the same treatment as one completed through a real in-app check.
-    const pc = latestOf(latestOf(pcChk, ipc), member.seedPcDate);
+    // The true last-PC-only completion - null until a dedicated PC-variant
+    // check or seed date actually exists. Once it does, the PC's own
+    // 365-day clock rolls off it alone (see pcDueDate below) - a combined
+    // IPC+PC does satisfy the PC on the date it's done, but it doesn't push
+    // the *next* PC due date out any further than a dedicated PC would have,
+    // per the operator's explicit rule: IPC+PC then a dedicated PC 6 months
+    // later, repeating, so the PC clock must stay anchored to PC-only
+    // completions or it drifts onto the IPC's own 12-month cycle instead.
+    // Also surfaced on the member for the IPC/PC Spacing report (see
+    // planning.js), which needs the real gap between two distinct checks.
+    const lastPcOnly = latestOf(pcChk, member.seedPcDate);
+    // Used only for the "never sat a PC yet" grace/estimate logic below -
+    // still blended with ipc there, since a brand new hire whose only
+    // completed check so far is a combined IPC+PC has genuinely done
+    // something and shouldn't read as still in new-hire grace.
+    const pc = latestOf(lastPcOnly, ipc);
     // See newHireGraceActive above - a flagged new hire who's never sat a
     // PC yet stays "in training" rather than "overdue" until 6 months past
     // their Check to Line, on top of the ground-school gate above.
@@ -665,17 +672,11 @@ async function withCurrency(member) {
     // the IPC. Checked against ipc (seed-aware, see pc above) rather than
     // the raw ipcChk for the same reason. This only covers that one "never
     // had a real PC" gap; once a dedicated PC-variant check (or a seeded PC
-    // date) exists, the normal 365-day clock above (still anchored off
-    // either check type) takes over as before.
+    // date) exists, the normal 365-day clock below (anchored to that PC-only
+    // date alone, not the IPC) takes over as before.
     const pcNeverCompleted = !pcChk && !member.seedPcDate;
     const pcDueDateIsFirstEstimate = pcNeverCompleted && !!ipc;
-    const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipc), 6) : nextDueRolling(pc);
-    // The true last-PC-only completion (unlike pc above, which falls back to
-    // ipc for due-date rolling purposes) - null until a dedicated PC-variant
-    // check or seed date actually exists. Surfaced on the member for the
-    // IPC/PC Spacing report (see planning.js), which needs the real gap
-    // between two distinct checks, not a due-date estimate.
-    const lastPcOnly = latestOf(pcChk, member.seedPcDate);
+    const pcDueDate = pcDueDateIsFirstEstimate ? addMonths(new Date(ipc), 6) : nextDueRolling(lastPcOnly);
     ipcPcRaw = { lastIpc: ipc, lastPc: lastPcOnly };
     // Not yet a fully current line pilot - IPC, Line Check and Refresher
     // Training (see itemsFor above) don't apply until LOFT is actually

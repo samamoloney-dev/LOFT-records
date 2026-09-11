@@ -1902,3 +1902,4 @@ module.exports = router;
 module.exports.listCrewWithCurrency = listCrewWithCurrency;
 module.exports.hasIncompleteGroundSchool = hasIncompleteGroundSchool;
 module.exports.createCrewMemberRecord = createCrewMemberRecord;
+module.exports.FLEET_TO_AIRCRAFT_TYPE = FLEET_TO_AIRCRAFT_TYPE;

@@ -8,6 +8,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { logAction } = require('../lib/audit');
 const { localDateString } = require('../lib/currency');
 const { NTS_MARKERS } = require('../../db/phase4-items');
+const { FLEET_TO_AIRCRAFT_TYPE } = require('./crew');
 
 const router = express.Router();
 
@@ -227,6 +228,43 @@ router.post('/:traineeId/complete', async (req, res) => {
         userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: linkedCrew[0].id,
         description: `Started Line Check anniversary for ${trainee.firstName} ${trainee.lastName} from Check to Line completion`,
       });
+      // Also file a genuine Line Check record on the crew profile's own
+      // Check Forms tab, same as promote-to-crew does for a returning
+      // crew member's conversion (see trainees.js) - the anchor date above
+      // only drives the due-date math, it was never an actual form on file.
+      // Item checklist deliberately left blank (this CTL's fixed 6-item
+      // list isn't the same checklist as the recurring Line Check form).
+      const crewFullName = `${trainee.firstName} ${trainee.lastName}`;
+      const lineCheckDetails = {
+        date: localDateString(completedAt), assessorId: form.assignedTo, assessor: form.assignedToName,
+        assessorArn: form.assignedToArn, actype: FLEET_TO_AIRCRAFT_TYPE[trainee.fleet], comments: form.comments || '',
+        results: {}, seatCheck: [],
+        assessorSig: form.assessorSignature || form.assignedToName || null,
+        candidateSig: form.candidateSignature || crewFullName,
+      };
+      const { rows: lineCheckRows } = await pool.query(
+        `INSERT INTO checks (crew_member_id, crew_member_name, check_type, applies_to, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, details, result, score, completed_at)
+         VALUES ($1, $2, 'PILOT_LINE_CHECK', 'PILOT', $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [
+          linkedCrew[0].id, crewFullName, form.assignedTo, form.assignedToName, form.assignedToArn, form.assignedToRole,
+          JSON.stringify(lineCheckDetails), form.overallResult, form.overallScore, completedAt,
+        ],
+      );
+      await logAction({
+        userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: lineCheckRows[0].id,
+        description: `Filed Line Check for ${crewFullName} from their completed Check to Line`,
+      });
+      // The whole LOFT package (trainee record above, and this Check to
+      // Line form) archives together once complete, per the operator's
+      // explicit request - matches promote-to-crew's identical treatment
+      // for a returning crew member's conversion. Only reached here for an
+      // already-linked new-hire pilot; everyone else (including a CA, or a
+      // pilot/CA returning to LOFT for a fleet conversion) still goes
+      // through the separate promote-to-crew step, which archives the CTL
+      // form itself at that later point instead - completing the CTL alone
+      // must not archive it out from under an admin who hasn't promoted
+      // them yet.
+      await pool.query('UPDATE check_to_line_forms SET archived = true, archived_at = now() WHERE id = $1', [form.id]);
     }
   }
 

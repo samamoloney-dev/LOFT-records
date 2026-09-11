@@ -8,7 +8,7 @@ const { logAction } = require('../lib/audit');
 const { fleetOrderError, baseFleet } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 const { localDateString } = require('../lib/currency');
-const { createCrewMemberRecord } = require('./crew');
+const { createCrewMemberRecord, FLEET_TO_AIRCRAFT_TYPE } = require('./crew');
 
 const router = express.Router();
 
@@ -265,10 +265,11 @@ router.post('/:id/promote-to-crew', async (req, res) => {
   if (!trainee) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });
 
-  const { rows: ctlRows } = await pool.query('SELECT completed_at FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
+  const { rows: ctlRows } = await pool.query('SELECT * FROM check_to_line_forms WHERE trainee_id = $1', [trainee.id]);
   if (ctlRows.length === 0 || !ctlRows[0].completed_at) {
     return res.status(400).json({ error: 'Check to Line must be completed before adding this trainee to the Crew roster' });
   }
+  const ctl = rowToCamel(ctlRows[0]);
 
   // A trainee sent back to LOFT for a new fleet (source_crew_member_id set -
   // see POST / above) already has a crew record - merge the new fleet into
@@ -310,7 +311,7 @@ router.post('/:id/promote-to-crew', async (req, res) => {
       // localDateString for why the raw completed_at timestamp can't just
       // be passed straight through (Postgres would truncate it to a date
       // using the DB session's own timezone, not the operator's).
-      if (trainee.type === 'PILOT') { params.push(localDateString(ctlRows[0].completed_at)); setClauses.push(`line_check_anchor_date = $${params.length}`); }
+      if (trainee.type === 'PILOT') { params.push(localDateString(ctl.completedAt)); setClauses.push(`line_check_anchor_date = $${params.length}`); }
       params.push(sourceCrew.id);
       ({ rows } = await client.query(
         `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
@@ -326,7 +327,7 @@ router.post('/:id/promote-to-crew', async (req, res) => {
           trainee.type,
           trainee.role,
           [baseFleet(trainee.fleet)],
-          trainee.type === 'PILOT' ? localDateString(ctlRows[0].completed_at) : null,
+          trainee.type === 'PILOT' ? localDateString(ctl.completedAt) : null,
         ],
       ));
     }
@@ -342,6 +343,54 @@ router.post('/:id/promote-to-crew', async (req, res) => {
       'UPDATE crew_clearances SET crew_member_id = $1, trainee_id = NULL WHERE trainee_id = $2',
       [rows[0].id, trainee.id],
     );
+    // The Check to Line form is a different (fixed 6-item) checklist to the
+    // recurring Line Check form on the Crew profile's own Check Forms tab
+    // (SA 490/540), so its answers can't just be copied across item-for-item
+    // - but the crew profile should still show a genuine completed Line
+    // Check record from it (date/result/assessor), not rely solely on an
+    // anchor date that never shows up as an actual form on file. Per the
+    // operator's explicit request, file one now with the item checklist
+    // left blank (matches how several other historical Line Checks already
+    // on file were entered, before any of this session's item-matching work
+    // existed) rather than fabricating item-level answers that were never
+    // actually assessed against this specific checklist.
+    const crewFullName = `${trainee.firstName} ${trainee.lastName}`;
+    const lineCheckDetails = trainee.type === 'PILOT'
+      ? {
+        date: localDateString(ctl.completedAt), assessorId: ctl.assignedTo, assessor: ctl.assignedToName,
+        assessorArn: ctl.assignedToArn, actype: FLEET_TO_AIRCRAFT_TYPE[trainee.fleet], comments: ctl.comments || '',
+        results: {}, seatCheck: [],
+        assessorSig: ctl.assessorSignature || ctl.assignedToName || null,
+        candidateSig: ctl.candidateSignature || crewFullName,
+      }
+      : {
+        name: crewFullName, date: localDateString(ctl.completedAt), assessorId: ctl.assignedTo, assessor: ctl.assignedToName,
+        assessorArn: ctl.assignedToArn, actype: FLEET_TO_AIRCRAFT_TYPE[trainee.fleet], comments: ctl.comments || '',
+        items: {}, serviceMode: null, nts: {},
+        assessorSig: ctl.assessorSignature || ctl.assignedToName || null,
+        candidateSig: ctl.candidateSignature || crewFullName,
+      };
+    // fleet stays null on the check row itself - the aircraft type lives in
+    // details.actype instead, matching how PilotLineCheck.jsx/CaChecks.jsx's
+    // own create-check calls never populate this top-level column either.
+    const { rows: lineCheckRows } = await client.query(
+      `INSERT INTO checks (crew_member_id, crew_member_name, check_type, applies_to, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, details, result, score, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      [
+        rows[0].id, crewFullName, trainee.type === 'PILOT' ? 'PILOT_LINE_CHECK' : 'CABIN_ATTENDANT_LINE_CHECK',
+        trainee.type, ctl.assignedTo, ctl.assignedToName, ctl.assignedToArn, ctl.assignedToRole,
+        JSON.stringify(lineCheckDetails), ctl.overallResult, ctl.overallScore, ctl.completedAt,
+      ],
+    );
+    await logAction({
+      userId: req.user.id, action: 'CREATE', targetTable: 'checks', targetId: lineCheckRows[0].id,
+      description: `Filed ${trainee.type === 'PILOT' ? 'Line Check' : 'Cabin Attendant Line Check'} for ${crewFullName} from their completed Check to Line`,
+    });
+    // The whole LOFT package (trainee record above, and this Check to Line
+    // form) archives together once promotion is complete, per the
+    // operator's explicit request - it stays visible/active right up until
+    // this point, same reasoning as the trainee record above.
+    await client.query('UPDATE check_to_line_forms SET archived = true, archived_at = now() WHERE trainee_id = $1', [trainee.id]);
     await client.query('COMMIT');
     crewMember = { ...rowToCamel(rows[0]), fleets: parsePgArray(rows[0].fleets) };
   } catch (err) {

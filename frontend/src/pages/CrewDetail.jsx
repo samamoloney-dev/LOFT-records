@@ -1000,6 +1000,23 @@ function ExpiryTab({ member, onSaved, medical, onUpdateCompetency, competencyErr
             <ReasonEditor crewMemberId={member.id} checkKey="lineCheck" reason={member.currency.lineCheck.overdueReason} onSaved={onSaved} disabled={archived} />
           )}
         </div>
+        {/* Life Jacket/Smoke & Fire/F100 Slide have their own check forms
+            (see Check Forms > Emergency Procedures tab) and their own
+            currency, same as the items above - but aren't part of the
+            Planning tab's planned-checks system (crew.js's
+            PLANNED_CHECK_KEYS covers only EP/IPC/PC/Line Check), so no
+            PlannedDateEditor/ReasonEditor for these three. */}
+        <div>
+          <DueBadge label="Life Jacket Training" info={member.currency.lifeJacket} />
+        </div>
+        <div>
+          <DueBadge label="3 Yearly Smoke & Fire" info={member.currency.smokeFireTraining} />
+        </div>
+        {member.currency.f100SlideTraining && (
+          <div>
+            <DueBadge label="F100 Slide Training" info={member.currency.f100SlideTraining} />
+          </div>
+        )}
         {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}

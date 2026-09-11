@@ -695,7 +695,14 @@ async function withCurrency(member) {
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
       ipc: dueInfo(nextDueRolling(ipc), ipc, planned.ipc, loftGateReason, ipcIssued),
-      proficiencyCheck: dueInfo(pcDueDate, pc, planned.proficiencyCheck, pcGateReason, pcIssued, pcDueDateIsFirstEstimate ? 'No Proficiency Check completed yet' : null),
+      // completedDate shown here is deliberately lastPcOnly, not pc - the
+      // due-date math above still rolls off whichever of PC/IPC is more
+      // recent (an IPC resets the PC clock too), but the sole Proficiency
+      // Check's displayed completed date should only ever reflect a
+      // dedicated PC-form completion, never an IPC+PC combined one, per the
+      // operator's explicit rule: the IPC line already carries both dates,
+      // so showing the IPC's date here too would double up on it.
+      proficiencyCheck: dueInfo(pcDueDate, lastPcOnly, planned.proficiencyCheck, pcGateReason, pcIssued, pcDueDateIsFirstEstimate ? 'No Proficiency Check completed yet' : null),
       // Falls back to the initial Check to Line anchor date when no
       // recurrent Line Check has ever been completed yet. If there's no
       // anchor at all (e.g. a crew profile onboarded without one) but a

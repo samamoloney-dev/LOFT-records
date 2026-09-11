@@ -983,6 +983,14 @@ const updateSchema = z.object({
   // checked to line recently and have no recurrent check due yet. Remove
   // once the operator goes live.
   seedLineCheckDate: z.string().nullable().optional(),
+  // seedPcDate/seedIpcDate/seedEpDate (like lineCheckAnchorDate) were only
+  // ever settable at crew creation (see the bulk-import INSERT), with no way
+  // to correct a wrong one afterward - unlike seedLineCheckDate above, these
+  // are permanent fields (not a setup-phase-only feature), so a typo here is
+  // a normal data-correction need, same as fixing a wrong date on any check.
+  seedPcDate: z.string().nullable().optional(),
+  seedIpcDate: z.string().nullable().optional(),
+  seedEpDate: z.string().nullable().optional(),
   arn: z.string().min(1).optional(),
   // Links this crew profile to an existing staff account (see CREW_SELECT)
   // so name is read live from Staff instead of drifting out of sync.
@@ -1017,6 +1025,9 @@ const COLUMN_MAP = {
   fleets: 'fleets',
   lineCheckAnchorDate: 'line_check_anchor_date',
   seedLineCheckDate: 'seed_line_check_date',
+  seedPcDate: 'seed_pc_date',
+  seedIpcDate: 'seed_ipc_date',
+  seedEpDate: 'seed_ep_date',
   arn: 'arn',
   userId: 'user_id',
   captainInTraining: 'captain_in_training',

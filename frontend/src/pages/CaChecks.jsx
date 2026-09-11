@@ -19,6 +19,20 @@ import { sortNotCompletedFirst } from '../lib/sortChecks';
 // pilot-only fleet (there's no CA_METRO), so it never belongs in this list.
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8'];
 
+// A cabin attendant's own crew-profile fleet tick is the plain DASH_8/
+// FOKKER_100 value (same as a pilot's), but the checking staff who are
+// actually eligible to conduct this form (CA_CHECKER/CA_MANAGER) have their
+// own fleet ticks recorded as CA_DASH_8/CA_FOKKER_100 (see FsStaff.jsx's
+// FleetAccessPicker comment - that CA_-prefixed naming exists specifically
+// so a CA Checker/Manager's fleet tick can never accidentally match a
+// pilot's Line Check). isEligibleForCheck does an exact fleet match, so
+// without translating here, no Cabin Checker/Manager was ever found
+// eligible for this form - only a pilot Check Captain who happened to hold
+// the plain fleet value ever matched, which is exactly backwards.
+function toCaFleet(fleet) {
+  return fleet === 'DASH_8' ? 'CA_DASH_8' : fleet === 'FOKKER_100' ? 'CA_FOKKER_100' : fleet;
+}
+
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', items: {}, serviceMode: null, nts: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
@@ -192,7 +206,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}
           </div>
-          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" fleet={fleet} onAssign={(s) => reassign(selected, s)} />
+          <AssignedToPicker value={selected.assignedTo} accessType="LINE_CHECK" fleet={toCaFleet(fleet)} onAssign={(s) => reassign(selected, s)} />
         </div>
 
         <div className="card">
@@ -255,7 +269,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
             <label>Comments</label>
             <textarea defaultValue={d.comments} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { comments: e.target.value })} style={{ minHeight: 70 }} />
           </div>
-          <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={fleet} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
+          <AssessorPicker value={d.assessorId} accessType="LINE_CHECK" fleet={toCaFleet(fleet)} disabled={!!selected.completedAt} onSelect={(s) => setAssessor(s, (patch) => patchDetails(selected, patch))} />
           <div className="grid2">
             {selected.assignedTo ? (
               <PinSignature
@@ -345,11 +359,11 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
           <AssignedToPicker
             value={newForm.assignedTo}
             accessType="LINE_CHECK"
-            fleet={fleet}
+            fleet={toCaFleet(fleet)}
             onAssign={(s) => setNewForm((f) => ({ ...f, assignedTo: s?.id || '', assessorId: s?.id || f.assessorId, assessor: s?.name || f.assessor, assessorArn: s?.arn || f.assessorArn }))}
           />
           <div className="grid2">
-            <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" fleet={fleet} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
+            <AssessorPicker value={newForm.assessorId} accessType="LINE_CHECK" fleet={toCaFleet(fleet)} onSelect={(s) => setAssessor(s, (patch) => setNewForm((f) => ({ ...f, ...patch })))} />
             <div className="field">
               <label>Aircraft type</label>
               <select value={newForm.actype} onChange={(e) => setNewForm({ ...newForm, actype: e.target.value })}>

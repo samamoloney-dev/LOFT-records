@@ -93,7 +93,7 @@ function Shell({ children }) {
     ADMIN_ROLES.includes(user.role) && { to: '/fs-staff', label: 'FS Staff' },
     ADMIN_ROLES.includes(user.role) && { to: '/staff', label: 'Resources' },
     CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && { to: '/continuous-improvement', label: 'Continuous Improvement' },
-    SYLLABUS_ADMIN_ROLES.includes(user.role) && { to: '/syllabus', label: 'Syllabus' },
+    SYLLABUS_ADMIN_ROLES.includes(user.role) && { to: '/syllabus', label: 'Edit Forms' },
     ADMIN_ROLES.includes(user.role) && { to: '/archive', label: 'Archive' },
     canAccessCertificates(user) && { to: '/certificates', label: 'Certificates' },
     user.role !== 'TRAINEE' && { to: '/meeting-minutes', label: 'Meeting Minutes' },

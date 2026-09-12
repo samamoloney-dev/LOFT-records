@@ -413,17 +413,23 @@ router.get('/summary', async (req, res) => {
     // member - see crew.js's activeCompetencies/itemsFor) alongside
     // EP/IPC/PC/Line Check, since they're all drawn from the same allItems
     // list - nothing extra needed here for those to alert on this page.
+    // status mirrors the Overdue/Due Soon/Not Yet Completed summary cards
+    // above (see Dashboard.jsx's CARD_STYLES) so a row's colour matches
+    // whichever card it would otherwise only be countable under - the
+    // frontend picks the actual colour, this just says which one.
     ...overdueAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: i.dueDate
         ? `${i.member.name} — ${i.label} — overdue by ${daysOverdue(i.dueDate)} day${daysOverdue(i.dueDate) === 1 ? '' : 's'} — not yet rostered`
         : `${i.member.name} — ${i.label} — never completed — not yet rostered`,
       linkTo: crewLinkForItem(i.member.id, i.label),
+      status: 'overdue',
     })),
     ...notCompletedAttention.map((i) => ({
       key: `currency:${i.member.id}:${i.label}`,
       text: `${i.member.name} — ${i.label} — not yet completed — not yet rostered`,
       linkTo: crewLinkForItem(i.member.id, i.label),
+      status: 'not_completed',
     })),
     ...dueSoonAttention.map((i) => {
       const daysUntil = -daysOverdue(i.dueDate);
@@ -431,6 +437,7 @@ router.get('/summary', async (req, res) => {
         key: `currency:${i.member.id}:${i.label}`,
         text: `${i.member.name} — ${i.label} — due in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — not yet rostered`,
         linkTo: crewLinkForItem(i.member.id, i.label),
+        status: 'due_soon',
       };
     }),
     // A single flight not covering every syllabus item isn't a problem worth

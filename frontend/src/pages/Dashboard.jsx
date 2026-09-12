@@ -30,6 +30,17 @@ function SummaryCard({ label, value, color, onClick }) {
   );
 }
 
+// Same red/amber/gray palette as the Overdue/Due Soon/Not Yet Completed
+// summary cards above (CARD_STYLES) - a row's colour here should match
+// whichever of those cards it's counted under, rather than reading as one
+// flat undifferentiated list. Rows with no due-date status (a Clearance
+// Form or Upgrade Record ready-to-archive nudge) stay plain.
+const ATTENTION_ROW_STYLES = {
+  overdue: CARD_STYLES.red,
+  due_soon: CARD_STYLES.amber,
+  not_completed: CARD_STYLES.gray,
+};
+
 function NeedsAttentionPanel({ data, total, navigate }) {
   return (
     <div>
@@ -46,7 +57,7 @@ function NeedsAttentionPanel({ data, total, navigate }) {
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing needs attention right now.</div>
       )}
       {data.map((row) => (
-        <div key={row.key} className="card row" onClick={() => navigate(row.linkTo)}>
+        <div key={row.key} className="card row" onClick={() => navigate(row.linkTo)} style={ATTENTION_ROW_STYLES[row.status]}>
           <div style={{ fontSize: 13 }}>{row.text}</div>
         </div>
       ))}

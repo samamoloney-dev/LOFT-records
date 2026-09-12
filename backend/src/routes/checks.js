@@ -143,8 +143,18 @@ async function checkSubjectName(check) {
 // that may need follow-up).
 const FLEET_UNSCOPED_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
 
+// Emergency Procedures/Life Jacket/Smoke & Fire/F100 Slide are the one
+// exception to fleet scoping - canAccessCheckType above already grants
+// Cabin Attendant Manager unconditional authority over these for every
+// pilot and cabin crew member regardless of fleet (there's no CA_METRO_23
+// to tick even if they wanted to be scoped), so fleet-filtering their own
+// list here would silently take that back for any fleet they don't hold a
+// CA_-prefixed tick for.
+const EP_FAMILY_CHECK_TYPES = ['EMERGENCY_PROCEDURES', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING'];
+
 function checkVisibleToFleetScopedUser(user, check, fleetsById) {
   if (check.result === 'PASS') return false;
+  if (user.role === 'CA_MANAGER' && EP_FAMILY_CHECK_TYPES.includes(check.checkType)) return true;
   const userFleets = (user.fleets || []).map(baseFleet);
   if (userFleets.length === 0) return true; // no fleet ticks on file - fail open rather than hiding everything
   const subjectFleets = fleetsById.get(check.crewMemberId || check.traineeId);

@@ -172,8 +172,8 @@ function allRows(member, codeMap) {
     rostered: item.rostered,
     status: item.status,
     // A typed note explaining why this is overdue (see crew.js's
-    // ReasonEditor/overdueReason) - only ever set on the recurrent
-    // check items (EP/IPC/PC/Line Check), not ad-hoc competencies.
+    // ReasonEditor/overdueReason) - covers every recurrent check item
+    // and, per the operator's explicit request, competencies too now.
     overdueReason: item.overdueReason,
     // e.g. Line Check's dual-fleet alternation note (see crew.js
     // lineCheckFleetNote) - same free-text note DueBadge.jsx shows on the
@@ -302,10 +302,16 @@ export function CurrencyOverview() {
   // mm/dd/yyyy regardless of its own locale settings.
   function exportCsv() {
     const isoDate = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
-    const headers = ['Crew Member', 'ARN', 'Type', 'Fleet', 'Competency', 'Competency Code', 'Completed Date', 'Due Date', 'Status'];
+    // Planned Date/Reason appended at the end (existing columns kept in
+    // place) per the operator's explicit request - a compliance record of
+    // why an expired item is overdue and when it's planned to be cleared,
+    // for every row that has one (recurrent checks and, now, competencies -
+    // see crew.js's competencyDatesSchema/adHocCompetencySchema reason field).
+    const headers = ['Crew Member', 'ARN', 'Type', 'Fleet', 'Competency', 'Competency Code', 'Completed Date', 'Due Date', 'Status', 'Planned Date', 'Reason'];
     const csvRows = rows.map((r) => [
       r.name, r.arn || '', formatTraineeRole(r.type), r.fleet, r.item, r.itemCode,
       isoDate(r.completedDate), isoDate(r.dueDate), STATUS_TEXT[r.status] || r.status,
+      isoDate(r.plannedDate), r.overdueReason || '',
     ]);
     downloadCsv(`competency-dates-${isoDate(new Date())}.csv`, headers, csvRows);
   }

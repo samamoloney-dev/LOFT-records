@@ -318,7 +318,12 @@ function trainingGateReason(groundSchoolIncomplete, inLoft, extra) {
 // Planning page) - purely informational, shown alongside the computed due
 // date on Currency Overview and the crew member's own profile, and used to
 // prefill the assignee when the real check is later created.
-const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck'];
+// Life Jacket/Smoke & Fire/F100 Slide added per the operator's explicit
+// request - same planned-date/reason treatment as the four recurrent checks
+// above, for the same compliance-record reason (an exported competency
+// list should show why something's expired and when it's planned to be
+// done, for every expiring item, not just these four).
+const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck', 'lifeJacket', 'smokeFireTraining', 'f100SlideTraining'];
 
 // Maps a planned-check key to what the real check record needs once the
 // "Create check form" button (see the create-check route below) turns it
@@ -330,6 +335,9 @@ const CHECK_KEY_TO_CHECK_TYPE = {
   ipc: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'IPC_PC' }),
   proficiencyCheck: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'PC' }),
   lineCheck: (crewType) => ({ checkType: crewType === 'CABIN_ATTENDANT' ? 'CABIN_ATTENDANT_LINE_CHECK' : 'PILOT_LINE_CHECK' }),
+  lifeJacket: () => ({ checkType: 'LIFE_JACKET' }),
+  smokeFireTraining: () => ({ checkType: 'SMOKE_FIRE_TRAINING' }),
+  f100SlideTraining: () => ({ checkType: 'F100_SLIDE_TRAINING' }),
 };
 
 // Mirrors frontend/src/lib/format.js's FLEET_LABELS, but for the plain
@@ -408,7 +416,7 @@ const SAFETY_EQUIPMENT_LABELS = [CURRENCY_LABELS.lifeJacket, CURRENCY_LABELS.smo
 // than requiring a crew_competencies row to already exist.
 async function activeCompetencies(crewMemberId, crewType, crewFleets) {
   const { rows } = await pool.query(
-    `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
+    `SELECT ct.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na, cc.reason
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.archived = false AND (ct.applies_to IS NULL OR ct.applies_to = $2)
@@ -418,7 +426,7 @@ async function activeCompetencies(crewMemberId, crewType, crewFleets) {
        ))
        AND ct.syllabus_id IS NOT DISTINCT FROM (SELECT syllabus_id FROM crew_members WHERE id = $1)
      UNION ALL
-     SELECT cc.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na
+     SELECT cc.name, cc.due_date, cc.planned_date, cc.completed_date, COALESCE(cc.na, false) AS na, cc.reason
      FROM crew_competencies cc
      WHERE cc.crew_member_id = $1 AND cc.competency_type_id IS NULL AND cc.archived = false`,
     [crewMemberId, crewType, crewFleets],
@@ -531,6 +539,7 @@ async function itemsFor(member, currency, inLoft) {
         dueDate,
         completedDate: c.completed_date,
         plannedDate: c.planned_date,
+        overdueReason: c.reason,
       };
     });
 
@@ -585,7 +594,7 @@ async function urgentSafetyEquipmentItemsFor(member, currency, inLoft) {
 // the pilot and cabin attendant branches of withCurrency below since all
 // three apply to either crew type identically (no seed dates - these are
 // new check types with no pre-app history to backfill).
-async function safetyEquipmentCurrency(member) {
+async function safetyEquipmentCurrency(member, planned) {
   const [lifeJacketChk, smokeFireChk, f100SlideChk, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
     lastCompletedCheck(member.id, 'LIFE_JACKET'),
     lastCompletedCheck(member.id, 'SMOKE_FIRE_TRAINING'),
@@ -598,16 +607,16 @@ async function safetyEquipmentCurrency(member) {
   // required to be done again") - a 100-year rolling window stands in for
   // "no expiry" rather than adding a whole separate never-expires code path
   // through dueInfo/statusFor for just this one check.
-  const lifeJacket = dueInfo(nextDueRolling(lifeJacketChk, 36500), lifeJacketChk, null, null, lifeJacketIssued);
+  const lifeJacket = dueInfo(nextDueRolling(lifeJacketChk, 36500), lifeJacketChk, planned.lifeJacket, null, lifeJacketIssued);
   // 3-yearly, per the operator's explicit rule.
-  const smokeFireTraining = dueInfo(nextDueRolling(smokeFireChk, 1095), smokeFireChk, null, null, smokeFireIssued);
+  const smokeFireTraining = dueInfo(nextDueRolling(smokeFireChk, 1095), smokeFireChk, planned.smokeFireTraining, null, smokeFireIssued);
   // Fokker 100 specific - only tracked for crew actually on that fleet, so
   // it never falsely reads "overdue" for someone who'll never need it.
   // itemsFor's fromCurrency mapping already skips a null entry here (see
   // its `.filter(([, info]) => !!info)`), same as any other optional
   // currency field.
   const isFokker100 = member.fleets?.includes('FOKKER_100') || member.fleets?.includes('CA_FOKKER_100');
-  const f100SlideTraining = isFokker100 ? dueInfo(nextDueRolling(f100SlideChk, 1095), f100SlideChk, null, null, f100SlideIssued) : null;
+  const f100SlideTraining = isFokker100 ? dueInfo(nextDueRolling(f100SlideChk, 1095), f100SlideChk, planned.f100SlideTraining, null, f100SlideIssued) : null;
   return { lifeJacket, smokeFireTraining, f100SlideTraining };
 }
 
@@ -624,7 +633,7 @@ async function withCurrency(member) {
   // Only set for pilots - see lastPcOnly below and planning.js's IPC/PC
   // Spacing report, the sole consumer.
   let ipcPcRaw = null;
-  const safetyEquipment = await safetyEquipmentCurrency(member);
+  const safetyEquipment = await safetyEquipmentCurrency(member, planned);
 
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete, epIssued, ipcIssued, pcIssued, lineCheckIssued] = await Promise.all([
@@ -1380,6 +1389,12 @@ const competencyDatesSchema = z.object({
   // competency.
   na: z.boolean().optional(),
   courseSent: z.boolean().optional(),
+  // Same fixed-choice "why is this expired" note as the four recurrent
+  // checks (crew_planned_checks.reason) - per the operator's explicit
+  // request, for the same compliance-record reason. Not locked behind the
+  // once-saved HOTC/HOFO rule below, same as a recurrent check's own reason
+  // isn't gated by anything beyond this whole page already being admin-only.
+  reason: z.enum(OVERDUE_REASONS).nullable().optional(),
 });
 
 // Upserts this crew member's dates for one competency type - there's no
@@ -1393,7 +1408,7 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
 
   const parsed = competencyDatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { completedDate, dueDate, plannedDate, na, courseSent } = parsed.data;
+  const { completedDate, dueDate, plannedDate, na, courseSent, reason } = parsed.data;
 
   // Once any date has been saved for this competency, only HOTC/HOFO can
   // change it - everyone else is locked out from here on (mirrors the
@@ -1420,12 +1435,12 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na, course_sent)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na, course_sent, reason)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (crew_member_id, competency_type_id)
-     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6, course_sent = $7
+     DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6, course_sent = $7, reason = $8
      RETURNING *`,
-    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false, courseSent || false],
+    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false, courseSent || false, reason || null],
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));
@@ -1573,6 +1588,7 @@ const adHocCompetencySchema = z.object({
   completedDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   plannedDate: z.string().nullable().optional(),
+  reason: z.enum(OVERDUE_REASONS).nullable().optional(),
 });
 
 router.post('/:id/competencies/ad-hoc', requireRole(...ADMIN_ROLES), async (req, res) => {
@@ -1585,9 +1601,9 @@ router.post('/:id/competencies/ad-hoc', requireRole(...ADMIN_ROLES), async (req,
   const d = parsed.data;
 
   const { rows } = await pool.query(
-    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [member.id, d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null],
+    `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date, reason)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [member.id, d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null, d.reason || null],
   );
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_competencies', targetId: rows[0].id,
@@ -1606,9 +1622,9 @@ router.put('/:id/competencies/ad-hoc/:competencyId', requireRole(...ADMIN_ROLES)
   const d = parsed.data;
 
   const { rows } = await pool.query(
-    `UPDATE crew_competencies SET name = $1, completed_date = $2, due_date = $3, planned_date = $4
-     WHERE id = $5 AND crew_member_id = $6 AND competency_type_id IS NULL RETURNING *`,
-    [d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null, req.params.competencyId, member.id],
+    `UPDATE crew_competencies SET name = $1, completed_date = $2, due_date = $3, planned_date = $4, reason = $5
+     WHERE id = $6 AND crew_member_id = $7 AND competency_type_id IS NULL RETURNING *`,
+    [d.name, d.completedDate || null, d.dueDate || null, d.plannedDate || null, d.reason || null, req.params.competencyId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({

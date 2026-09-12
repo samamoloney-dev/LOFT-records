@@ -897,6 +897,21 @@ function CompetencyRow({ c, onUpdate, onDelete, unlocked, setUnlocked, archived 
             <label>Planned date</label>
             <input type="date" disabled={datesLocked} defaultValue={c.plannedDate || ''} onBlur={(e) => onUpdate(c, { plannedDate: e.target.value || null })} />
           </div>
+          {/* Not gated by datesLocked like the fields above - the backend
+              doesn't lock this behind the once-saved HOTC/HOFO-only rule
+              either (see crew.js competencyDatesSchema's changingDates
+              check, which reason isn't part of), same as the equivalent
+              recurrent-check ReasonEditor above is only ever disabled by
+              archived, never by that lock. */}
+          {['overdue', 'not_completed'].includes(status) && (
+            <div className="field" style={{ marginTop: 8, marginBottom: 0 }}>
+              <label>Reason expired</label>
+              <select disabled={archived} value={c.reason || ''} onChange={(e) => onUpdate(c, { reason: e.target.value || null })}>
+                <option value="">—</option>
+                {OVERDUE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          )}
           {!isAdHoc && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 13 }}>
               <input
@@ -955,69 +970,53 @@ function CompetencyList({ competencies, onUpdate, onDelete, unlocked, setUnlocke
   );
 }
 
+// One tidy, self-contained box per expiring item - status badge, then a
+// planned date and (once actually overdue/not yet completed) a reason,
+// stacked underneath rather than run on inline. Every item that has a due
+// date gets the same treatment now (see PLANNED_CHECK_KEYS in crew.js),
+// per the operator's explicit request that an exported competency list can
+// always show why something's expired and when it's planned to clear -
+// not just the original four recurrent checks.
+function ExpiryItemBox({ crewMemberId, checkKey, label, info, onSaved, disabled }) {
+  if (!info) return null;
+  return (
+    <div className="card" style={{ flex: '1 1 220px', minWidth: 220, maxWidth: 280 }}>
+      <DueBadge label={label} info={info} />
+      <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <PlannedDateEditor crewMemberId={crewMemberId} checkKey={checkKey} plannedDate={info.plannedDate} onSaved={onSaved} disabled={disabled} />
+        {['overdue', 'not_completed'].includes(info.status) && (
+          <ReasonEditor crewMemberId={crewMemberId} checkKey={checkKey} reason={info.overdueReason} onSaved={onSaved} disabled={disabled} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Everything with a due date lives here: recurrent check currency (EP/IPC/
-// PC/Line Check) and ad-hoc competencies - kept out of the always-visible
-// profile header (see the highlight badge there instead) so the page isn't
-// cluttered with due-date cards nobody asked to see yet. Competency
-// state/fetching lives in CrewDetail (shared with the Medical tab), not
-// here, so both agree on one source of truth.
+// PC/Line Check/Life Jacket/Smoke & Fire/F100 Slide) and ad-hoc competencies
+// - kept out of the always-visible profile header (see the highlight badge
+// there instead) so the page isn't cluttered with due-date cards nobody
+// asked to see yet. Competency state/fetching lives in CrewDetail (shared
+// with the Medical tab), not here, so both agree on one source of truth.
 function ExpiryTab({ member, onSaved, medical, onUpdateCompetency, competencyError }) {
   const isPilot = member.type === 'PILOT';
   const archived = member.archived;
 
   return (
     <div>
-      <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <div>
-          <DueBadge label="Emergency Procedures" info={member.currency.emergencyProcedures} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="emergencyProcedures" plannedDate={member.currency.emergencyProcedures.plannedDate} onSaved={onSaved} disabled={archived} />
-          {['overdue', 'not_completed'].includes(member.currency.emergencyProcedures.status) && (
-            <ReasonEditor crewMemberId={member.id} checkKey="emergencyProcedures" reason={member.currency.emergencyProcedures.overdueReason} onSaved={onSaved} disabled={archived} />
-          )}
-        </div>
-        {isPilot && (
-          <div>
-            <DueBadge label="IPC" info={member.currency.ipc} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="ipc" plannedDate={member.currency.ipc.plannedDate} onSaved={onSaved} disabled={archived} />
-            {['overdue', 'not_completed'].includes(member.currency.ipc.status) && (
-              <ReasonEditor crewMemberId={member.id} checkKey="ipc" reason={member.currency.ipc.overdueReason} onSaved={onSaved} disabled={archived} />
-            )}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <ExpiryItemBox crewMemberId={member.id} checkKey="emergencyProcedures" label="Emergency Procedures" info={member.currency.emergencyProcedures} onSaved={onSaved} disabled={archived} />
+        {isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="ipc" label="IPC" info={member.currency.ipc} onSaved={onSaved} disabled={archived} />}
+        {isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="proficiencyCheck" label="Proficiency Check" info={member.currency.proficiencyCheck} onSaved={onSaved} disabled={archived} />}
+        <ExpiryItemBox crewMemberId={member.id} checkKey="lineCheck" label="Line Check" info={member.currency.lineCheck} onSaved={onSaved} disabled={archived} />
+        <ExpiryItemBox crewMemberId={member.id} checkKey="lifeJacket" label="Life Jacket Training" info={member.currency.lifeJacket} onSaved={onSaved} disabled={archived} />
+        <ExpiryItemBox crewMemberId={member.id} checkKey="smokeFireTraining" label="3 Yearly Smoke & Fire" info={member.currency.smokeFireTraining} onSaved={onSaved} disabled={archived} />
+        <ExpiryItemBox crewMemberId={member.id} checkKey="f100SlideTraining" label="F100 Slide Training" info={member.currency.f100SlideTraining} onSaved={onSaved} disabled={archived} />
+        {medical && (
+          <div className="card" style={{ flex: '1 1 220px', minWidth: 220, maxWidth: 280 }}>
+            <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />
           </div>
         )}
-        {isPilot && (
-          <div>
-            <DueBadge label="Proficiency Check" info={member.currency.proficiencyCheck} />
-            <PlannedDateEditor crewMemberId={member.id} checkKey="proficiencyCheck" plannedDate={member.currency.proficiencyCheck.plannedDate} onSaved={onSaved} disabled={archived} />
-            {['overdue', 'not_completed'].includes(member.currency.proficiencyCheck.status) && (
-              <ReasonEditor crewMemberId={member.id} checkKey="proficiencyCheck" reason={member.currency.proficiencyCheck.overdueReason} onSaved={onSaved} disabled={archived} />
-            )}
-          </div>
-        )}
-        <div>
-          <DueBadge label="Line Check" info={member.currency.lineCheck} />
-          <PlannedDateEditor crewMemberId={member.id} checkKey="lineCheck" plannedDate={member.currency.lineCheck.plannedDate} onSaved={onSaved} disabled={archived} />
-          {['overdue', 'not_completed'].includes(member.currency.lineCheck.status) && (
-            <ReasonEditor crewMemberId={member.id} checkKey="lineCheck" reason={member.currency.lineCheck.overdueReason} onSaved={onSaved} disabled={archived} />
-          )}
-        </div>
-        {/* Life Jacket/Smoke & Fire/F100 Slide have their own check forms
-            (see Check Forms > Emergency Procedures tab) and their own
-            currency, same as the items above - but aren't part of the
-            Planning tab's planned-checks system (crew.js's
-            PLANNED_CHECK_KEYS covers only EP/IPC/PC/Line Check), so no
-            PlannedDateEditor/ReasonEditor for these three. */}
-        <div>
-          <DueBadge label="Life Jacket Training" info={member.currency.lifeJacket} />
-        </div>
-        <div>
-          <DueBadge label="3 Yearly Smoke & Fire" info={member.currency.smokeFireTraining} />
-        </div>
-        {member.currency.f100SlideTraining && (
-          <div>
-            <DueBadge label="F100 Slide Training" info={member.currency.f100SlideTraining} />
-          </div>
-        )}
-        {medical && <MedicalBox medical={medical} onUpdate={onUpdateCompetency} disabled={archived} />}
       </div>
       {competencyError && <div className="error-text">{competencyError}</div>}
     </div>
@@ -1164,6 +1163,7 @@ export function CrewDetail() {
           plannedDate: row.plannedDate || null,
           na: row.na || false,
           courseSent: row.courseSent || false,
+          reason: row.reason || null,
           ...patch,
         });
       } else {
@@ -1172,6 +1172,7 @@ export function CrewDetail() {
           completedDate: row.completedDate || null,
           dueDate: row.dueDate || null,
           plannedDate: row.plannedDate || null,
+          reason: row.reason || null,
           ...patch,
         });
       }

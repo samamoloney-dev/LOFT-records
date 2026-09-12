@@ -1,9 +1,10 @@
 const express = require('express');
 const { z } = require('zod');
 const pool = require('../../db/pool');
-const { rowToCamel } = require('../../db/serialize');
+const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessChecks, isAdmin, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
+const { baseFleet } = require('../lib/fleetOrder');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
@@ -132,6 +133,25 @@ async function checkSubjectName(check) {
   return 'an unlinked candidate';
 }
 
+// HOTC/HOFO/Alternate administer the whole roster and need full visibility
+// regardless of fleet or outcome - everyone else who can reach the Checks
+// tab (Check Captain, Examiner, Simulator Only, CA Checker/Trainer/Manager,
+// Ground Instructor) is fleet-scoped staff, per the operator's explicit
+// request: they should only see checks for a candidate on a fleet they're
+// actually ticked for, and shouldn't have to wade through already-passed
+// checks that need no further action from them (a FAIL still shows, since
+// that may need follow-up).
+const FLEET_UNSCOPED_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
+
+function checkVisibleToFleetScopedUser(user, check, fleetsById) {
+  if (check.result === 'PASS') return false;
+  const userFleets = (user.fleets || []).map(baseFleet);
+  if (userFleets.length === 0) return true; // no fleet ticks on file - fail open rather than hiding everything
+  const subjectFleets = fleetsById.get(check.crewMemberId || check.traineeId);
+  if (!subjectFleets || subjectFleets.length === 0) return true; // fleet unknown (e.g. unlinked ad-hoc check) - can't scope it, so don't hide it
+  return subjectFleets.some((f) => userFleets.includes(baseFleet(f)));
+}
+
 router.get('/', async (req, res) => {
   const { traineeId, crewMemberId, checkType, archived } = req.query;
   if (checkType && !canAccessCheckType(req.user, checkType)) {
@@ -152,7 +172,28 @@ router.get('/', async (req, res) => {
     params,
   );
   const checks = rows.map(rowToCamel);
-  res.json(checks.filter((c) => canAccessCheckType(req.user, c.checkType)));
+  let visible = checks.filter((c) => canAccessCheckType(req.user, c.checkType));
+
+  // Fleet/pass-mark scoping only applies to the ad-hoc "browse everything of
+  // this type" mode (the Checks tab's own list) - a specific crew member's
+  // own profile (crewMemberId given) always shows their full check history,
+  // same as before, to whoever can already reach that profile.
+  if (!crewMemberId && !traineeId && !FLEET_UNSCOPED_CHECK_ROLES.includes(req.user.role) && visible.length > 0) {
+    const crewIds = [...new Set(visible.map((c) => c.crewMemberId).filter(Boolean))];
+    const traineeIds = [...new Set(visible.map((c) => c.traineeId).filter(Boolean))];
+    const fleetsById = new Map();
+    if (crewIds.length > 0) {
+      const { rows: crewRows } = await pool.query('SELECT id, fleets FROM crew_members WHERE id = ANY($1::uuid[])', [crewIds]);
+      for (const r of crewRows) fleetsById.set(r.id, parsePgArray(r.fleets));
+    }
+    if (traineeIds.length > 0) {
+      const { rows: traineeRows } = await pool.query('SELECT id, fleet FROM trainees WHERE id = ANY($1::uuid[])', [traineeIds]);
+      for (const r of traineeRows) fleetsById.set(r.id, r.fleet ? [r.fleet] : []);
+    }
+    visible = visible.filter((c) => checkVisibleToFleetScopedUser(req.user, c, fleetsById));
+  }
+
+  res.json(visible);
 });
 
 // IPC/PC share one checkType (RECURRENT_SIMULATOR) distinguished only by

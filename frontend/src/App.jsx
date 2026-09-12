@@ -85,7 +85,10 @@ function Shell({ children }) {
   // thumb-friendly control instead.
   const navItems = [
     ADMIN_ROLES.includes(user.role) && { to: '/', end: true, label: 'Home' },
-    { to: '/trainees', label: 'LOFT Trainees' },
+    // Simulator Only instructors check already-qualified crew in the sim
+    // (IPC/PC), not raw LOFT trainees - per the operator's explicit
+    // request, they have no need for this tab.
+    user.role !== 'SIMULATOR_ONLY' && { to: '/trainees', label: 'LOFT Trainees' },
     CREW_VISIBLE_ROLES.includes(user.role) && { to: '/crew', label: 'Crew' },
     ADMIN_ROLES.includes(user.role) && { to: '/currency', label: 'Currency Overview' },
     ADMIN_ROLES.includes(user.role) && { to: '/planning', label: 'Planning' },
@@ -146,8 +149,12 @@ function Home() {
   }
   // The Home Dashboard is an operations view for HOTC/HOFO/Flight Ops
   // Admin/Alternate only - every other role keeps landing on the flat
-  // trainee list, same as before this existed.
-  return ADMIN_ROLES.includes(user.role) ? <Dashboard /> : <Trainees />;
+  // trainee list, same as before this existed - except Simulator Only,
+  // who has no need for LOFT Trainees at all (see the nav item/route
+  // guard above) and lands on Checks, their actual work area, instead.
+  if (ADMIN_ROLES.includes(user.role)) return <Dashboard />;
+  if (user.role === 'SIMULATOR_ONLY') return <Navigate to="/checks" replace />;
+  return <Trainees />;
 }
 
 // Mirrors Home()'s own TRAINEE-redirect guard so a trainee can't reach the
@@ -171,7 +178,7 @@ export default function App() {
             <Shell>
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/trainees" element={<TraineesPage />} />
+                <Route path="/trainees" element={<ProtectedRoute allow={(u) => u.role !== 'SIMULATOR_ONLY'}><TraineesPage /></ProtectedRoute>} />
                 <Route path="/trainees/:id" element={<TraineeDetail />} />
                 <Route path="/syllabus" element={<ProtectedRoute roles={SYLLABUS_ADMIN_ROLES}><SyllabusAdmin /></ProtectedRoute>} />
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />

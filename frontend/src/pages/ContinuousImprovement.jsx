@@ -147,7 +147,7 @@ function AddStandaloneEntry({ questions, onAdded }) {
 
 // Review/remove entries added via AddStandaloneEntry above (a check-linked
 // survey is reviewed from its own check instead, not here).
-function StandaloneEntriesList({ refreshKey }) {
+function StandaloneEntriesList({ refreshKey, onChanged }) {
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
@@ -162,6 +162,11 @@ function StandaloneEntriesList({ refreshKey }) {
     try {
       await api.delete(`/api/survey/${id}`);
       setEntries((es) => es.filter((e) => e.id !== id));
+      // The trend analytics below reads from a separate endpoint - without
+      // this, a deleted entry stayed in those averages until the page was
+      // reloaded or a filter changed, even though this list already
+      // correctly dropped it.
+      onChanged();
     } catch (err) { setError(err.message); }
   }
 
@@ -269,7 +274,7 @@ export function ContinuousImprovement() {
       {isAdmin && (
         <div>
           <AddStandaloneEntry questions={questions} onAdded={() => setStandaloneRefresh((n) => n + 1)} />
-          <StandaloneEntriesList refreshKey={standaloneRefresh} />
+          <StandaloneEntriesList refreshKey={standaloneRefresh} onChanged={() => setStandaloneRefresh((n) => n + 1)} />
         </div>
       )}
       <div className="card">

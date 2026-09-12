@@ -71,6 +71,70 @@ router.patch('/questions/:id', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), asy
   res.json(rowToCamel(rows[0]));
 });
 
+// A historical Continuous Improvement entry with no check in this system to
+// attach to (see migration 0116) - imported from a previous tracking tool,
+// or any other one-off rating the operator wants on record without running
+// it through a real IPC/PC check. fleet/role are stored directly on the
+// survey itself rather than read off a linked check's details.
+const STANDALONE_FLEETS = ['Fokker 100', 'Dash 8', 'Metro'];
+const STANDALONE_ROLES = ['CAPTAIN', 'FIRST_OFFICER'];
+const standaloneSchema = z.object({
+  fleet: z.enum(STANDALONE_FLEETS),
+  role: z.enum(STANDALONE_ROLES),
+  date: z.string(),
+  responses: z.array(z.object({ questionId: z.string().uuid(), score: z.number().int().min(1).max(5) })).min(1),
+});
+
+router.post('/standalone', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
+  const parsed = standaloneSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { fleet, role, date, responses } = parsed.data;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'INSERT INTO check_surveys (fleet, role, submitted_at) VALUES ($1, $2, $3) RETURNING id',
+      [fleet, role, new Date(date)],
+    );
+    const surveyId = rows[0].id;
+    for (const { questionId, score } of responses) {
+      await client.query(
+        'INSERT INTO check_survey_responses (check_survey_id, question_id, score) VALUES ($1, $2, $3)',
+        [surveyId, questionId, score],
+      );
+    }
+    await client.query('COMMIT');
+    await logAction({ userId: req.user.id, action: 'CREATE', targetTable: 'check_surveys', targetId: surveyId, description: `Added standalone Continuous Improvement entry (${fleet} ${role}, ${date})` });
+    res.status(201).json({ id: surveyId });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
+
+// Lists standalone entries only (a check-linked one is reviewed via its own
+// check instead) - management view for entries added through the route
+// above, e.g. this session's historical import.
+router.get('/standalone', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, fleet, role, submitted_at FROM check_surveys WHERE check_id IS NULL ORDER BY submitted_at DESC`,
+  );
+  res.json(rows.map(rowToCamel));
+});
+
+// Works for either a standalone entry or a check-linked one (e.g. clearing
+// out the pre-import check-linked surveys per the operator's explicit
+// request) - identified by the survey's own id either way.
+router.delete('/:surveyId', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (req, res) => {
+  const { rows } = await pool.query('DELETE FROM check_surveys WHERE id = $1 RETURNING id', [req.params.surveyId]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+  await logAction({ userId: req.user.id, action: 'DELETE', targetTable: 'check_surveys', targetId: req.params.surveyId });
+  res.status(204).end();
+});
+
 async function findCheck(checkId) {
   const { rows } = await pool.query('SELECT * FROM checks WHERE id = $1', [checkId]);
   return rows[0] ? rowToCamel(rows[0]) : null;
@@ -198,22 +262,27 @@ router.get('/analytics', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), async (re
   } else if (RANGE_CLAUSES[req.query.range]) {
     conditions.push(RANGE_CLAUSES[req.query.range].replace(/^AND /, ''));
   }
+  // A standalone entry (see migration 0116) has no linked check to read
+  // actype/role off, so falls back to its own fleet/role columns instead -
+  // COALESCE tries the check's snapshot first, then the standalone columns,
+  // then the same "Unspecified" fallback a check-linked entry with a blank
+  // details field would already get.
   if (req.query.fleet) {
     params.push(req.query.fleet);
-    conditions.push(`COALESCE(NULLIF(c.details->>'actype', ''), 'Unspecified fleet') = $${params.length}`);
+    conditions.push(`COALESCE(NULLIF(c.details->>'actype', ''), cs.fleet, 'Unspecified fleet') = $${params.length}`);
   }
   if (req.query.rank) {
     params.push(req.query.rank);
-    conditions.push(`COALESCE(NULLIF(c.details->>'role', ''), 'UNSPECIFIED') = $${params.length}`);
+    conditions.push(`COALESCE(NULLIF(c.details->>'role', ''), cs.role, 'UNSPECIFIED') = $${params.length}`);
   }
 
   const { rows } = await pool.query(
     `WITH in_range_surveys AS (
        SELECT cs.id,
-              COALESCE(NULLIF(c.details->>'actype', ''), 'Unspecified fleet') AS actype,
-              COALESCE(NULLIF(c.details->>'role', ''), 'UNSPECIFIED') AS role
+              COALESCE(NULLIF(c.details->>'actype', ''), cs.fleet, 'Unspecified fleet') AS actype,
+              COALESCE(NULLIF(c.details->>'role', ''), cs.role, 'UNSPECIFIED') AS role
        FROM check_surveys cs
-       JOIN checks c ON c.id = cs.check_id
+       LEFT JOIN checks c ON c.id = cs.check_id
        WHERE ${conditions.join(' AND ')}
      ),
      group_counts AS (

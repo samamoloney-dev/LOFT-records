@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
+import { formatDate } from '../lib/format';
 
 const RANGE_OPTIONS = [
   { key: '12m', label: 'Last 12 months' },
@@ -40,6 +43,150 @@ function HorizontalBars({ data }) {
   );
 }
 
+const STANDALONE_ROLE_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
+
+// A one-off Continuous Improvement rating with no linked check in this
+// system (see backend/src/routes/survey.js's POST /standalone and migration
+// 0116) - historical data from a previous tracking tool, or any other
+// rating the operator wants on record without running it through a real
+// IPC/PC check. Mirrors CandidateSurvey's descriptor-picker in
+// ProficiencyChecks.jsx, plus the fleet/rank/date a linked check would
+// otherwise supply.
+function AddStandaloneEntry({ questions, onAdded }) {
+  const [open, setOpen] = useState(false);
+  const [fleet, setFleet] = useState(FLEET_OPTIONS[0]);
+  const [role, setRole] = useState('CAPTAIN');
+  const [date, setDate] = useState('');
+  const [scores, setScores] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const allAnswered = questions.length > 0 && questions.every((q) => scores[q.id] !== undefined);
+
+  function reset() {
+    setFleet(FLEET_OPTIONS[0]); setRole('CAPTAIN'); setDate(''); setScores({}); setError(null);
+  }
+
+  async function save() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post('/api/survey/standalone', {
+        fleet, role, date,
+        responses: Object.entries(scores).map(([questionId, score]) => ({ questionId, score })),
+      });
+      reset();
+      setOpen(false);
+      onAdded();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  if (!open) {
+    return <button onClick={() => setOpen(true)} style={{ marginBottom: '1rem' }}>+ Add historical entry</button>;
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>Add historical Continuous Improvement entry</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        For a rating with no check in this system to attach it to (e.g. imported from a previous tracking tool). Counts toward the trend analytics below the same as a real check's survey does.
+      </div>
+      <div className="grid2">
+        <div className="field" style={{ margin: 0 }}>
+          <label>Fleet</label>
+          <select value={fleet} onChange={(e) => setFleet(e.target.value)} disabled={busy}>
+            {FLEET_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Rank</label>
+          <select value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
+            {STANDALONE_ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label>Date</label>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={busy} />
+      </div>
+      {questions.map((q) => (
+        <div key={q.id} style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 6 }}>{q.text}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(q.options || []).map((optionText, i) => {
+              const score = i + 1;
+              const selected = scores[q.id] === score;
+              return (
+                <div
+                  key={score}
+                  onClick={() => !busy && setScores((s) => ({ ...s, [q.id]: score }))}
+                  style={{
+                    display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 8,
+                    border: selected ? '1.5px solid var(--text-accent)' : '0.5px solid var(--border-strong)',
+                    background: selected ? 'var(--bg-accent)' : 'var(--surface-1)',
+                    cursor: busy ? 'default' : 'pointer',
+                    opacity: busy && !selected ? 0.6 : 1,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 13, flexShrink: 0, color: selected ? 'var(--text-accent)' : 'var(--text-secondary)' }}>{score}</div>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>{optionText}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {error && <div className="error-text">{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="primary" onClick={save} disabled={busy || !date || !allAnswered}>{busy ? 'Saving…' : 'Save entry'}</button>
+        <button onClick={() => { reset(); setOpen(false); }} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// Review/remove entries added via AddStandaloneEntry above (a check-linked
+// survey is reviewed from its own check instead, not here).
+function StandaloneEntriesList({ refreshKey }) {
+  const [entries, setEntries] = useState([]);
+  const [error, setError] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.get('/api/survey/standalone').then(setEntries).catch((e) => setError(e.message));
+  }, [open, refreshKey]);
+
+  async function remove(id) {
+    setError(null);
+    try {
+      await api.delete(`/api/survey/${id}`);
+      setEntries((es) => es.filter((e) => e.id !== id));
+    } catch (err) { setError(err.message); }
+  }
+
+  if (!open) {
+    return <button onClick={() => setOpen(true)} style={{ marginBottom: '1rem', marginLeft: 8 }}>Manage historical entries</button>;
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 500 }}>Historical entries ({entries.length})</div>
+        <button onClick={() => setOpen(false)}>Close</button>
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {entries.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No historical entries on file.</div>}
+      {entries.map((e) => (
+        <div key={e.id} className="row">
+          <div style={{ flex: 1, fontSize: 13 }}>{e.fleet} {STANDALONE_ROLE_OPTIONS.find((r) => r.value === e.role)?.label || e.role} · {formatDate(e.submittedAt)}</div>
+          <button className="danger" onClick={() => { if (window.confirm('Remove this historical entry? This cannot be undone.')) remove(e.id); }}>Delete</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // HOTC/HOFO only - trend analytics on the Continuous Improvement survey
 // filled in after every completed IPC/PC (see CandidateSurvey in
 // ProficiencyChecks.jsx). Broken down by fleet and rank (e.g. "Fokker 100
@@ -50,6 +197,8 @@ function HorizontalBars({ data }) {
 // management lives on the Syllabus tab now, alongside the rest of
 // course/form editing.
 export function ContinuousImprovement() {
+  const { user } = useAuth();
+  const isAdmin = CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role);
   const [range, setRange] = useState('12m');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -57,6 +206,8 @@ export function ContinuousImprovement() {
   const [rank, setRank] = useState('');
   const [data, setData] = useState([]);
   const [error, setError] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [standaloneRefresh, setStandaloneRefresh] = useState(0);
 
   const usingCustomRange = !!(customStart || customEnd);
 
@@ -72,7 +223,8 @@ export function ContinuousImprovement() {
     if (rank) params.set('rank', rank);
     api.get(`/api/survey/analytics?${params.toString()}`).then(setData).catch((e) => setError(e.message));
   }
-  useEffect(load, [range, customStart, customEnd, fleet, rank]);
+  useEffect(load, [range, customStart, customEnd, fleet, rank, standaloneRefresh]);
+  useEffect(() => { if (isAdmin) api.get('/api/survey/questions').then(setQuestions).catch(() => {}); }, [isAdmin]);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -114,6 +266,12 @@ export function ContinuousImprovement() {
 
   return (
     <div>
+      {isAdmin && (
+        <div>
+          <AddStandaloneEntry questions={questions} onAdded={() => setStandaloneRefresh((n) => n + 1)} />
+          <StandaloneEntriesList refreshKey={standaloneRefresh} />
+        </div>
+      )}
       <div className="card">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
           {RANGE_OPTIONS.map((r) => (

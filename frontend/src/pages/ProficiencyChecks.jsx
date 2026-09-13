@@ -447,7 +447,11 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         </div>
 
         <div className="card">
-          <div className="field"><label>Test number</label><input defaultValue={d.testNumber} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { testNumber: e.target.value })} /></div>
+          {/* Not applicable to a plain Proficiency Check, per the operator's
+              explicit request - IPC only. */}
+          {isIpc && (
+            <div className="field"><label>Test number</label><input defaultValue={d.testNumber} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { testNumber: e.target.value })} /></div>
+          )}
           <div className="grid2">
             <div className="field"><label>Applicant ARN</label><input defaultValue={d.applicantArn} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantArn: e.target.value })} /></div>
             <div className="field"><label>Applicant name</label><input defaultValue={d.applicantName} disabled={!!selected.completedAt} onBlur={(e) => patchDetails(selected, { applicantName: e.target.value })} /></div>

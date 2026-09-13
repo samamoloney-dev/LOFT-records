@@ -425,16 +425,16 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
         <div className="card">
           <div className="grid2">
             <div className="field">
+              <label>Overall score (1–5)</label>
+              <input type="number" min="1" max="5" disabled={locked} defaultValue={selected.score || ''} onBlur={(e) => setScore(selected, Number(e.target.value) || null)} />
+            </div>
+            <div className="field">
               <label>Overall assessment</label>
               <select disabled={locked || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
                 <option value="">—</option>
                 <option value="PASS">PASS</option>
                 <option value="FAIL">FAIL</option>
               </select>
-            </div>
-            <div className="field">
-              <label>Overall score (1–5)</label>
-              <input type="number" min="1" max="5" disabled={locked} defaultValue={selected.score || ''} onBlur={(e) => setScore(selected, Number(e.target.value) || null)} />
             </div>
           </div>
         </div>

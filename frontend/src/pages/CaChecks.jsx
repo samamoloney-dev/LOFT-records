@@ -305,16 +305,16 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
         <div className="card">
           <div className="grid2">
             <div className="field">
+              <label>Overall score (1–5)</label>
+              <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
+            </div>
+            <div className="field">
               <label>Overall assessment</label>
               <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
                 <option value="">—</option>
                 <option value="PASS">PASS</option>
                 <option value="FAIL">FAIL</option>
               </select>
-            </div>
-            <div className="field">
-              <label>Overall score (1–5)</label>
-              <input type="number" min="1" max="5" disabled={!!selected.completedAt} defaultValue={selected.score || ''} onBlur={(e) => api.patch(`/api/checks/${selected.id}`, { score: Number(e.target.value) || null }).then(load)} />
             </div>
           </div>
         </div>

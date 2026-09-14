@@ -25,6 +25,8 @@ const FORM_KEYS = [
   // Captain in Training Preliminary/Final Assessment (SA 567/568) - see
   // CaptainInTrainingForm.jsx.
   'CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL',
+  // SA 538 - see FlightStandardsRecurrentTraining.jsx.
+  'FLIGHT_STANDARDS_RECURRENT_TRAINING',
 ];
 // tick: plain S/X. score_code: NTS marker (score + code). text: a free-text
 // answer (e.g. which aircraft system was discussed). score: a plain 1-5

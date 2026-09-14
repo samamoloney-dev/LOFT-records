@@ -10,6 +10,7 @@ import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { ClearanceTab } from './ClearanceTab';
 import { CaptainInTrainingForm } from './CaptainInTrainingForm';
+import { FlightStandardsRecurrentTraining } from './FlightStandardsRecurrentTraining';
 import { UpgradeRecordForm } from './UpgradeRecordForm';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
@@ -723,6 +724,12 @@ function CurrencyFolder({ member, initialSubTab }) {
       // Only shown once an admin has allocated this pilot to a Captain
       // upgrade (see CrewInfoEditor) - not offered to every pilot.
       ...(member.captainInTraining ? [{ key: 'citPrelim', label: 'CIT Preliminary' }, { key: 'citFinal', label: 'CIT Final' }] : []),
+      // SA 538 assesses a Training Captain/Check Captain/Examiner's own
+      // instructional technique - only relevant to a pilot linked to one of
+      // those staff roles (mirrors the "Flight Standards Pilot Recurrent
+      // Training" competency_type's own staff_roles restriction, see
+      // crew.js's activeCompetencies).
+      ...(['EXAMINER', 'CC', 'TRAINING_CAPTAIN'].includes(member.linkedRole) ? [{ key: 'fsRecurrent', label: 'Flight Standards Recurrent' }] : []),
     ]
     : [{ key: 'ep', label: epLabel }, { key: 'linecheck', label: 'Line Check' }];
   const [subTab, setSubTab] = useState(subTabs.some((t) => t.key === initialSubTab) ? initialSubTab : 'ep');
@@ -750,6 +757,7 @@ function CurrencyFolder({ member, initialSubTab }) {
       {subTab === 'linecheck' && !isPilot && <CaChecks crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'citPrelim' && isPilot && <CaptainInTrainingForm variant="PRELIMINARY" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
       {subTab === 'citFinal' && isPilot && <CaptainInTrainingForm variant="FINAL" crewMemberId={member.id} crewMemberName={name} fleet={fleet} archived={showArchived} crewArchived={member.archived} />}
+      {subTab === 'fsRecurrent' && isPilot && <FlightStandardsRecurrentTraining crewMemberId={member.id} crewMemberName={name} archived={showArchived} crewArchived={member.archived} />}
     </div>
   );
 }

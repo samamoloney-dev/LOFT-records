@@ -24,7 +24,12 @@ function canAccessCheckType(user, checkType) {
   if (checkType === 'CABIN_ATTENDANT_LINE_CHECK') {
     return user.role === 'HOTC' || user.role === 'CA_CHECKER' || user.role === 'CA_MANAGER';
   }
-  if (checkType === 'RECURRENT_SIMULATOR') {
+  if (checkType === 'RECURRENT_SIMULATOR' || checkType === 'FLIGHT_STANDARDS_RECURRENT_TRAINING') {
+    // SA 538 assesses a Training Captain/Check Captain/Examiner's own
+    // instructional technique during a simulator session (per the
+    // competency's staff_roles restriction - see crew.js's
+    // activeCompetencies) - conducted by the same population who runs any
+    // other simulator session.
     return canAccessChecks(user) || user.role === 'SIMULATOR_ONLY';
   }
   // Life Jacket/Smoke & Fire/F100 Slide Training are grouped with Emergency
@@ -107,6 +112,7 @@ const CHECK_TYPE_LABELS = {
   F100_SLIDE_TRAINING: 'F100 Slide Training',
   CAPTAIN_IN_TRAINING: 'Captain in Training Assessment',
   UPGRADE_RECORD: 'Upgrade Record',
+  FLIGHT_STANDARDS_RECURRENT_TRAINING: 'Flight Standards Pilot Recurrent Training',
 };
 
 // The Check tier requires already holding the Training tier (or already
@@ -360,7 +366,7 @@ router.get('/:id', async (req, res) => {
 const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
   crewMemberId: z.string().uuid().optional(),
-  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING']),
+  checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING', 'FLIGHT_STANDARDS_RECURRENT_TRAINING']),
   fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
@@ -522,10 +528,15 @@ router.patch('/:id', async (req, res) => {
   // details.variant).
   const SETUP_PHASE_AUTO_SIGN = true;
   const ASSESSOR_CANDIDATE_SIGN_TYPES = new Set([
-    ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK',
+    ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK', 'FLIGHT_STANDARDS_RECURRENT_TRAINING',
   ]);
   let detailsToSave = d.details ? { ...existing.details, ...d.details } : null;
-  if (SETUP_PHASE_AUTO_SIGN && d.result) {
+  // SA 538 (FLIGHT_STANDARDS_RECURRENT_TRAINING) has no Pass/Fail - it's
+  // "completed" purely by setting completedAt directly (see
+  // FlightStandardsRecurrentTraining.jsx), so d.result is never the
+  // completion signal for it the way it is for every other check type here.
+  const isCompletingNow = d.result || (d.completedAt && existing.checkType === 'FLIGHT_STANDARDS_RECURRENT_TRAINING');
+  if (SETUP_PHASE_AUTO_SIGN && isCompletingNow) {
     const base = detailsToSave || existing.details || {};
     const now = new Date().toISOString();
     if (ASSESSOR_CANDIDATE_SIGN_TYPES.has(existing.checkType)) {
@@ -637,13 +648,37 @@ router.patch('/:id', async (req, res) => {
     userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id,
     description: d.result
       ? `Completed ${CHECK_TYPE_LABELS[updated.checkType] || updated.checkType} for ${await checkSubjectName(updated)} — ${d.result}`
-      : undefined,
+      : isCompletingNow
+        ? `Completed ${CHECK_TYPE_LABELS[updated.checkType] || updated.checkType} for ${await checkSubjectName(updated)}`
+        : undefined,
   });
 
   if (updated.checkType === 'RECURRENT_SIMULATOR' && d.result && updated.assignedTo) {
     const seatCheck = Array.isArray(updated.details?.seatCheck) ? updated.details.seatCheck : [];
     if (seatCheck.includes('Other Seat')) {
       await revalidateRhsCompetency(updated.assignedTo, updated.completedAt);
+    }
+  }
+
+  // Keeps the existing "Flight Standards Pilot Recurrent Training"
+  // competency_type (see crew.js activeCompetencies - it's already scoped
+  // to EXAMINER/CC/TRAINING_CAPTAIN pilots via staff_roles) in sync with
+  // this check's own completion, the same way RHS revalidation above keeps
+  // a competency current from a check event rather than needing a manual
+  // date entry. due_date is left alone - no fixed recurrence interval is
+  // configured for this competency, so an admin still sets that by hand.
+  // Upserts (rather than a plain UPDATE) since a crew member with no date
+  // ever entered for this competency has no crew_competencies row yet at
+  // all - GET /:id/competencies only ever synthesises one via LEFT JOIN.
+  if (updated.checkType === 'FLIGHT_STANDARDS_RECURRENT_TRAINING' && isCompletingNow && updated.crewMemberId) {
+    const { rows: typeRows } = await pool.query(`SELECT id FROM competency_types WHERE name = 'Flight Standards Pilot Recurrent Training'`);
+    if (typeRows.length > 0) {
+      await pool.query(
+        `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (crew_member_id, competency_type_id) DO UPDATE SET completed_date = $3`,
+        [updated.crewMemberId, typeRows[0].id, updated.completedAt],
+      );
     }
   }
 

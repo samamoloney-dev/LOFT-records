@@ -42,6 +42,26 @@ export function buildEpCheckHtml(check, epItems) {
   `;
 }
 
+// ---- SA 538 Flight Standards Pilot Recurrent Training (FlightStandardsRecurrentTraining.jsx) ----
+// No Pass/Fail on the paper form - just each criteria ticked Completed,
+// comments and two signatures, so there's no resultBadge/score row here
+// unlike buildEpCheckHtml above.
+export function buildFlightStandardsRecurrentTrainingHtml(check, items) {
+  const d = check.details || {};
+  const itemRows = visibleCheckFormItems(items, d.items).map((item) => ({ description: item.description, tick: d.items?.[item.id] ? '✓' : '' }));
+  return `
+    <h1>Flight Standards Pilot Recurrent Training</h1>
+    <div class="meta">${d.name || ''} · ${d.date ? formatDate(d.date) : ''}</div>
+    ${section('Details', [
+      ['Assessor', d.assessor],
+      ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
+    ])}
+    ${tickTable(itemRows)}
+    ${section('Assessor comments', [['Comments', d.comments]])}
+    ${signatureBlock([['Assessor signature', d.assessorSig], ['Candidate signature', d.candidateSig]])}
+  `;
+}
+
 // ---- Completion certificate (CertificateGenerator.jsx) ----
 // Matches the operator's own Skippers paper certificate template. `items`
 // is the admin-editable master checklist (see SyllabusAdmin.jsx

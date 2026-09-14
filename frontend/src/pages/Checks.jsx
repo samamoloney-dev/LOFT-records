@@ -7,6 +7,7 @@ import { PilotLineCheck } from './PilotLineCheck';
 import { CheckToLinePicker } from './CheckToLinePicker';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
+import { FlightStandardsRecurrentTraining } from './FlightStandardsRecurrentTraining';
 import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
 import { CompletedChecksAlert } from '../components/CompletedChecksAlert';
@@ -65,6 +66,11 @@ export function Checks() {
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
     canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check' },
     canAccessPilotCtl && { key: 'ctl', label: 'Check to Line' },
+    // SA 538 - assesses a Training Captain/Check Captain/Examiner's own
+    // instructional technique during simulator sessions, same checkers who
+    // can reach the other pilot check forms here (see checks.js
+    // canAccessCheckType's FLIGHT_STANDARDS_RECURRENT_TRAINING branch).
+    canAccessPilotChecks && { key: 'fsRecurrent', label: 'Flight Standards Recurrent' },
   ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
@@ -94,6 +100,7 @@ export function Checks() {
           {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
           {pilotTab === 'linecheck' && canAccessPilotLineCheck && <PilotLineCheck />}
           {pilotTab === 'ctl' && canAccessPilotCtl && <CheckToLinePicker traineeType="PILOT" />}
+          {pilotTab === 'fsRecurrent' && canAccessPilotChecks && <FlightStandardsRecurrentTraining />}
         </div>
       )}
 

@@ -802,6 +802,9 @@ const CHECK_FORM_TABS = [
   // CaptainInTrainingForm.jsx.
   { key: 'CAPTAIN_IN_TRAINING_PRELIMINARY', label: 'Captain in Training - Preliminary Assessment' },
   { key: 'CAPTAIN_IN_TRAINING_FINAL', label: 'Captain in Training - Final Assessment' },
+  // SA 538 - see FlightStandardsRecurrentTraining.jsx. No Pass/Fail on the
+  // paper form, just 7 plain tick criteria.
+  { key: 'FLIGHT_STANDARDS_RECURRENT_TRAINING', label: 'Flight Standards Pilot Recurrent Training' },
 ];
 
 // No MOS reference for any of these form keys - they don't need the
@@ -814,6 +817,7 @@ const NO_KIND_OR_MOS_FORMS = [
   ...Object.keys(UPGRADE_VARIANTS).map((v) => `UPGRADE_${v}`),
   'UPGRADE_TRAINING_CAPTAIN_SIMULATOR',
   'CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL',
+  'FLIGHT_STANDARDS_RECURRENT_TRAINING',
 ];
 const CIT_FORM_KEYS = ['CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_FINAL'];
 

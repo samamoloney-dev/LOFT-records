@@ -22,13 +22,13 @@ const LINE_CHECK_ACCESS_TYPES = ['LINE_CHECK', 'CHECK_TO_LINE'];
 
 // SA 538 assesses an Examiner/Check Captain/Training Captain's own
 // instructional technique during a simulator session - per the operator's
-// explicit request, only an Examiner or Simulator Only Examiner can
-// actually be picked to conduct/sign it off, unlike every other check type
-// here where HOTC/HOFO/Alternate are always eligible too. HOTC/HOFO/
-// Flight Ops Admin/Alternate still create, assign and manage the record
-// itself (see checks.js's canAccessCheckType/isAdmin gates) - this only
-// narrows who shows up in the Assigned to/Assessor pickers.
-const FLIGHT_STANDARDS_RECURRENT_TRAINING_ASSESSOR_ROLES = ['EXAMINER', 'SIMULATOR_ONLY'];
+// explicit request, only Examiner/Simulator Only Examiner plus HOTC/HOFO
+// can actually be picked to conduct/sign it off, unlike every other check
+// type here where Alternate is always eligible too. Alternate/Flight Ops
+// Admin still create, assign and manage the record itself (see checks.js's
+// canAccessCheckType/isAdmin gates) - this only narrows who shows up in
+// the Assigned to/Assessor pickers.
+const FLIGHT_STANDARDS_RECURRENT_TRAINING_ASSESSOR_ROLES = ['EXAMINER', 'SIMULATOR_ONLY', 'HOTC', 'HOFO'];
 
 export function isEligibleForCheck(staffMember, accessType, fleet) {
   if (accessType === 'FLIGHT_STANDARDS_RECURRENT_TRAINING') {

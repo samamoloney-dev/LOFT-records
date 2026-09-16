@@ -11,9 +11,8 @@ import { FlightStandardsRecurrentTraining } from './FlightStandardsRecurrentTrai
 import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
 import { CompletedChecksAlert } from '../components/CompletedChecksAlert';
-import { CHECK_ROLES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
+import { CHECK_ROLES, CA_CHECK_ROLES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
-const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER', 'CA_MANAGER']; // Check to Line, Line Check
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 export function Checks() {

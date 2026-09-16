@@ -56,6 +56,35 @@ export function canAccessCertificates(user) {
 // applies to.
 export const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'];
 
+// Cabin Attendant Line Check / Check to Line - mirrors Checks.jsx's own
+// CA_CHECK_ROLES (kept here too so App.jsx's nav gate below can't drift
+// from the page's own access logic the way it once did).
+export const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER', 'CA_MANAGER'];
+
+// Whether this user can reach the Checks tab AT ALL - i.e. the union of
+// every per-check-type gate Checks.jsx itself computes (pilot IPC/PC/EP/
+// Line Check/CTL, cabin attendant EP/CTL/Line Check, Ground Instructor/
+// Personnel Air Competency). This must stay a superset of - and ideally
+// derived the same way as - Checks.jsx's own canAccessPilots/
+// canAccessCabinAttendants/canAccessOthers, since this is only used to
+// decide whether the "Checks" link even appears in the sidebar (App.jsx) -
+// a mismatch there hides the whole page from someone the page itself would
+// otherwise let in (e.g. a Check Captain individually ticked for Line
+// Check/Check to Line, who has no blanket CHECK_ROLES access but does have
+// checkAccess ticks).
+export function canAccessChecksTab(user) {
+  const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
+  const hasEpAccess = user.role === 'CA_MANAGER' || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  const hasLineCheckAccess = (user.checkAccess || []).includes('LINE_CHECK');
+  const hasCheckToLineAccess = (user.checkAccess || []).includes('CHECK_TO_LINE');
+  return CHECK_ROLES.includes(user.role)
+    || CA_CHECK_ROLES.includes(user.role)
+    || isSimulatorOnly
+    || hasEpAccess
+    || hasLineCheckAccess
+    || hasCheckToLineAccess;
+}
+
 // Assessor pool on the Ground Instructor Competency Check (SA_520) and
 // Flight Standards Personnel (Air) Competency Check (SA_518) forms
 // specifically - CHECK_ROLES plus Cabin Attendant Manager, who can

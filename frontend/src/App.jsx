@@ -22,14 +22,9 @@ import { CertificateGenerator } from './pages/CertificateGenerator';
 import { OverdueCheckAlert } from './components/OverdueCheckAlert';
 import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
-import { CONTINUOUS_IMPROVEMENT_ROLES, canAccessCertificates } from './lib/roles';
+import { CONTINUOUS_IMPROVEMENT_ROLES, canAccessCertificates, canAccessChecksTab } from './lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
-// Flight Ops Admin excluded - they cannot conduct any checking, so the
-// Checks tab has nothing for them to do. Cabin Attendant Manager is
-// included - they check Cabin Attendant Line Checks and Emergency
-// Procedures for all pilots and cabin crew (see checks.js canAccessCheckType).
-const CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER', 'CA_CHECKER', 'CA_MANAGER', 'SIMULATOR_ONLY'];
 // Every staff role - meeting minutes is for the whole operation, trainees
 // (who have their own restricted self-login view) excepted.
 const NON_TRAINEE_ROLES = [
@@ -46,9 +41,10 @@ const SYLLABUS_ADMIN_ROLES = [...ADMIN_ROLES, 'CA_MANAGER'];
 // A red count badge on the Checks nav tab - "an IPC/PC/EP/Line Check/Check
 // to Line just finished, go update the crew's records" (see checks.js
 // GET /alerts/count and Checks.jsx's own "Mark reviewed" banner, which
-// clears it). Deliberately narrower than CHECK_ROLES above (which governs
-// who can even see the Checks tab) - completed-check notifications go to
-// HOTC, HOFO and Flight Ops Admin only, per the operator's explicit request.
+// clears it). Deliberately narrower than canAccessChecksTab (lib/roles.js -
+// which governs who can even see the Checks tab) - completed-check
+// notifications go to HOTC, HOFO and Flight Ops Admin only, per the
+// operator's explicit request.
 const CHECK_NOTIFICATION_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN'];
 function useChecksAlertCount(role) {
   const [count, setCount] = useState(0);
@@ -92,7 +88,7 @@ function Shell({ children }) {
     CREW_VISIBLE_ROLES.includes(user.role) && { to: '/crew', label: 'Crew' },
     ADMIN_ROLES.includes(user.role) && { to: '/currency', label: 'Currency Overview' },
     ADMIN_ROLES.includes(user.role) && { to: '/planning', label: 'Planning' },
-    CHECK_ROLES.includes(user.role) && { to: '/checks', label: checksAlertCount > 0 ? `Checks (${checksAlertCount})` : 'Checks' },
+    canAccessChecksTab(user) && { to: '/checks', label: checksAlertCount > 0 ? `Checks (${checksAlertCount})` : 'Checks' },
     ADMIN_ROLES.includes(user.role) && { to: '/fs-staff', label: 'FS Staff' },
     ADMIN_ROLES.includes(user.role) && { to: '/staff', label: 'Resources' },
     CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && { to: '/continuous-improvement', label: 'Continuous Improvement' },

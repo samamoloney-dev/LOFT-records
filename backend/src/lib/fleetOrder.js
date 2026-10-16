@@ -27,4 +27,19 @@ function fleetOrderError(type, fleets) {
   return null;
 }
 
-module.exports = { fleetOrderError, baseFleet };
+// DASH_8/FOKKER_100/METRO_23 always mean a pilot (and the aircraft type
+// itself); CA_DASH_8/CA_FOKKER_100 always mean a cabin attendant rated on
+// that aircraft. Crew records had drifted into mixing the two (cabin
+// attendants stored under the plain pilot values), so Dash 8 filters returned
+// cabin crew too while Cabin Dash 8 filters missed most of them. Every write
+// of a crew member's fleets goes through this so it can't drift again.
+function caFleet(fleet) {
+  return fleet === 'DASH_8' ? 'CA_DASH_8' : fleet === 'FOKKER_100' ? 'CA_FOKKER_100' : fleet;
+}
+
+function normaliseCrewFleets(type, fleets) {
+  const mapped = fleets.map((f) => (type === 'CABIN_ATTENDANT' ? caFleet(f) : baseFleet(f)));
+  return [...new Set(mapped)];
+}
+
+module.exports = { fleetOrderError, baseFleet, normaliseCrewFleets };

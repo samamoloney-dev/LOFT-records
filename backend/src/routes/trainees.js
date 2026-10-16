@@ -5,7 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, canAccessArchived, isCaOnlyRole, isAdmin, ADMIN_ROLES, requireRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
-const { fleetOrderError, baseFleet } = require('../lib/fleetOrder');
+const { fleetOrderError, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 const { localDateString } = require('../lib/currency');
 const { createCrewMemberRecord, FLEET_TO_AIRCRAFT_TYPE } = require('./crew');
@@ -287,12 +287,11 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     await client.query('BEGIN');
     let rows;
     if (sourceCrew) {
-      // A crew member's own fleets are stored as the plain DASH_8/
-      // FOKKER_100 values (see fleetOrder.js's baseFleet) - normalise the
-      // trainee's own fleet (which may be the CA_-prefixed training value)
-      // before merging, so a crew record never ends up mixing both
-      // conventions for the same fleet.
-      const mergedFleets = [...new Set([...parsePgArray(sourceCrew.fleets), baseFleet(trainee.fleet)])];
+      // Pilots are stored under DASH_8/FOKKER_100/METRO_23 and cabin
+      // attendants under CA_DASH_8/CA_FOKKER_100 (see fleetOrder.js's
+      // normaliseCrewFleets) - merging through it means a crew record never
+      // ends up mixing both conventions for the same fleet.
+      const mergedFleets = normaliseCrewFleets(sourceCrew.type, [...parsePgArray(sourceCrew.fleets), trainee.fleet]);
       const fleetError = fleetOrderError(sourceCrew.type, mergedFleets);
       if (fleetError) throw Object.assign(new Error(fleetError), { status: 400 });
       // A same-fleet Captain upgrade (see POST / above) changes the crew
@@ -326,7 +325,7 @@ router.post('/:id/promote-to-crew', async (req, res) => {
           trainee.lastName,
           trainee.type,
           trainee.role,
-          [baseFleet(trainee.fleet)],
+          normaliseCrewFleets(trainee.type, [trainee.fleet]),
           trainee.type === 'PILOT' ? localDateString(ctl.completedAt) : null,
         ],
       ));

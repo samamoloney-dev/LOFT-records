@@ -46,17 +46,16 @@ const STATUS_FILTERS = [
 ];
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
-// Cabin Dash 8 and Cabin Fokker 100 share a single "Cabin Attendants" tab
-// here rather than two separate fleet tabs - per the operator's request,
-// cabin crew are tracked together regardless of which aircraft they're
-// current on. Fleet Currency Snapshot on the Home dashboard still deep-links
-// with the raw CA_DASH_8/CA_FOKKER_100 values (see requestedFleet below),
-// so both still land on this one tab.
+// Dash 8 / Fokker 100 mean pilots; Cabin Dash 8 / Cabin Fokker 100 mean cabin
+// attendants rated on that aircraft (stored as CA_DASH_8 / CA_FOKKER_100).
+// "Cabin Attendants" is everyone in cabin crew, either aircraft. The Home
+// dashboard's Fleet Currency Snapshot deep-links with the raw fleet value.
 const CABIN_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 const FLEET_FILTERS = [
   { key: 'all', label: 'All fleets' },
   ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) })),
   { key: 'CABIN_ATTENDANTS', label: 'Cabin Attendants' },
+  ...CABIN_FLEETS.map((f) => ({ key: f, label: formatFleet(f) })),
 ];
 
 // "Not yet rostered" used to just be text baked into the Home Dashboard's
@@ -201,9 +200,8 @@ export function CurrencyOverview() {
     STATUS_FILTERS.some((f) => f.key === requestedFilter) ? requestedFilter : 'all',
   );
   const rawRequestedFleet = searchParams.get('fleet');
-  const requestedFleet = CABIN_FLEETS.includes(rawRequestedFleet) ? 'CABIN_ATTENDANTS' : rawRequestedFleet;
   const [fleetFilter, setFleetFilter] = useState(
-    FLEET_FILTERS.some((f) => f.key === requestedFleet) ? requestedFleet : 'all',
+    FLEET_FILTERS.some((f) => f.key === rawRequestedFleet) ? rawRequestedFleet : 'all',
   );
   const requestedRostered = searchParams.get('rostered');
   const [rosteredFilter, setRosteredFilter] = useState(

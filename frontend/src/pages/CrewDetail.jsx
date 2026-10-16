@@ -87,19 +87,9 @@ function FleetPicker({ type, value, onChange }) {
 // disabled/hidden for name once linked to a staff account (read live from
 // Staff instead - see the header display), but role and fleets always stay
 // editable here since they're specific to this crew profile.
-// Some cabin attendant records store their fleets as plain DASH_8/FOKKER_100
-// and others as CA_DASH_8/CA_FOKKER_100 (see backend/src/lib/fleetOrder.js).
-// The picker only knows the CA_ values, so a plain-valued record showed
-// nothing ticked and Fokker 100 stayed disabled. The form works in CA_ values
-// and converts back on save to whichever style the record already uses.
-const PLAIN_TO_CA = { DASH_8: 'CA_DASH_8', FOKKER_100: 'CA_FOKKER_100' };
-const CA_TO_PLAIN = { CA_DASH_8: 'DASH_8', CA_FOKKER_100: 'FOKKER_100' };
-const usesPlainFleets = (member) => member.type === 'CABIN_ATTENDANT' && member.fleets.length > 0 && !member.fleets.some((f) => f.startsWith('CA_'));
-
 function initCrewInfoForm(member) {
-  const fleets = member.type === 'CABIN_ATTENDANT' ? member.fleets.map((f) => PLAIN_TO_CA[f] || f) : member.fleets;
   return {
-    firstName: member.firstName, lastName: member.lastName, role: member.role, fleets,
+    firstName: member.firstName, lastName: member.lastName, role: member.role, fleets: member.fleets,
     lineCheckAnchorDate: member.lineCheckAnchorDate ? member.lineCheckAnchorDate.slice(0, 10) : '',
     seedLineCheckDate: member.seedLineCheckDate ? member.seedLineCheckDate.slice(0, 10) : '',
     captainInTraining: !!member.captainInTraining,
@@ -123,8 +113,7 @@ function CrewInfoEditor({ member, onSaved }) {
     setError(null);
     try {
       const { newHirePilot, ...formWithoutNewHire } = form;
-      const fleets = usesPlainFleets(member) ? form.fleets.map((f) => CA_TO_PLAIN[f] || f) : form.fleets;
-      const base = member.isLinked ? { role: form.role, fleets } : { ...formWithoutNewHire, fleets };
+      const base = member.isLinked ? { role: form.role, fleets: form.fleets } : formWithoutNewHire;
       const patch = isPilot
         ? {
           ...base,

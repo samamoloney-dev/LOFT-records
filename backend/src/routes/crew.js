@@ -8,7 +8,7 @@ const { logAction } = require('../lib/audit');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays, addMonths } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
-const { fleetOrderError } = require('../lib/fleetOrder');
+const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -149,7 +149,8 @@ async function lastCompletedLineCheckWithFleet(crewMemberId) {
 // recorded aircraft type - e.g. predates this field) falls back to no note
 // at all, same as before.
 function lineCheckFleetNote(member, lastLineCheck) {
-  const dualFleet = member.fleets.includes('DASH_8') && member.fleets.includes('FOKKER_100');
+  const baseFleets = member.fleets.map(baseFleet);
+  const dualFleet = baseFleets.includes('DASH_8') && baseFleets.includes('FOKKER_100');
   if (!dualFleet || !lastLineCheck?.actype) return null;
   const nextFleet = lastLineCheck.actype === 'Fokker 100' ? 'Dash 8' : lastLineCheck.actype === 'Dash 8' ? 'Fokker 100' : null;
   return nextFleet ? `${nextFleet} due next (alternating fleet)` : null;
@@ -883,7 +884,8 @@ const quickAddSchema = z.object({
 // { member } on success, so callers can decide how to report it (a single
 // res.status(...).json(...) for the one-at-a-time route, or a per-row
 // result entry for bulk import).
-async function createCrewMemberRecord(d, req) {
+async function createCrewMemberRecord(rawData, req) {
+  const d = { ...rawData, fleets: normaliseCrewFleets(rawData.type, rawData.fleets) };
   const fleetError = fleetOrderError(d.type, d.fleets);
   if (fleetError) return { error: fleetError };
 
@@ -1090,6 +1092,7 @@ router.patch('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can change the new hire flag' });
   }
 
+  if (parsed.data.fleets) parsed.data.fleets = normaliseCrewFleets(member.type, parsed.data.fleets);
   const fleetError = fleetOrderError(member.type, parsed.data.fleets ?? member.fleets);
   if (fleetError) return res.status(400).json({ error: fleetError });
 

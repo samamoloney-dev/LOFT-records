@@ -66,7 +66,7 @@ export function UpgradePicker({ variant }) {
   const [error, setError] = useState(null);
 
   function load() {
-    api.get(`/api/crew?type=${variantConfig.crewType}`).then(setCrew).catch((e) => setError(e.message));
+    api.get(`/api/checks/upgrade-candidates?type=${variantConfig.crewType}`).then(setCrew).catch((e) => setError(e.message));
     api.get('/api/checks?checkType=UPGRADE_RECORD&archived=false').then(setExistingChecks).catch(() => {});
   }
   useEffect(load, [variant]);

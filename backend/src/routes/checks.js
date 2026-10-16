@@ -351,6 +351,39 @@ router.get('/alerts/overdue-completion', async (req, res) => {
   });
 });
 
+// Candidate list for the FS Upgrades page. Upgrade checkers (Check Captain,
+// Examiner, Check Cabin Attendant, Cabin Attendant Manager) can't use the
+// Crew API - that's admin-only and would expose full currency data - so this
+// hands back just the identity fields the candidate picker needs. Non-admins
+// get only their own crew type (pilot checkers see pilots, cabin checkers see
+// cabin attendants) and only crew on their own fleet(s).
+const UPGRADE_CABIN_CHECKER_ROLES = ['CA_CHECKER', 'CA_MANAGER'];
+router.get('/upgrade-candidates', async (req, res) => {
+  if (!canAccessCheckType(req.user, 'UPGRADE_RECORD')) return res.status(403).json({ error: 'Forbidden' });
+  const type = req.query.type;
+  if (type !== 'PILOT' && type !== 'CABIN_ATTENDANT') return res.status(400).json({ error: 'type must be PILOT or CABIN_ATTENDANT' });
+  if (!isAdmin(req.user)) {
+    const ownType = UPGRADE_CABIN_CHECKER_ROLES.includes(req.user.role) ? 'CABIN_ATTENDANT' : 'PILOT';
+    if (type !== ownType) return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { rows } = await pool.query(
+    `SELECT cm.id, cm.type, cm.role, cm.fleets,
+            COALESCE(u.name, cm.first_name || ' ' || cm.last_name) AS name,
+            (cm.user_id IS NOT NULL) AS is_linked, u.role AS linked_role
+     FROM crew_members cm
+     LEFT JOIN users u ON u.id = cm.user_id
+     WHERE cm.archived = false AND cm.type = $1
+     ORDER BY name ASC`,
+    [type],
+  );
+  const userFleets = req.user.fleets || [];
+  const candidates = rows
+    .map((r) => ({ ...rowToCamel(r), fleets: parsePgArray(r.fleets) }))
+    .filter((c) => isAdmin(req.user) || c.fleets.some((f) => userFleets.includes(f)));
+  res.json(candidates);
+});
+
 router.get('/:id', async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });

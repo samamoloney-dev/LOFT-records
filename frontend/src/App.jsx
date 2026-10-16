@@ -22,7 +22,8 @@ import { CertificateGenerator } from './pages/CertificateGenerator';
 import { OverdueCheckAlert } from './components/OverdueCheckAlert';
 import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
-import { CONTINUOUS_IMPROVEMENT_ROLES, canAccessCertificates, canAccessChecksTab } from './lib/roles';
+import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_CHECKER_ROLES, canAccessCertificates, canAccessChecksTab } from './lib/roles';
+import { FsUpgrades } from './pages/FsUpgrades';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // Every staff role - meeting minutes is for the whole operation, trainees
@@ -91,6 +92,11 @@ function Shell({ children }) {
     canAccessChecksTab(user) && { to: '/checks', label: checksAlertCount > 0 ? `Checks (${checksAlertCount})` : 'Checks' },
     ADMIN_ROLES.includes(user.role) && { to: '/fs-staff', label: 'FS Staff' },
     ADMIN_ROLES.includes(user.role) && { to: '/staff', label: 'Resources' },
+    // Upgrade checkers (Check Captain, Examiner, Check Cabin Attendant, Cabin
+    // Attendant Manager) run Upgrade Records but have no Resources tab - this
+    // gives them just the upgrades, nothing else from Resources. Admins reach
+    // the same panel under Resources > Upgrades.
+    !ADMIN_ROLES.includes(user.role) && UPGRADE_CHECKER_ROLES.includes(user.role) && { to: '/fs-upgrades', label: 'FS Upgrades' },
     CONTINUOUS_IMPROVEMENT_ROLES.includes(user.role) && { to: '/continuous-improvement', label: 'Continuous Improvement' },
     SYLLABUS_ADMIN_ROLES.includes(user.role) && { to: '/syllabus', label: 'Edit Forms' },
     ADMIN_ROLES.includes(user.role) && { to: '/archive', label: 'Archive' },
@@ -180,6 +186,7 @@ export default function App() {
                 <Route path="/archive" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Archive /></ProtectedRoute>} />
                 <Route path="/certificates" element={<ProtectedRoute allow={canAccessCertificates}><CertificateGenerator /></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><Staff /></ProtectedRoute>} />
+                <Route path="/fs-upgrades" element={<ProtectedRoute roles={UPGRADE_CHECKER_ROLES}><FsUpgrades /></ProtectedRoute>} />
                 <Route path="/fs-staff" element={<ProtectedRoute roles={['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE']}><FsStaff /></ProtectedRoute>} />
                 <Route path="/checks" element={<Checks />} />
                 <Route path="/crew" element={<ProtectedRoute roles={CREW_VISIBLE_ROLES}><Crew /></ProtectedRoute>} />

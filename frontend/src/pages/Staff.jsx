@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
-import { UpgradePicker } from './UpgradePicker';
-import { UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
+import { UpgradesPanel } from './FsUpgrades';
+import { UPGRADE_CHECKER_ROLES } from '../lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
@@ -117,27 +117,6 @@ function FstdPresetsPanel() {
 const STAFF_TABS = [
   { key: 'fstd', label: 'FSTD' },
 ];
-
-const UPGRADE_TABS = Object.entries(UPGRADE_VARIANTS).map(([key, cfg]) => ({ key, label: cfg.label.replace(' Upgrade', '') }));
-
-// All checkers and examiners have access to this, for their relevant fleet
-// (see UpgradePicker's own fleet-scoping) - per the operator's explicit
-// request, not just admins.
-function UpgradesPanel() {
-  const [searchParams] = useSearchParams();
-  // Lets the Home Dashboard's "passed, ready to archive" alert (?variant=)
-  // land directly on the right variant tab instead of always Training Captain.
-  const requestedVariant = searchParams.get('variant');
-  const [variant, setVariant] = useState(
-    UPGRADE_TABS.some((t) => t.key === requestedVariant) ? requestedVariant : UPGRADE_TABS[0].key,
-  );
-  return (
-    <div>
-      <TabBar tabs={UPGRADE_TABS} active={variant} onSelect={setVariant} />
-      <UpgradePicker variant={variant} />
-    </div>
-  );
-}
 
 // Staff account management now lives on its own top-level "FS Staff" nav
 // tab (see FsStaff.jsx) - this page keeps the other Resources-y admin

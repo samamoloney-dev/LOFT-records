@@ -14,6 +14,14 @@ const ACCESS_TYPE_FOR_KEY = {
   ipc: 'IPC',
   proficiencyCheck: 'PC',
   lineCheck: 'LINE_CHECK',
+  // The three safety-equipment trainings are taught and checked by the same
+  // people who hold Emergency Procedures access (incl. Cabin Attendant
+  // Manager) - same rule as SafetyEquipmentChecks.jsx's own pickers. Without
+  // these entries the picker got no access type and offered only HOTC/HOFO/
+  // Alternate.
+  lifeJacket: 'EMERGENCY_PROCEDURES',
+  smokeFireTraining: 'EMERGENCY_PROCEDURES',
+  f100SlideTraining: 'EMERGENCY_PROCEDURES',
 };
 
 // One central place to see everything coming up across the whole roster -

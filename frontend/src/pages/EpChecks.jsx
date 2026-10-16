@@ -168,7 +168,14 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
         <div className="card">
           <div style={{ fontSize: 16, fontWeight: 500 }}>{d.name} — Emergency Procedures Check</div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'} · {(d.types || []).join(', ') || 'No type selected'}
+            {d.date ? formatDate(d.date) : 'No date'} · {(d.types || []).join(', ') || 'No type selected'}
+          </div>
+          <div className="field" style={{ maxWidth: 240, marginTop: 8 }}>
+            <label>Aircraft type</label>
+            <select disabled={!!selected.completedAt} value={d.actype || ''} onChange={(e) => patchDetails(selected, { actype: e.target.value })}>
+              <option value="">—</option>
+              {AIRCRAFT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
         </div>
 

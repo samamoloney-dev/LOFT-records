@@ -78,6 +78,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Express 4 doesn't route a rejected async handler to the error middleware
+// above - without this, one failing query (e.g. a bad date) crashes the whole
+// process, which the browser sees as "Failed to fetch" for everyone until
+// Render restarts it.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
 const PORT = process.env.PORT || 4000;
 if (require.main === module) {
   app.listen(PORT, () => console.log(`LOFT Records API listening on :${PORT}`));

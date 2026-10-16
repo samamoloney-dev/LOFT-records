@@ -152,7 +152,9 @@ function allRows(member, codeMap) {
     fleets: member.fleets,
     fleet: member.fleets.map(formatFleet).join(', '),
     item: item.label,
-    itemCode: codeFor(item.label, codeMap),
+    // Pilots and cabin attendants share the label "Line Check" but have
+    // separate codes (LINECHK / CALNCHK).
+    itemCode: codeFor(member.type === 'CABIN_ATTENDANT' && item.label === 'Line Check' ? 'Cabin Attendant Line Check' : item.label, codeMap),
     dueDate: item.dueDate,
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
@@ -217,10 +219,9 @@ export function CurrencyOverview() {
     Promise.all([
       api.get('/api/crew?type=PILOT'),
       api.get('/api/crew?type=CABIN_ATTENDANT'),
-      api.get('/api/course-codes'),
+      api.get('/api/course-codes/map'),
     ])
-      .then(([pilots, cabinAttendants, courseCodes]) => {
-        const codeMap = Object.fromEntries(courseCodes.map((c) => [c.label, c.code]));
+      .then(([pilots, cabinAttendants, codeMap]) => {
         const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m, codeMap));
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);

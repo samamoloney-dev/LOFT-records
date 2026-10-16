@@ -24,6 +24,22 @@ router.get('/', async (req, res) => {
   res.json(rows.map(rowToCamel));
 });
 
+// The single label -> code lookup the Currency Overview export uses: this
+// table's codes (recurrent checks like Emergency Procedures, which aren't
+// competencies) overlaid with each competency's own course_code (see
+// competency-types.js), which wins on a clash so a competency's code is only
+// ever edited in one place.
+router.get('/map', async (req, res) => {
+  const [{ rows: codeRows }, { rows: typeRows }] = await Promise.all([
+    pool.query('SELECT label, code FROM course_codes WHERE archived = false'),
+    pool.query('SELECT name, course_code FROM competency_types WHERE course_code IS NOT NULL AND archived = false'),
+  ]);
+  const map = {};
+  for (const r of codeRows) map[r.label] = r.code;
+  for (const r of typeRows) map[r.name] = r.course_code;
+  res.json(map);
+});
+
 const createSchema = z.object({ label: z.string().min(1), code: z.string().min(1).max(7) });
 
 router.post('/', async (req, res) => {

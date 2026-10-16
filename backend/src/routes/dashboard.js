@@ -523,7 +523,7 @@ router.get('/summary', async (req, res) => {
     variantLabel: UPGRADE_VARIANTS[r.details?.variant]?.label || 'Upgrade Record',
     lastActivity: null,
     stalled: false,
-    linkTo: '/staff',
+    linkTo: `/staff?tab=upgrades&variant=${r.details?.variant}&crewMemberId=${r.crew_member_id}`,
   }));
 
   res.json({

@@ -1171,11 +1171,13 @@ function CompetencyFleetPicker({ value, onChange }) {
 function CompetencyTypesSection() {
   const [types, setTypes] = useState([]);
   const [name, setName] = useState('');
+  const [courseCode, setCourseCode] = useState('');
   const [appliesTo, setAppliesTo] = useState('');
   const [fleets, setFleets] = useState([]);
   const [staffRoles, setStaffRoles] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [editingCourseCode, setEditingCourseCode] = useState('');
   const [editingAppliesTo, setEditingAppliesTo] = useState('');
   const [editingFleets, setEditingFleets] = useState([]);
   const [editingStaffRoles, setEditingStaffRoles] = useState([]);
@@ -1200,11 +1202,12 @@ function CompetencyTypesSection() {
     setError(null);
     try {
       await api.post('/api/competency-types', {
-        name: name.trim(), appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null,
+        name: name.trim(), courseCode: courseCode.trim() || null, appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null,
         staffRoles: appliesTo === 'PILOT' && staffRoles.length ? staffRoles : null,
         syllabusId: viewSyllabusId,
       });
       setName('');
+      setCourseCode('');
       setAppliesTo('');
       setFleets([]);
       setStaffRoles([]);
@@ -1217,7 +1220,7 @@ function CompetencyTypesSection() {
     setError(null);
     try {
       await api.patch(`/api/competency-types/${id}`, {
-        name: editingName.trim(), appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null,
+        name: editingName.trim(), courseCode: editingCourseCode.trim() || null, appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null,
         staffRoles: editingAppliesTo === 'PILOT' && editingStaffRoles.length ? editingStaffRoles : null,
       });
       setEditingId(null);
@@ -1253,7 +1256,10 @@ function CompetencyTypesSection() {
         <SyllabusPicker fleet={viewFleet} value={viewSyllabusId} onChange={setViewSyllabusId} />
       </div>
       <form className="card" onSubmit={addType}>
-        <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
+        <div className="grid2">
+          <div className="field"><label>Add a competency</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
+          <div className="field"><label>Course code (max 7 characters, exported to the rostering system)</label><input value={courseCode} onChange={(e) => setCourseCode(e.target.value.slice(0, 7))} maxLength={7} placeholder="e.g. DANGGDS" /></div>
+        </div>
         <div className="field">
           <label>Applies to</label>
           <select value={appliesTo} onChange={(e) => setAppliesTo(e.target.value)}>
@@ -1282,6 +1288,7 @@ function CompetencyTypesSection() {
             <>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <input style={{ flex: 1 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
+                <input style={{ width: 100 }} value={editingCourseCode} maxLength={7} placeholder="Code" onChange={(e) => setEditingCourseCode(e.target.value.slice(0, 7))} />
                 <select value={editingAppliesTo} onChange={(e) => setEditingAppliesTo(e.target.value)} style={{ width: 180 }}>
                   <option value="">All crew</option>
                   <option value="PILOT">Pilots only</option>
@@ -1303,13 +1310,14 @@ function CompetencyTypesSection() {
             <div className="row" style={{ cursor: 'default' }}>
               <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>
                 {t.name}
+                <span style={{ marginLeft: 10, fontFamily: 'monospace', fontWeight: 400, color: t.courseCode ? 'var(--text-secondary)' : 'var(--text-warning)' }}>{t.courseCode || 'no code'}</span>
                 {t.appliesTo ? ` (${APPLIES_TO_LABELS[t.appliesTo]})` : ''}
                 {(t.fleets || []).length ? ` (${t.fleets.map(formatFleet).join(', ')} only)` : ''}
                 {(t.staffRoles || []).length ? ` (${t.staffRoles.map(formatUserRole).join(', ')} only)` : ''}
                 {t.archived ? ' (archived)' : ''}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingAppliesTo(t.appliesTo || ''); setEditingFleets(t.fleets || []); setEditingStaffRoles(t.staffRoles || []); }}>Edit</button>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); setEditingCourseCode(t.courseCode || ''); setEditingAppliesTo(t.appliesTo || ''); setEditingFleets(t.fleets || []); setEditingStaffRoles(t.staffRoles || []); }}>Edit</button>
                 <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
                 <button className="danger" onClick={() => remove(t)}>Delete</button>
               </div>
@@ -1555,7 +1563,7 @@ function CourseCodesSection() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        The course code exported in Currency Overview's "Competency Code" CSV column - used as the join key on the rostering system's side. Up to 7 characters. A label with no code here exports with an auto-generated fallback instead.
+        Codes for the recurrent checks (Emergency Procedures, IPC, Proficiency Check, Line Check and similar), exported in Currency Overview's "Competency Code" CSV column - the join key on the rostering system's side. Up to 7 characters, and the label must match the check's name exactly. Competency codes (Dangerous Goods, First Aid and so on) are set on the Competencies tab, next to the competency's name. Anything with no code exports with an auto-generated fallback instead.
       </div>
       <form className="card" onSubmit={addItem}>
         <div className="grid2">

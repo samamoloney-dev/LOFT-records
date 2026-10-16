@@ -61,6 +61,10 @@ const createSchema = z.object({
   // pilots also linked to a staff account holding one of these roles.
   staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
   syllabusId: z.string().uuid().nullable().optional(),
+  // The rostering system's 7-character join key for this competency (the
+  // Currency Overview CSV's "Competency Code" column) - lives on the
+  // competency itself so it can't drift out of step with the name.
+  courseCode: z.string().trim().max(7).nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -70,12 +74,13 @@ router.post('/', async (req, res) => {
   const { rows: maxRows } = await pool.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM competency_types');
   try {
     const { rows } = await pool.query(
-      'INSERT INTO competency_types (name, sort_order, applies_to, fleets, staff_roles, syllabus_id) VALUES ($1, $2, $3, $4::fleet[], $5::user_role[], $6) RETURNING *',
+      'INSERT INTO competency_types (name, sort_order, applies_to, fleets, staff_roles, syllabus_id, course_code) VALUES ($1, $2, $3, $4::fleet[], $5::user_role[], $6, $7) RETURNING *',
       [
         parsed.data.name, maxRows[0].next, parsed.data.appliesTo || null,
         parsed.data.fleets?.length ? parsed.data.fleets : null,
         parsed.data.staffRoles?.length ? parsed.data.staffRoles : null,
         parsed.data.syllabusId || null,
+        parsed.data.courseCode || null,
       ],
     );
     await logAction({
@@ -96,8 +101,9 @@ const updateSchema = z.object({
   fleets: z.array(z.enum(FLEET_VALUES)).nullable().optional(),
   staffRoles: z.array(z.enum(STAFF_ROLE_VALUES)).nullable().optional(),
   syllabusId: z.string().uuid().nullable().optional(),
+  courseCode: z.string().trim().max(7).nullable().optional(),
 });
-const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets', staffRoles: 'staff_roles', syllabusId: 'syllabus_id' };
+const COLUMN_MAP = { name: 'name', archived: 'archived', appliesTo: 'applies_to', fleets: 'fleets', staffRoles: 'staff_roles', syllabusId: 'syllabus_id', courseCode: 'course_code' };
 const CAST_MAP = { fleets: '::fleet[]', staffRoles: '::user_role[]' };
 
 router.patch('/:id', async (req, res) => {
@@ -108,7 +114,11 @@ router.patch('/:id', async (req, res) => {
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
   const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}${CAST_MAP[key] || ''}`);
-  const values = entries.map(([key, value]) => ((key === 'fleets' || key === 'staffRoles') && Array.isArray(value) && value.length === 0 ? null : value));
+  const values = entries.map(([key, value]) => {
+    if ((key === 'fleets' || key === 'staffRoles') && Array.isArray(value) && value.length === 0) return null;
+    if (key === 'courseCode' && !value) return null;
+    return value;
+  });
   values.push(req.params.id);
 
   const { rows } = await pool.query(

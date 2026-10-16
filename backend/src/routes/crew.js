@@ -187,14 +187,32 @@ async function hasInProgressCheck(crewMemberId, checkType, variant) {
 // anchor date is already on file - the normal case (checks always
 // completed after the anchor, since it's set once at hire) was never
 // affected either way.
+//
+// Counts cycles met, not raw records: each yearly window after the anchor
+// (anchor+0..12 months, 12..24, and so on) can only be met once, and a
+// completion can only ever meet the earliest cycle not yet met. Counting
+// every record separately let a second completion in the same window (e.g.
+// a backfilled check a day after the anchor, then the real one 12 months
+// on) push the next due date a whole extra year out - 24 months instead
+// of 365 days.
 async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
   const { rows } = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM checks
+    `SELECT completed_at FROM checks
      WHERE crew_member_id = $1 AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL
-       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz)`,
+       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz)
+     ORDER BY completed_at ASC`,
     [crewMemberId, anchorDate || null],
   );
-  return rows[0]?.n || 0;
+  if (!anchorDate) return rows.length;
+  const anchor = new Date(anchorDate);
+  let met = 0;
+  for (const r of rows) {
+    const completed = new Date(r.completed_at);
+    let window = 1;
+    while (completed > addMonths(anchor, 12 * window)) window += 1;
+    met = Math.max(met, Math.min(met + 1, window));
+  }
+  return met;
 }
 
 // A "new hire" crew profile is linked to its trainee record (see POST /
@@ -350,6 +368,15 @@ const FLEET_TO_AIRCRAFT_TYPE = {
   FOKKER_100: 'Fokker 100',
   METRO_23: 'Metro',
   CA_DASH_8: 'Dash 8',
+  CA_FOKKER_100: 'Fokker 100',
+};
+
+// Matches EpChecks.jsx's EP_TYPES spellings exactly.
+const EP_TYPE_FOR_FLEET = {
+  DASH_8: 'Dash8',
+  FOKKER_100: 'Fokker 100',
+  METRO_23: 'Metro',
+  CA_DASH_8: 'Dash8',
   CA_FOKKER_100: 'Fokker 100',
 };
 
@@ -977,12 +1004,16 @@ router.post('/bulk-import', blockCaManager, async (req, res) => {
   res.json({ created, failed: results.length - created, results });
 });
 
+// An empty date input arrives as '' - Postgres rejects that for a DATE
+// column, so treat it as "clear the date" like null.
+const optionalDate = z.string().nullable().optional().transform((v) => (v === '' ? null : v));
+
 const updateSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']).optional(),
   fleets: z.array(z.enum(FLEET_VALUES)).min(1).optional(),
-  lineCheckAnchorDate: z.string().nullable().optional(),
+  lineCheckAnchorDate: optionalDate,
   // Cabin Attendant equivalent of lineCheckAnchorDate above - was only ever
   // settable at crew creation (see the bulk-import INSERT) with no way to
   // add or correct it afterward. SETUP PHASE ONLY (see memory:
@@ -991,15 +1022,15 @@ const updateSchema = z.object({
   // the full Cabin Attendant Line Check form for crew who've only been
   // checked to line recently and have no recurrent check due yet. Remove
   // once the operator goes live.
-  seedLineCheckDate: z.string().nullable().optional(),
+  seedLineCheckDate: optionalDate,
   // seedPcDate/seedIpcDate/seedEpDate (like lineCheckAnchorDate) were only
   // ever settable at crew creation (see the bulk-import INSERT), with no way
   // to correct a wrong one afterward - unlike seedLineCheckDate above, these
   // are permanent fields (not a setup-phase-only feature), so a typo here is
   // a normal data-correction need, same as fixing a wrong date on any check.
-  seedPcDate: z.string().nullable().optional(),
-  seedIpcDate: z.string().nullable().optional(),
-  seedEpDate: z.string().nullable().optional(),
+  seedPcDate: optionalDate,
+  seedIpcDate: optionalDate,
+  seedEpDate: optionalDate,
   arn: z.string().min(1).optional(),
   // Links this crew profile to an existing staff account (see CREW_SELECT)
   // so name is read live from Staff instead of drifting out of sync.
@@ -1256,6 +1287,10 @@ router.post('/:id/planned-checks/:checkKey/create-check', blockCaManager, async 
       arn: member.arn,
       date: dateOnly,
       actype: singleFleet ? FLEET_TO_AIRCRAFT_TYPE[singleFleet] : undefined,
+      // EP forms also carry a Theory/Metro/Dash8/Fokker 100 type selection
+      // (EpChecks.jsx EP_TYPES) - left empty here it showed "No type
+      // selected" on a form created from the Planning tab.
+      ...(checkType === 'EMERGENCY_PROCEDURES' && singleFleet ? { types: [EP_TYPE_FOR_FLEET[singleFleet]] } : {}),
       // Carries the candidate's own name/ARN into the Applicant section
       // (RECURRENT_SIMULATOR/PC/IPC) the same way ProficiencyChecks.jsx's
       // own create form already does - otherwise a check created from the

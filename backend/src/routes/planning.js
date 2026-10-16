@@ -18,6 +18,9 @@ const CHECK_LABELS = {
   ipc: 'IPC',
   proficiencyCheck: 'Proficiency Check',
   lineCheck: 'Line Check',
+  lifeJacket: 'Life Jacket Training',
+  smokeFireTraining: 'Smoke & Fire Training',
+  f100SlideTraining: 'F100 Slide Training',
 };
 
 // Aggregated planning view across the whole roster - the per-crew-member

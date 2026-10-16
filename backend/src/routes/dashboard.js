@@ -284,6 +284,7 @@ router.get('/summary', async (req, res) => {
 
   const CHECK_LABELS = {
     emergencyProcedures: 'Emergency Procedures', ipc: 'IPC', proficiencyCheck: 'Proficiency Check', lineCheck: 'Line Check',
+    lifeJacket: 'Life Jacket Training', smokeFireTraining: 'Smoke & Fire Training', f100SlideTraining: 'F100 Slide Training',
   };
 
   // A crew profile whose person is still an active (non-archived) LOFT

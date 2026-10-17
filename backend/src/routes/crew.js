@@ -10,6 +10,7 @@ const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays,
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { exportNamesFor, CA_LINE_CHECK_DASH_8, CA_LINE_CHECK_FOKKER_100 } = require('../lib/exportNames');
+const { isPlausibleDate } = require('../lib/dates');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -1079,8 +1080,8 @@ router.post('/bulk-import', blockCaManager, async (req, res) => {
 
 // An empty date input arrives as '' - Postgres rejects that for a DATE
 // column, so treat it as "clear the date" like null.
-const optionalDate = z.string().refine((v) => v === '' || !Number.isNaN(Date.parse(v)), 'Invalid date')
-  .nullable().optional().transform((v) => (v === '' ? null : v));
+const plausibleDate = () => z.string().refine(isPlausibleDate, 'Invalid date').nullable().optional();
+const optionalDate = plausibleDate().transform((v) => (v === '' ? null : v));
 
 const updateSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -1240,7 +1241,7 @@ router.post('/:id/medical-document', async (req, res) => {
 // dropdown rather than free text, per the operator's explicit request.
 const OVERDUE_REASONS = ['In LOFT', 'Sick Leave', 'Personal Leave', 'Failed Check'];
 const plannedCheckSchema = z.object({
-  plannedDate: z.string().nullable().optional(),
+  plannedDate: plausibleDate(),
   assignedTo: z.string().uuid().nullable().optional(),
   reason: z.enum(OVERDUE_REASONS).nullable().optional(),
   rostered: z.boolean().optional(),
@@ -1493,9 +1494,9 @@ router.get('/:id/competencies', async (req, res) => {
 });
 
 const competencyDatesSchema = z.object({
-  completedDate: z.string().nullable().optional(),
-  dueDate: z.string().nullable().optional(),
-  plannedDate: z.string().nullable().optional(),
+  completedDate: plausibleDate(),
+  dueDate: plausibleDate(),
+  plannedDate: plausibleDate(),
   // Scoped in the frontend to just First Aid/CPR Training (see
   // CrewDetail.jsx) - not every crew member is required to hold every
   // competency.
@@ -1697,9 +1698,9 @@ router.post('/competencies/bulk-import', requireRole(...ADMIN_ROLES), async (req
 // every other write on a crew member's record.
 const adHocCompetencySchema = z.object({
   name: z.string().min(1),
-  completedDate: z.string().nullable().optional(),
-  dueDate: z.string().nullable().optional(),
-  plannedDate: z.string().nullable().optional(),
+  completedDate: plausibleDate(),
+  dueDate: plausibleDate(),
+  plannedDate: plausibleDate(),
   reason: z.enum(OVERDUE_REASONS).nullable().optional(),
 });
 

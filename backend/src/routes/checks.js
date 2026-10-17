@@ -8,6 +8,7 @@ const { baseFleet } = require('../lib/fleetOrder');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
+const { isPlausibleDate } = require('../lib/dates');
 const { localDateString } = require('../lib/currency');
 const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCertificate');
 
@@ -509,7 +510,7 @@ const updateSchema = z.object({
   details: z.record(z.any()).optional(),
   result: z.enum(['PASS', 'FAIL']).nullable().optional(),
   score: z.number().int().min(1).max(5).nullable().optional(),
-  completedAt: z.string().nullable().optional(),
+  completedAt: z.string().refine(isPlausibleDate, 'Invalid date - check the year').nullable().optional(),
   assessorName: z.string().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
 });

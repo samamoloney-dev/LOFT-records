@@ -677,8 +677,8 @@ export function buildCrewFileSummary(member, competencies, staffCompetencies = [
 // applied there), rather than always dumping the entire roster regardless
 // of what the admin was actually looking at.
 function currencyReportRow(r) {
-  const notes = r.overdueReason || (r.issued ? 'Check Form Issued' : '') || (r.plannedDate ? `${r.rostered ? 'Rostered' : 'Planned'} ${formatDate(r.plannedDate)}` : '') || (r.inLoft ? 'In LOFT' : '');
-  return `<tr><td>${r.name}</td><td>${r.fleet}</td><td>${r.item}</td><td>${r.dueDate ? formatDate(r.dueDate) : '—'}</td><td>${notes}</td></tr>`;
+  const notes = r.overdueReason || (r.issued ? 'Check Form Issued' : '') || (r.plannedDate ? `${r.rostered ? 'Rostered' : 'Planned'} ${formatDate(r.plannedDate)}` : '') || (r.inLoft ? 'In LOFT' : '') || (r.isStaff ? r.note : '');
+  return `<tr><td>${r.name}</td><td>${r.fleet}</td><td>${r.item}</td><td>${r.completedDate ? formatDate(r.completedDate) : '—'}</td><td>${r.dueDate ? formatDate(r.dueDate) : '—'}</td><td>${notes}</td></tr>`;
 }
 
 function currencyReportSection(title, rows) {
@@ -687,7 +687,7 @@ function currencyReportSection(title, rows) {
     <div class="form-section">
       <h2>${title} (${rows.length})</h2>
       <table>
-        <tr><th>Name</th><th>Fleet</th><th>Item</th><th>Due date</th><th>Notes</th></tr>
+        <tr><th>Name</th><th>Fleet</th><th>Item</th><th>Completed</th><th>Due date</th><th>Notes</th></tr>
         ${rows.map(currencyReportRow).join('')}
       </table>
     </div>`;

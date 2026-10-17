@@ -113,9 +113,26 @@ router.get('/competency-export', requireRole(...ADMIN_ROLES), async (req, res) =
   const users = await Promise.all(
     rows.map(serialize).map(withGroundInstructorCheck).map((p) => p.then(withPersonnelAirCompetency)),
   );
+  // A staff member who is also on the Crew roster is the same person in the
+  // export - their ARN, fleets and Pilot/Cabin Attendant type come from the
+  // crew record so every row for them carries identical identifying details
+  // (the staff record's own ARN can differ or be blank).
+  const { rows: crewRows } = await pool.query(
+    'SELECT user_id, arn, type, fleets FROM crew_members WHERE user_id IS NOT NULL AND archived = false',
+  );
+  const crewByUser = new Map(crewRows.map((c) => [c.user_id, c]));
+  const CABIN_STAFF_ROLES = ['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
   const items = [];
   for (const u of users) {
-    const base = { userId: u.id, name: u.name, arn: u.arn, role: u.role, fleets: u.fleets };
+    const crew = crewByUser.get(u.id);
+    const base = {
+      userId: u.id,
+      name: u.name,
+      arn: crew ? crew.arn : u.arn,
+      role: u.role,
+      crewType: crew ? crew.type : (CABIN_STAFF_ROLES.includes(u.role) ? 'CABIN_ATTENDANT' : 'PILOT'),
+      fleets: crew ? parsePgArray(crew.fleets) : u.fleets,
+    };
     const entries = [];
     if (u.groundInstructorCheck) entries.push([GROUND_INSTRUCTOR, u.groundInstructorCheck]);
     if (u.personnelAirCompetency) {

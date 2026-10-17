@@ -155,12 +155,13 @@ function exportRowsFor(member, codeMap) {
 // FS Staff members' own competencies (Ground Instructor Competency Check,
 // Flight Standards Personnel Competency Check) - held on the staff record
 // rather than the Crew roster, so they're added to the export separately.
-// "Type" is the staff role (e.g. Check Captain) since they aren't crew.
+// Type is Pilot / Cabin Attendant like every other row; ARN and fleets come
+// from the person's crew record when they have one (see users.js).
 function staffExportRow(staff, codeMap) {
   return {
     name: staff.name,
     arn: staff.arn,
-    type: formatUserRole(staff.role),
+    type: staff.crewType,
     fleet: (staff.fleets || []).map(formatFleet).join(', '),
     item: staff.item,
     itemCode: codeFor(staff.item, codeMap),
@@ -181,7 +182,7 @@ function staffScreenRow(staff) {
     memberId: null,
     name: staff.name,
     arn: staff.arn,
-    type: staff.role,
+    type: staff.crewType,
     fleets: staff.fleets || [],
     fleet: (staff.fleets || []).map(formatFleet).join(', '),
     item: staff.item,

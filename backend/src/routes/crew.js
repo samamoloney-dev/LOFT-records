@@ -241,11 +241,19 @@ async function hasInProgressCheck(crewMemberId, checkType, variant) {
 // a backfilled check a day after the anchor, then the real one 12 months
 // on) push the next due date a whole extra year out - 24 months instead
 // of 365 days.
+//
+// The Line Check record filed automatically from a completed Check to Line
+// (ctl.js, trainees.js promote-to-crew) is that same Check to Line event, not a
+// yearly Line Check - it lands a day or so after the anchor date (the anchor is
+// a local calendar date, the check a timestamp). It's skipped by ignoring
+// anything within 3 days of the anchor, otherwise it counted as the first
+// yearly check and pushed the next due date out to 24 months for every new
+// pilot who came through LOFT.
 async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
   const { rows } = await pool.query(
     `SELECT completed_at FROM checks
      WHERE crew_member_id = $1 AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL
-       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz)
+       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz + interval '3 days')
      ORDER BY completed_at ASC`,
     [crewMemberId, anchorDate || null],
   );
@@ -1071,7 +1079,8 @@ router.post('/bulk-import', blockCaManager, async (req, res) => {
 
 // An empty date input arrives as '' - Postgres rejects that for a DATE
 // column, so treat it as "clear the date" like null.
-const optionalDate = z.string().nullable().optional().transform((v) => (v === '' ? null : v));
+const optionalDate = z.string().refine((v) => v === '' || !Number.isNaN(Date.parse(v)), 'Invalid date')
+  .nullable().optional().transform((v) => (v === '' ? null : v));
 
 const updateSchema = z.object({
   firstName: z.string().min(1).optional(),

@@ -2,6 +2,24 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
+// Express 4 ignores the promise an async route handler returns, so a thrown
+// error (a bad date or ID reaching the database, say) never reached the
+// error middleware below - the request just hung forever with no response.
+// This forwards a rejected handler promise to next(), exactly as a thrown
+// error in a synchronous handler already is (same approach as the
+// express-async-errors package, without adding a dependency).
+const Layer = require('express/lib/router/layer');
+Layer.prototype.handle_request = function handleRequest(req, res, next) {
+  const fn = this.handle;
+  if (fn.length > 3) return next();
+  try {
+    const result = fn(req, res, next);
+    if (result && typeof result.catch === 'function') result.catch(next);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const traineeRoutes = require('./routes/trainees');
@@ -78,10 +96,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Express 4 doesn't route a rejected async handler to the error middleware
-// above - without this, one failing query (e.g. a bad date) crashes the whole
-// process, which the browser sees as "Failed to fetch" for everyone until
-// Render restarts it.
+// Backstop for a rejection that still escapes a handler (e.g. one raised
+// outside a request) - without it the process would exit, which the browser
+// sees as "Failed to fetch" for everyone until Render restarts it.
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled rejection:', err);
 });

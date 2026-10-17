@@ -37,8 +37,16 @@ const CA_LINE_CHECK_DASH_8 = 'Cabin Attendant Dash 8 Line Check';
 const CA_LINE_CHECK_FOKKER_100 = 'Cabin Attendant F100 Line Check';
 const F100_SLIDE = 'Emergency Procedures Practial Slide F100 Check';
 
-// Checks exported under their own in-app name unchanged, still needing a code.
-const OTHER_CHECKS = ['Life Jacket Training', 'Smoke & Fire Training'];
+// The 3-yearly Smoke & Fire check (the Smoke & Fire Training form) is the same
+// thing as the "3 Yearly Smoke & Fire" course, so it exports under that name.
+const SMOKE_FIRE = '3 Yearly Smoke & Fire';
+const LIFE_JACKET = 'Life Jacket Training';
+
+// Staff-level competencies tracked on FS Staff rather than the Crew roster
+// (see users.js) - added to the export from the staff list.
+const GROUND_INSTRUCTOR = 'Competency of Ground Instructor';
+const FS_PERSONNEL_PILOT = 'Flight Standards Personnel Competency Check - Pilot';
+const FS_PERSONNEL_CABIN = 'Flight Standards Personnel Competency Check - Cabin';
 
 // Every fixed check name the export can produce, in the order shown on the
 // Competencies tab.
@@ -51,7 +59,11 @@ const CHECK_EXPORT_NAMES = [
   ...Object.values(PROFICIENCY_CHECK),
   ...Object.values(IPC),
   F100_SLIDE,
-  ...OTHER_CHECKS,
+  SMOKE_FIRE,
+  LIFE_JACKET,
+  GROUND_INSTRUCTOR,
+  FS_PERSONNEL_PILOT,
+  FS_PERSONNEL_CABIN,
 ];
 
 const EP_TYPE_TO_FLEET = { Dash8: 'DASH_8', 'Dash 8': 'DASH_8', 'Fokker 100': 'FOKKER_100', Metro: 'METRO_23' };
@@ -101,6 +113,9 @@ function exportNamesFor(member, label, epDetails) {
 
 module.exports = {
   CHECK_EXPORT_NAMES,
+  GROUND_INSTRUCTOR,
+  FS_PERSONNEL_PILOT,
+  FS_PERSONNEL_CABIN,
   CA_LINE_CHECK_DASH_8,
   CA_LINE_CHECK_FOKKER_100,
   exportNamesFor,

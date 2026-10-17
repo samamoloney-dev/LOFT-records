@@ -4,7 +4,8 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
+const { GROUND_INSTRUCTOR, FS_PERSONNEL_PILOT, FS_PERSONNEL_CABIN } = require('../lib/exportNames');
 const { logAction } = require('../lib/audit');
 const { nextDueRolling, statusFor } = require('../lib/currency');
 
@@ -100,6 +101,38 @@ router.use(requireAuth);
 router.get('/roster', async (req, res) => {
   const { rows } = await pool.query('SELECT id, name, role, arn, check_access, fleets FROM users ORDER BY name ASC');
   res.json(rows.map(rowToCamel).map((u) => ({ ...u, checkAccess: parsePgArray(u.checkAccess), fleets: parsePgArray(u.fleets) })));
+});
+
+// The staff-level competencies for the Currency Overview CSV export - the
+// Ground Instructor Competency Check and the Flight Standards Personnel
+// Competency Check, held by the FS Staff members who need them (see
+// withGroundInstructorCheck/withPersonnelAirCompetency above), under the
+// exact names the rostering system expects.
+router.get('/competency-export', requireRole(...ADMIN_ROLES), async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM users ORDER BY name ASC');
+  const users = await Promise.all(
+    rows.map(serialize).map(withGroundInstructorCheck).map((p) => p.then(withPersonnelAirCompetency)),
+  );
+  const items = [];
+  for (const u of users) {
+    const base = { name: u.name, arn: u.arn, role: u.role, fleets: u.fleets };
+    const entries = [];
+    if (u.groundInstructorCheck) entries.push([GROUND_INSTRUCTOR, u.groundInstructorCheck]);
+    if (u.personnelAirCompetency) {
+      const isPilotSide = String(PERSONNEL_AIR_COMPETENCY_SECTION[u.role] || '').endsWith('PILOT');
+      entries.push([isPilotSide ? FS_PERSONNEL_PILOT : FS_PERSONNEL_CABIN, u.personnelAirCompetency]);
+    }
+    for (const [item, info] of entries) {
+      items.push({
+        ...base,
+        item,
+        completedDate: info.completedDate,
+        dueDate: info.dueDate,
+        status: info.completedDate ? info.status : 'not_completed',
+      });
+    }
+  }
+  res.json(items);
 });
 
 router.get('/', requireRole(...ADMIN_ROLES), async (req, res) => {

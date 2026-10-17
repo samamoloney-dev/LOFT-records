@@ -478,7 +478,7 @@ const CURRENCY_LABELS = {
   lineCheckDash8: CA_LINE_CHECK_DASH_8,
   lineCheckFokker100: CA_LINE_CHECK_FOKKER_100,
   lifeJacket: 'Life Jacket Training',
-  smokeFireTraining: 'Smoke & Fire Training',
+  smokeFireTraining: '3 Yearly Smoke & Fire',
   f100SlideTraining: 'F100 Slide Training',
 };
 

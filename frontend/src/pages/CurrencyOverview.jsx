@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { formatDate, formatFleet, formatTraineeRole } from '../lib/format';
+import { formatDate, formatFleet, formatTraineeRole, formatUserRole } from '../lib/format';
 import { crewLinkForItem } from '../lib/checkNav';
 import { PrintButton } from '../components/PrintButton';
 import { ExportCsvButton } from '../components/ExportCsvButton';
@@ -152,6 +152,26 @@ function exportRowsFor(member, codeMap) {
   }));
 }
 
+// FS Staff members' own competencies (Ground Instructor Competency Check,
+// Flight Standards Personnel Competency Check) - held on the staff record
+// rather than the Crew roster, so they're added to the export separately.
+// "Type" is the staff role (e.g. Check Captain) since they aren't crew.
+function staffExportRow(staff, codeMap) {
+  return {
+    name: staff.name,
+    arn: staff.arn,
+    type: formatUserRole(staff.role),
+    fleet: (staff.fleets || []).map(formatFleet).join(', '),
+    item: staff.item,
+    itemCode: codeFor(staff.item, codeMap),
+    completedDate: staff.completedDate,
+    dueDate: staff.dueDate,
+    status: staff.status,
+    plannedDate: null,
+    overdueReason: null,
+  };
+}
+
 // Flattens a crew member's allItems (see backend/src/routes/crew.js
 // withCurrency/allItemsFor) into rows for this page - every recurrent
 // check and competency, whatever its status, so the whole roster's
@@ -232,9 +252,13 @@ export function CurrencyOverview() {
       api.get('/api/crew?type=PILOT'),
       api.get('/api/crew?type=CABIN_ATTENDANT'),
       api.get('/api/course-codes/map'),
+      api.get('/api/users/competency-export'),
     ])
-      .then(([pilots, cabinAttendants, codeMap]) => {
-        setExportRows([...pilots, ...cabinAttendants].flatMap((m) => exportRowsFor(m, codeMap)));
+      .then(([pilots, cabinAttendants, codeMap, staffItems]) => {
+        setExportRows([
+          ...[...pilots, ...cabinAttendants].flatMap((m) => exportRowsFor(m, codeMap)),
+          ...staffItems.map((s) => staffExportRow(s, codeMap)),
+        ]);
         const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m));
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);

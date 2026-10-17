@@ -21,7 +21,7 @@ const CHECK_LABELS = {
   lineCheckDash8: 'Cabin Attendant Dash 8 Line Check',
   lineCheckFokker100: 'Cabin Attendant F100 Line Check',
   lifeJacket: 'Life Jacket Training',
-  smokeFireTraining: 'Smoke & Fire Training',
+  smokeFireTraining: '3 Yearly Smoke & Fire',
   f100SlideTraining: 'F100 Slide Training',
 };
 

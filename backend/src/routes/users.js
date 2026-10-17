@@ -115,7 +115,7 @@ router.get('/competency-export', requireRole(...ADMIN_ROLES), async (req, res) =
   );
   const items = [];
   for (const u of users) {
-    const base = { name: u.name, arn: u.arn, role: u.role, fleets: u.fleets };
+    const base = { userId: u.id, name: u.name, arn: u.arn, role: u.role, fleets: u.fleets };
     const entries = [];
     if (u.groundInstructorCheck) entries.push([GROUND_INSTRUCTOR, u.groundInstructorCheck]);
     if (u.personnelAirCompetency) {

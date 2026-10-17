@@ -206,6 +206,12 @@ export async function printCrewFile(member, competencies) {
     for (const chk of historicalChecks(pacChecks)) sections.push(buildPersonnelCompetencyCheckHtml(chk, pacItems || [], member.name));
   }
 
-  const body = [buildCrewFileSummary(member, competencies || []), ...sections].join('<div class="page-break"></div>');
+  // Their current Ground Instructor / Personnel (Air) Competency Check dates
+  // from FS Staff go on the summary page; the full forms are the sections above.
+  const staffCompetencies = member.isLinked
+    ? ((await safeGet('/api/users/competency-export')) || []).filter((s) => s.userId === member.userId)
+    : [];
+
+  const body = [buildCrewFileSummary(member, competencies || [], staffCompetencies), ...sections].join('<div class="page-break"></div>');
   openPrintWindow(`Personnel File - ${member.name}`, body);
 }

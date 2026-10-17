@@ -634,7 +634,16 @@ function competencyLabel(c) {
   return `${CURRENCY_STATUS_LABELS[status] || status}${c.dueDate ? ` (due ${formatDate(c.dueDate)})` : ''}`;
 }
 
-export function buildCrewFileSummary(member, competencies) {
+// A linked FS Staff member's own competencies (Ground Instructor Competency
+// Check, Flight Standards Personnel Competency Check) with both dates - see
+// GET /api/users/competency-export.
+function staffCompetencyLabel(s) {
+  const status = CURRENCY_STATUS_LABELS[s.status] || s.status;
+  if (!s.completedDate) return status;
+  return `${status} (completed ${formatDate(s.completedDate)}, due ${s.dueDate ? formatDate(s.dueDate) : '—'})`;
+}
+
+export function buildCrewFileSummary(member, competencies, staffCompetencies = []) {
   const isPilot = member.type === 'PILOT';
   const currencyRows = [
     ['Emergency Procedures', currencyLabel(member.currency?.emergencyProcedures)],
@@ -653,6 +662,7 @@ export function buildCrewFileSummary(member, competencies) {
     <div class="meta">${member.name} · ${member.type === 'PILOT' ? 'Pilot' : 'Cabin Attendant'} · ARN ${member.arn || '—'}</div>
     ${section('Recurrent check currency', currencyRows)}
     ${section('Competencies', competencyRows)}
+    ${staffCompetencies.length ? section('FS Staff competencies', staffCompetencies.map((s) => [s.item, staffCompetencyLabel(s)])) : ''}
   `;
 }
 

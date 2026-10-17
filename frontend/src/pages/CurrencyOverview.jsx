@@ -172,6 +172,31 @@ function staffExportRow(staff, codeMap) {
   };
 }
 
+// The same FS Staff competencies as staffExportRow above, as on-screen rows -
+// so they show here, respond to the filters, and appear in Print as well as
+// the CSV. Their dates are managed on the FS Staff page, so a click goes there.
+function staffScreenRow(staff) {
+  return {
+    isStaff: true,
+    memberId: null,
+    name: staff.name,
+    arn: staff.arn,
+    type: staff.role,
+    fleets: staff.fleets || [],
+    fleet: (staff.fleets || []).map(formatFleet).join(', '),
+    item: staff.item,
+    dueDate: staff.dueDate,
+    completedDate: staff.completedDate,
+    plannedDate: null,
+    issued: false,
+    rostered: undefined,
+    status: staff.status,
+    overdueReason: null,
+    note: `FS Staff · ${formatUserRole(staff.role)}`,
+    inLoft: false,
+  };
+}
+
 // Flattens a crew member's allItems (see backend/src/routes/crew.js
 // withCurrency/allItemsFor) into rows for this page - every recurrent
 // check and competency, whatever its status, so the whole roster's
@@ -259,7 +284,7 @@ export function CurrencyOverview() {
           ...[...pilots, ...cabinAttendants].flatMap((m) => exportRowsFor(m, codeMap)),
           ...staffItems.map((s) => staffExportRow(s, codeMap)),
         ]);
-        const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m));
+        const flattened = [...[...pilots, ...cabinAttendants].flatMap((m) => allRows(m)), ...staffItems.map(staffScreenRow)];
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);
       })
@@ -372,7 +397,7 @@ export function CurrencyOverview() {
 
       {filteredRows.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Nothing here.</div>}
       {filteredRows.map((r, i) => (
-        <div key={i} className="card row" onClick={() => navigate(crewLinkForItem(r.memberId, r.item))}>
+        <div key={i} className="card row" onClick={() => navigate(r.isStaff ? '/fs-staff' : crewLinkForItem(r.memberId, r.item))}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500 }}>{r.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>

@@ -7,6 +7,8 @@ const CHECK_SUB_TABS = {
   IPC: 'ipc',
   'Proficiency Check': 'pc',
   'Line Check': 'linecheck',
+  'Cabin Attendant Dash 8 Line Check': 'linecheck',
+  'Cabin Attendant F100 Line Check': 'linecheck',
 };
 
 export function crewLinkForItem(memberId, label) {

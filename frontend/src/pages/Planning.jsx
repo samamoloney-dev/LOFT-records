@@ -14,6 +14,8 @@ const ACCESS_TYPE_FOR_KEY = {
   ipc: 'IPC',
   proficiencyCheck: 'PC',
   lineCheck: 'LINE_CHECK',
+  lineCheckDash8: 'LINE_CHECK',
+  lineCheckFokker100: 'LINE_CHECK',
   // The three safety-equipment trainings are taught and checked by the same
   // people who hold Emergency Procedures access (incl. Cabin Attendant
   // Manager) - same rule as SafetyEquipmentChecks.jsx's own pickers. Without

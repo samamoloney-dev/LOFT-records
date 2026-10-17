@@ -1506,96 +1506,64 @@ function DocumentNamesSection() {
   );
 }
 
-// Admin-editable label -> course code mapping for the Currency Overview
-// CSV export's "Competency Code" column - the join key the rostering
-// system matches on (see CurrencyOverview.jsx codeFor). A label with no
-// row here still exports fine, just with that page's own auto-generated
-// fallback code instead of a chosen one.
-function CourseCodesSection() {
+// Codes for the recurrent checks (Emergency Procedures, Line Check, IPC and
+// so on), shown at the bottom of the Competencies tab so every code the
+// Currency Overview CSV export writes is managed in one place. The names are
+// fixed - they're the exact names the rostering system expects - only the
+// code can be changed. Older code rows that match none of them are listed
+// last so nothing is hidden, and can be deleted.
+function RecurrentCheckCodes() {
   const [items, setItems] = useState([]);
-  const [label, setLabel] = useState('');
-  const [code, setCode] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [editingLabel, setEditingLabel] = useState('');
-  const [editingCode, setEditingCode] = useState('');
+  const [drafts, setDrafts] = useState({});
   const [error, setError] = useState(null);
 
   function load() {
-    api.get('/api/course-codes?includeArchived=true').then(setItems).catch((e) => setError(e.message));
+    api.get('/api/course-codes/checks').then(setItems).catch((e) => setError(e.message));
   }
   useEffect(load, []);
 
-  async function addItem(e) {
-    e.preventDefault();
-    if (!label.trim() || !code.trim()) return;
+  async function save(item) {
+    const code = (drafts[item.name] ?? item.code ?? '').trim();
+    if (code === (item.code || '')) return;
     setError(null);
     try {
-      await api.post('/api/course-codes', { label: label.trim(), code: code.trim() });
-      setLabel('');
-      setCode('');
+      await api.put('/api/course-codes/checks', { name: item.name, code });
+      setDrafts((d) => { const { [item.name]: _drop, ...rest } = d; return rest; });
       load();
     } catch (err) { setError(err.message); }
-  }
-
-  async function save(id) {
-    if (!editingLabel.trim() || !editingCode.trim()) return;
-    setError(null);
-    try {
-      await api.patch(`/api/course-codes/${id}`, { label: editingLabel.trim(), code: editingCode.trim() });
-      setEditingId(null);
-      load();
-    } catch (err) { setError(err.message); }
-  }
-
-  async function toggleArchive(item) {
-    setError(null);
-    try { await api.patch(`/api/course-codes/${item.id}`, { archived: !item.archived }); load(); }
-    catch (err) { setError(err.message); }
   }
 
   async function remove(item) {
-    if (!window.confirm(`Permanently delete the course code for "${item.label}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete the code for "${item.name}"? It doesn't match any check the export writes.`)) return;
     setError(null);
     try { await api.delete(`/api/course-codes/${item.id}`); load(); }
     catch (err) { setError(err.message); }
   }
 
   return (
-    <div>
+    <div style={{ marginTop: '2rem' }}>
+      <div style={{ fontWeight: 500, marginBottom: 4 }}>Recurrent check codes</div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Codes for the recurrent checks (Emergency Procedures, IPC, Proficiency Check, Line Check and similar), exported in Currency Overview's "Competency Code" CSV column - the join key on the rostering system's side. Up to 7 characters, and the label must match the check's name exactly. Competency codes (Dangerous Goods, First Aid and so on) are set on the Competencies tab, next to the competency's name. Anything with no code exports with an auto-generated fallback instead.
+        The names and codes the Currency Overview CSV export writes for the recurrent checks, split by aircraft. Names are fixed to what the rostering system expects; edit the code (up to 7 characters) and click away to save. A check with no code exports with an auto-generated placeholder instead.
       </div>
-      <form className="card" onSubmit={addItem}>
-        <div className="grid2">
-          <div className="field"><label>Label</label><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Dangerous Goods" required /></div>
-          <div className="field"><label>Code (max 7 characters)</label><input value={code} onChange={(e) => setCode(e.target.value.slice(0, 7))} maxLength={7} required /></div>
-        </div>
-        <button type="submit" className="primary">Add</button>
-      </form>
       {error && <div className="error-text">{error}</div>}
-
       {items.map((item) => (
-        <div key={item.id} className="card" style={{ cursor: 'default' }}>
-          {editingId === item.id ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input style={{ flex: 1 }} value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} />
-              <input style={{ width: 100 }} value={editingCode} maxLength={7} onChange={(e) => setEditingCode(e.target.value.slice(0, 7))} />
-              <button onClick={() => save(item.id)}>Save</button>
-              <button onClick={() => setEditingId(null)}>Cancel</button>
+        <div key={item.name} className="card" style={{ cursor: 'default' }}>
+          <div className="row" style={{ cursor: 'default' }}>
+            <div style={{ flex: 1, fontWeight: 500 }}>
+              {item.name}
+              {!item.fixed && <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--text-warning)' }}>(not used by the export)</span>}
             </div>
-          ) : (
-            <div className="row" style={{ cursor: 'default' }}>
-              <div style={{ flex: 1, opacity: item.archived ? 0.6 : 1 }}>
-                <span style={{ fontWeight: 500 }}>{item.label}</span>{item.archived ? ' (archived)' : ''}
-                <span style={{ marginLeft: 10, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{item.code}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => { setEditingId(item.id); setEditingLabel(item.label); setEditingCode(item.code); }}>Edit</button>
-                <button onClick={() => toggleArchive(item)}>{item.archived ? 'Unarchive' : 'Archive'}</button>
-                <button className="danger" onClick={() => remove(item)}>Delete</button>
-              </div>
-            </div>
-          )}
+            <input
+              style={{ width: 110, fontFamily: 'monospace' }}
+              maxLength={7}
+              placeholder="no code"
+              value={drafts[item.name] ?? item.code ?? ''}
+              onChange={(e) => setDrafts((d) => ({ ...d, [item.name]: e.target.value.slice(0, 7) }))}
+              onBlur={() => save(item)}
+            />
+            {!item.fixed && <button className="danger" onClick={() => remove(item)}>Delete</button>}
+          </div>
         </div>
       ))}
     </div>
@@ -1726,7 +1694,6 @@ export function SyllabusAdmin() {
       { key: 'competencies', label: 'Competencies' },
       { key: 'certificates', label: 'Certificate Checklist' },
       { key: 'documents', label: 'Documents' },
-      { key: 'courseCodes', label: 'Course Codes' },
       ...(canReviewChanges ? [{ key: 'approvals', label: 'Pending Approvals' }] : []),
       ...(canManageSurveyQuestions ? [{ key: 'survey', label: 'Survey Questions' }] : []),
     ];
@@ -1738,10 +1705,14 @@ export function SyllabusAdmin() {
       {tab === 'syllabus' && <SyllabusItemsSection />}
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
       {tab === 'check-forms' && !isCaManager && <CheckFormItemsSection />}
-      {tab === 'competencies' && !isCaManager && <CompetencyTypesSection />}
+      {tab === 'competencies' && !isCaManager && (
+        <>
+          <CompetencyTypesSection />
+          <RecurrentCheckCodes />
+        </>
+      )}
       {tab === 'certificates' && !isCaManager && <CertificateChecklistSection />}
       {tab === 'documents' && !isCaManager && <DocumentNamesSection />}
-      {tab === 'courseCodes' && !isCaManager && <CourseCodesSection />}
       {tab === 'approvals' && canReviewChanges && <PendingApprovalsSection />}
       {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>

@@ -340,7 +340,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
                 // Carries over an examiner/instructor/check pilot already
                 // assigned to this candidate's upcoming Line Check from the
                 // Planning page, instead of re-picking it here.
-                const planned = m?.currency?.lineCheck?.plannedAssignedTo;
+                const planned = m?.currency?.lineCheckDash8?.plannedAssignedTo || m?.currency?.lineCheckFokker100?.plannedAssignedTo;
                 setNewForm((f) => ({
                   ...f,
                   linkedCrewMemberId: m?.id || '',

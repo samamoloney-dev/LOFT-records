@@ -1016,7 +1016,9 @@ function ExpiryTab({ member, onSaved, medical, onUpdateCompetency, competencyErr
         <ExpiryItemBox crewMemberId={member.id} checkKey="emergencyProcedures" label="Emergency Procedures" info={member.currency.emergencyProcedures} onSaved={onSaved} disabled={archived} />
         {isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="ipc" label="IPC" info={member.currency.ipc} onSaved={onSaved} disabled={archived} />}
         {isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="proficiencyCheck" label="Proficiency Check" info={member.currency.proficiencyCheck} onSaved={onSaved} disabled={archived} />}
-        <ExpiryItemBox crewMemberId={member.id} checkKey="lineCheck" label="Line Check" info={member.currency.lineCheck} onSaved={onSaved} disabled={archived} />
+        {isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="lineCheck" label="Line Check" info={member.currency.lineCheck} onSaved={onSaved} disabled={archived} />}
+        {!isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="lineCheckDash8" label="Cabin Attendant Dash 8 Line Check" info={member.currency.lineCheckDash8} onSaved={onSaved} disabled={archived} />}
+        {!isPilot && <ExpiryItemBox crewMemberId={member.id} checkKey="lineCheckFokker100" label="Cabin Attendant F100 Line Check" info={member.currency.lineCheckFokker100} onSaved={onSaved} disabled={archived} />}
         <ExpiryItemBox crewMemberId={member.id} checkKey="lifeJacket" label="Life Jacket Training" info={member.currency.lifeJacket} onSaved={onSaved} disabled={archived} />
         <ExpiryItemBox crewMemberId={member.id} checkKey="smokeFireTraining" label="3 Yearly Smoke & Fire" info={member.currency.smokeFireTraining} onSaved={onSaved} disabled={archived} />
         <ExpiryItemBox crewMemberId={member.id} checkKey="f100SlideTraining" label="F100 Slide Training" info={member.currency.f100SlideTraining} onSaved={onSaved} disabled={archived} />

@@ -18,6 +18,8 @@ const CHECK_LABELS = {
   ipc: 'IPC',
   proficiencyCheck: 'Proficiency Check',
   lineCheck: 'Line Check',
+  lineCheckDash8: 'Cabin Attendant Dash 8 Line Check',
+  lineCheckFokker100: 'Cabin Attendant F100 Line Check',
   lifeJacket: 'Life Jacket Training',
   smokeFireTraining: 'Smoke & Fire Training',
   f100SlideTraining: 'F100 Slide Training',

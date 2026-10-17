@@ -58,6 +58,7 @@ function isInHand(i) {
 // the crew profile root.
 const CHECK_SUB_TABS = {
   'Emergency Procedures': 'ep', IPC: 'ipc', 'Proficiency Check': 'pc', 'Line Check': 'linecheck',
+  'Cabin Attendant Dash 8 Line Check': 'linecheck', 'Cabin Attendant F100 Line Check': 'linecheck',
 };
 function crewLinkForItem(memberId, label) {
   const subTab = CHECK_SUB_TABS[label];
@@ -284,6 +285,7 @@ router.get('/summary', async (req, res) => {
 
   const CHECK_LABELS = {
     emergencyProcedures: 'Emergency Procedures', ipc: 'IPC', proficiencyCheck: 'Proficiency Check', lineCheck: 'Line Check',
+    lineCheckDash8: 'Cabin Attendant Dash 8 Line Check', lineCheckFokker100: 'Cabin Attendant F100 Line Check',
     lifeJacket: 'Life Jacket Training', smokeFireTraining: 'Smoke & Fire Training', f100SlideTraining: 'F100 Slide Training',
   };
 

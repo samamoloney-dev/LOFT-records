@@ -9,6 +9,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays, addMonths } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/fleetOrder');
+const { exportNamesFor, CA_LINE_CHECK_DASH_8, CA_LINE_CHECK_FOKKER_100 } = require('../lib/exportNames');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -124,36 +125,80 @@ async function lastCompletedCheck(crewMemberId, checkType, variant) {
   return rows[0]?.completed_at || null;
 }
 
-// Cabin Attendant Line Check only - which aircraft type (details.actype,
-// see CaChecks.jsx AIRCRAFT_TYPES) the most recent one was conducted on,
-// alongside its date. Used to enforce strict fleet alternation for a CA
-// qualified on both Dash 8 and Fokker 100 (see urgentLineCheckFleetFor
-// below) - a dual-fleet CA who keeps getting checked on the same fleet
-// would otherwise never trip a warning on the other one, since a plain
-// "last completed, any fleet" date can't tell the two apart.
-async function lastCompletedLineCheckWithFleet(crewMemberId) {
+// Form details of the current completed Emergency Procedures check - which
+// parts were ticked (Theory/Dash8/Fokker 100/Metro) and the aircraft type -
+// so the CSV export can write only the parts actually done.
+async function lastEpDetails(crewMemberId) {
   const { rows } = await pool.query(
-    `SELECT completed_at, details->>'actype' AS actype FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NOT NULL AND archived = false
+    `SELECT details FROM checks
+     WHERE crew_member_id = $1 AND check_type = 'EMERGENCY_PROCEDURES' AND completed_at IS NOT NULL AND archived = false
      ORDER BY completed_at DESC LIMIT 1`,
     [crewMemberId],
   );
-  return rows[0] ? { completedAt: rows[0].completed_at, actype: rows[0].actype } : null;
+  return rows[0]?.details || null;
 }
 
-// Forces strict alternation for a CA qualified on both Dash 8 and Fokker
-// 100, per the operator's explicit rule: whichever fleet WASN'T just
-// checked is due 365 days after that completion, regardless of when either
-// fleet was last individually checked - not two independent per-fleet
-// clocks. A CA qualified on only one of the two (or whose last check has no
-// recorded aircraft type - e.g. predates this field) falls back to no note
-// at all, same as before.
-function lineCheckFleetNote(member, lastLineCheck) {
-  const baseFleets = member.fleets.map(baseFleet);
-  const dualFleet = baseFleets.includes('DASH_8') && baseFleets.includes('FOKKER_100');
-  if (!dualFleet || !lastLineCheck?.actype) return null;
-  const nextFleet = lastLineCheck.actype === 'Fokker 100' ? 'Dash 8' : lastLineCheck.actype === 'Dash 8' ? 'Fokker 100' : null;
-  return nextFleet ? `${nextFleet} due next (alternating fleet)` : null;
+// Every completed Cabin Attendant Line Check, newest first, with the
+// aircraft it was conducted on (details.actype, see CaChecks.jsx
+// AIRCRAFT_TYPES). Archived rows are included: completing a new check
+// archives every earlier one regardless of aircraft (see checks.js
+// supersede), so the other aircraft's last check only survives there.
+async function caLineCheckHistory(crewMemberId) {
+  const { rows } = await pool.query(
+    `SELECT completed_at, archived, details->>'actype' AS actype FROM checks
+     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC`,
+    [crewMemberId],
+  );
+  return rows;
+}
+
+// Aircraft of any in-progress (issued, not yet completed) Cabin Attendant
+// Line Check forms - '' where none was chosen yet.
+async function inProgressCaLineCheckAircraft(crewMemberId) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(details->>'actype', '') AS actype FROM checks
+     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NULL AND archived = false`,
+    [crewMemberId],
+  );
+  return rows.map((r) => r.actype);
+}
+
+const CA_AIRCRAFT = { DASH_8: 'Dash 8', FOKKER_100: 'Fokker 100' };
+
+// Cabin Attendant Line Check, tracked per aircraft - per the operator's
+// explicit rule: every cabin attendant needs a line check every 365 days; one
+// on both fleets has ONE line check a year, alternating aircraft. A check on
+// one aircraft is next due on that aircraft 24 months later, and resets the
+// other aircraft to 12 months from the same check (check on Fokker 100
+// 17/10/2026 -> Fokker 100 due 17/10/2028, Dash 8 due 17/10/2027). A single
+// fleet cabin attendant, or one whose last check has no recorded aircraft
+// (or only a setup-phase seed date), keeps the plain 365 days.
+function caLineCheckCurrency(member, history, planned, trainingGate, inProgressAircraft) {
+  const base = [...new Set(member.fleets.map(baseFleet))];
+  const hasFokker = base.includes('FOKKER_100');
+  const hasDash = base.includes('DASH_8') || !hasFokker;
+  const latest = history.find((r) => !r.archived) || null;
+  const latestDate = latestOf(latest?.completed_at, member.seedLineCheckDate);
+  const checkedFleet = latest && new Date(latest.completed_at) >= new Date(latestDate)
+    ? Object.keys(CA_AIRCRAFT).find((f) => CA_AIRCRAFT[f] === latest.actype)
+    : undefined;
+
+  const result = {};
+  for (const [fleet, key, present] of [['DASH_8', 'lineCheckDash8', hasDash], ['FOKKER_100', 'lineCheckFokker100', hasFokker]]) {
+    if (!present) continue;
+    let due;
+    if (hasDash && hasFokker && checkedFleet) {
+      due = addMonths(new Date(latest.completed_at), fleet === checkedFleet ? 24 : 12);
+    } else {
+      due = nextDueRolling(latestDate);
+    }
+    const lastOnThisAircraft = history.find((r) => r.actype === CA_AIRCRAFT[fleet]);
+    const completed = hasDash && hasFokker && checkedFleet ? lastOnThisAircraft?.completed_at : latestDate;
+    const issued = inProgressAircraft.some((a) => a === '' || a === CA_AIRCRAFT[fleet] || !(hasDash && hasFokker));
+    result[key] = dueInfo(due, completed || null, planned[key], trainingGate, issued);
+  }
+  return result;
 }
 
 // A planned check's own row (crew_planned_checks) is deleted the moment
@@ -342,7 +387,9 @@ function trainingGateReason(groundSchoolIncomplete, inLoft, extra) {
 // above, for the same compliance-record reason (an exported competency
 // list should show why something's expired and when it's planned to be
 // done, for every expiring item, not just these four).
-const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck', 'lifeJacket', 'smokeFireTraining', 'f100SlideTraining'];
+// lineCheckDash8/lineCheckFokker100 are the cabin attendant equivalents of
+// lineCheck (pilots only now) - one per aircraft, see caLineCheckCurrency.
+const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck', 'lineCheckDash8', 'lineCheckFokker100', 'lifeJacket', 'smokeFireTraining', 'f100SlideTraining'];
 
 // Maps a planned-check key to what the real check record needs once the
 // "Create check form" button (see the create-check route below) turns it
@@ -354,6 +401,8 @@ const CHECK_KEY_TO_CHECK_TYPE = {
   ipc: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'IPC_PC' }),
   proficiencyCheck: () => ({ checkType: 'RECURRENT_SIMULATOR', variant: 'PC' }),
   lineCheck: (crewType) => ({ checkType: crewType === 'CABIN_ATTENDANT' ? 'CABIN_ATTENDANT_LINE_CHECK' : 'PILOT_LINE_CHECK' }),
+  lineCheckDash8: () => ({ checkType: 'CABIN_ATTENDANT_LINE_CHECK', fleet: 'CA_DASH_8' }),
+  lineCheckFokker100: () => ({ checkType: 'CABIN_ATTENDANT_LINE_CHECK', fleet: 'CA_FOKKER_100' }),
   lifeJacket: () => ({ checkType: 'LIFE_JACKET' }),
   smokeFireTraining: () => ({ checkType: 'SMOKE_FIRE_TRAINING' }),
   f100SlideTraining: () => ({ checkType: 'F100_SLIDE_TRAINING' }),
@@ -426,6 +475,8 @@ const CURRENCY_LABELS = {
   ipc: 'IPC',
   proficiencyCheck: 'Proficiency Check',
   lineCheck: 'Line Check',
+  lineCheckDash8: CA_LINE_CHECK_DASH_8,
+  lineCheckFokker100: CA_LINE_CHECK_FOKKER_100,
   lifeJacket: 'Life Jacket Training',
   smokeFireTraining: 'Smoke & Fire Training',
   f100SlideTraining: 'F100 Slide Training',
@@ -536,10 +587,9 @@ async function itemsFor(member, currency, inLoft) {
       // of which can exist without this being true yet. Competencies have
       // no equivalent concept, so this is only ever set here.
       rostered: info.rostered,
-      // e.g. Line Check's dual-fleet alternation note (see
-      // lineCheckFleetNote) - surfaced the same way DueBadge.jsx already
-      // shows it on the crew profile itself, so Currency Overview doesn't
-      // silently drop it.
+      // e.g. Proficiency Check's "no PC completed yet" estimate note -
+      // surfaced the same way DueBadge.jsx already shows it on the crew
+      // profile itself, so Currency Overview doesn't silently drop it.
       note: info.note,
     }));
 
@@ -753,22 +803,23 @@ async function withCurrency(member) {
       ...safetyEquipment,
     };
   } else {
-    const [epChk, lineCheckChk, epIssued, lineCheckIssued, groundSchoolIncomplete, lastLineCheckWithFleet] = await Promise.all([
+    const [epChk, caLineChecks, epIssued, inProgressAircraft, groundSchoolIncomplete] = await Promise.all([
       lastCompletedCheck(member.id, 'EMERGENCY_PROCEDURES'),
-      lastCompletedCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
+      caLineCheckHistory(member.id),
       hasInProgressCheck(member.id, 'EMERGENCY_PROCEDURES'),
-      hasInProgressCheck(member.id, 'CABIN_ATTENDANT_LINE_CHECK'),
+      inProgressCaLineCheckAircraft(member.id),
       hasIncompleteGroundSchool(effectiveTraineeId),
-      lastCompletedLineCheckWithFleet(member.id),
     ]);
     const ep = latestOf(epChk, member.seedEpDate);
-    const lineCheck = latestOf(lineCheckChk, member.seedLineCheckDate);
     currency = {
       emergencyProcedures: dueInfo(nextDueRolling(ep), ep, planned.emergencyProcedures, groundSchoolIncomplete ? 'ground_school' : null, epIssued),
-      lineCheck: dueInfo(nextDueRolling(lineCheck), lineCheck, planned.lineCheck, trainingGateReason(groundSchoolIncomplete, inLoft), lineCheckIssued, lineCheckFleetNote(member, lastLineCheckWithFleet)),
+      ...caLineCheckCurrency(member, caLineChecks, planned, trainingGateReason(groundSchoolIncomplete, inLoft), inProgressAircraft),
       ...safetyEquipment,
     };
   }
+
+  const allItems = await allItemsFor(member, currency, inLoft);
+  const epDetails = await lastEpDetails(member.id);
 
   return {
     ...member,
@@ -785,7 +836,19 @@ async function withCurrency(member) {
     loftTraineeIds,
     currency,
     urgentItems: await urgentItemsFor(member, currency, inLoft),
-    allItems: await allItemsFor(member, currency, inLoft),
+    allItems,
+    // What the Currency Overview CSV export writes for this person - allItems
+    // with each recurrent check under the exact name the rostering system
+    // expects (split by aircraft, Emergency Procedures only as the parts
+    // ticked on the form) - see lib/exportNames.js.
+    exportItems: allItems.flatMap((item) => exportNamesFor(member, item.label, epDetails).map((name) => ({
+      name,
+      completedDate: item.completedDate,
+      dueDate: item.dueDate,
+      status: item.status,
+      plannedDate: item.plannedDate,
+      overdueReason: item.overdueReason,
+    }))),
     // Drives the Expiration tab's own "⚠" warning icon (CrewDetail.jsx
     // topTabs) - see urgentCoreItemsFor above.
     urgentCoreItems: await urgentCoreItemsFor(member, currency, inLoft),
@@ -1268,8 +1331,10 @@ router.post('/:id/planned-checks/:checkKey/create-check', blockCaManager, async 
     return res.status(400).json({ error: 'Confirm this check is rostered before creating the check form' });
   }
 
-  const { checkType, variant } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);
-  const singleFleet = member.fleets?.length === 1 ? member.fleets[0] : undefined;
+  const { checkType, variant, fleet: keyFleet } = CHECK_KEY_TO_CHECK_TYPE[req.params.checkKey](member.type);
+  // A per-aircraft key (cabin attendant Dash 8 / Fokker 100 line check) fixes
+  // the aircraft; otherwise it's only known for a single-fleet crew member.
+  const singleFleet = keyFleet || (member.fleets?.length === 1 ? member.fleets[0] : undefined);
   // planned_date comes back from Postgres as a Date object - normalize to a
   // plain YYYY-MM-DD before it lands in details.date, which check forms
   // display as-is with no further formatting.

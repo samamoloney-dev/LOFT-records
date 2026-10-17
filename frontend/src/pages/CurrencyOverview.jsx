@@ -117,23 +117,39 @@ function StatusPill({ status }) {
   );
 }
 
-// Fixed 7-letter join key per competency, for handing dates off to the new
-// rostering system (which tracks the same competencies by a short code
-// rather than this app's full label) - see Export CSV below. Anything not
-// listed here (an admin-added ad-hoc competency, or a future catalog type
-// added after the label->code map was last edited) falls through to
-// codeFor's generated fallback instead of coming through blank. The map
-// itself is admin-editable now (see Syllabus tab's Course Codes section /
-// GET /api/course-codes) rather than hardcoded here.
+// Join key per competency/check for handing dates off to the rostering
+// system (see Export CSV below): a competency's own course code, or a
+// recurrent check's code (both set on Edit Forms > Competencies, served
+// together by GET /api/course-codes/map).
 
-// Deterministic fallback for any label with no row in the admin-managed
-// course_codes list - letters only, uppercased, truncated/padded to
-// exactly 7 characters, so every exported row always has some code rather
-// than a blank one that'd silently fail to match on the rostering side.
+// Deterministic fallback for anything with no code set yet - letters only,
+// uppercased, truncated/padded to exactly 7 characters, so every exported
+// row always has some code. These are NOT real codes: the Competencies tab
+// flags anything still without one.
 function codeFor(label, codeMap) {
   if (codeMap?.[label]) return codeMap[label];
   const letters = String(label || '').toUpperCase().replace(/[^A-Z]/g, '');
   return (letters + 'XXXXXXX').slice(0, 7);
+}
+
+// The rows the CSV export writes (rather than the on-screen rows below):
+// each person's exportItems from the server, which carry the exact names the
+// rostering system expects - recurrent checks split by aircraft, Emergency
+// Procedures only as the parts ticked on the form.
+function exportRowsFor(member, codeMap) {
+  return (member.exportItems || []).map((item) => ({
+    name: member.name,
+    arn: member.arn,
+    type: member.type,
+    fleet: member.fleets.map(formatFleet).join(', '),
+    item: item.name,
+    itemCode: codeFor(item.name, codeMap),
+    completedDate: item.completedDate,
+    dueDate: item.dueDate,
+    status: item.status,
+    plannedDate: item.plannedDate,
+    overdueReason: item.overdueReason,
+  }));
 }
 
 // Flattens a crew member's allItems (see backend/src/routes/crew.js
@@ -142,7 +158,7 @@ function codeFor(label, codeMap) {
 // picture is visible here rather than just the problems. A planned date
 // doesn't change the status (it's still due) - it's just shown alongside
 // it as a reminder it's in hand.
-function allRows(member, codeMap) {
+function allRows(member) {
   return member.allItems.map((item) => ({
     memberId: member.id,
     name: member.name,
@@ -151,9 +167,6 @@ function allRows(member, codeMap) {
     fleets: member.fleets,
     fleet: member.fleets.map(formatFleet).join(', '),
     item: item.label,
-    // Pilots and cabin attendants share the label "Line Check" but have
-    // separate codes (LINECHK / CALNCHK).
-    itemCode: codeFor(member.type === 'CABIN_ATTENDANT' && item.label === 'Line Check' ? 'Cabin Attendant Line Check' : item.label, codeMap),
     dueDate: item.dueDate,
     completedDate: item.completedDate,
     plannedDate: item.plannedDate,
@@ -191,6 +204,7 @@ function allRows(member, codeMap) {
 export function CurrencyOverview() {
   const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
+  const [exportRows, setExportRows] = useState([]);
   const [error, setError] = useState(null);
   // Lets the Home Dashboard's summary cards (?filter=overdue etc.) and its
   // Fleet Currency Snapshot (?fleet=DASH_8 etc.) land here pre-filtered -
@@ -220,7 +234,8 @@ export function CurrencyOverview() {
       api.get('/api/course-codes/map'),
     ])
       .then(([pilots, cabinAttendants, codeMap]) => {
-        const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m, codeMap));
+        setExportRows([...pilots, ...cabinAttendants].flatMap((m) => exportRowsFor(m, codeMap)));
+        const flattened = [...pilots, ...cabinAttendants].flatMap((m) => allRows(m));
         flattened.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setRows(flattened);
       })
@@ -307,7 +322,7 @@ export function CurrencyOverview() {
     // for every row that has one (recurrent checks and, now, competencies -
     // see crew.js's competencyDatesSchema/adHocCompetencySchema reason field).
     const headers = ['Crew Member', 'ARN', 'Type', 'Fleet', 'Competency', 'Competency Code', 'Completed Date', 'Due Date', 'Status', 'Planned Date', 'Reason'];
-    const csvRows = rows.map((r) => [
+    const csvRows = exportRows.map((r) => [
       r.name, r.arn || '', formatTraineeRole(r.type), r.fleet, r.item, r.itemCode,
       isoDate(r.completedDate), isoDate(r.dueDate), STATUS_TEXT[r.status] || r.status,
       isoDate(r.plannedDate), r.overdueReason || '',

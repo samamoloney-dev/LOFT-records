@@ -640,7 +640,12 @@ export function buildCrewFileSummary(member, competencies) {
     ['Emergency Procedures', currencyLabel(member.currency?.emergencyProcedures)],
     ...(isPilot ? [['IPC', currencyLabel(member.currency?.ipc)]] : []),
     ...(isPilot ? [['Proficiency Check', currencyLabel(member.currency?.proficiencyCheck)]] : []),
-    ['Line Check', currencyLabel(member.currency?.lineCheck)],
+    ...(isPilot
+      ? [['Line Check', currencyLabel(member.currency?.lineCheck)]]
+      : [
+        ['Cabin Attendant Dash 8 Line Check', currencyLabel(member.currency?.lineCheckDash8)],
+        ...(member.currency?.lineCheckFokker100 ? [['Cabin Attendant F100 Line Check', currencyLabel(member.currency.lineCheckFokker100)]] : []),
+      ]),
   ];
   const competencyRows = competencies.map((c) => [c.name, competencyLabel(c)]);
   return `

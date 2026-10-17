@@ -162,7 +162,7 @@ function CrewInfoEditor({ member, onSaved }) {
         <div className="field">
           <label>Initial Check to Line date</label>
           <input type="date" value={form.lineCheckAnchorDate} onChange={(e) => setForm({ ...form, lineCheckAnchorDate: e.target.value })} />
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check will always be due 365 days on from this date, then every 365 days after.</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Their Line Check is due 365 days on from this date, then each year on that anniversary - and never more than 365 days after their last completed Line Check.</div>
         </div>
       )}
       {!isPilot && (

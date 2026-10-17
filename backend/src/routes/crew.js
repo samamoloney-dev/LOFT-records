@@ -11,6 +11,7 @@ const { createCheckRecord } = require('./checks');
 const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { exportNamesFor, CA_LINE_CHECK_DASH_8, CA_LINE_CHECK_FOKKER_100 } = require('../lib/exportNames');
 const { isPlausibleDate } = require('../lib/dates');
+const { batchLoader } = require('../lib/batch');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -110,33 +111,47 @@ function assertNotArchived(member, res) {
 // silently win here and corrupt that crew member's due date - reported
 // live for Garry Underwood (pilot), but this function is shared by both
 // pilot and cabin attendant currency, so it was never pilot-only.
-async function lastCompletedCheck(crewMemberId, checkType, variant) {
-  const params = [crewMemberId, checkType];
-  let variantClause = '';
-  if (variant) {
-    params.push(variant);
-    variantClause = `AND details->>'variant' = $${params.length}`;
+//
+// Every per-person lookup below goes through a batch loader (lib/batch.js):
+// the roster views ask the same question for every crew member at once, so
+// each lookup runs as one query for everyone rather than one per person.
+const lastCompletedLoaders = new Map();
+function lastCompletedCheck(crewMemberId, checkType, variant) {
+  const cacheKey = `${checkType}|${variant || ''}`;
+  if (!lastCompletedLoaders.has(cacheKey)) {
+    lastCompletedLoaders.set(cacheKey, batchLoader(async (ids) => {
+      const params = [ids, checkType];
+      let variantClause = '';
+      if (variant) {
+        params.push(variant);
+        variantClause = `AND details->>'variant' = $${params.length}`;
+      }
+      const { rows } = await pool.query(
+        `SELECT DISTINCT ON (crew_member_id) crew_member_id, completed_at FROM checks
+         WHERE crew_member_id = ANY($1::uuid[]) AND check_type = $2 ${variantClause} AND completed_at IS NOT NULL AND archived = false
+         ORDER BY crew_member_id, completed_at DESC`,
+        params,
+      );
+      return new Map(rows.map((r) => [r.crew_member_id, r.completed_at]));
+    }));
   }
-  const { rows } = await pool.query(
-    `SELECT completed_at FROM checks
-     WHERE crew_member_id = $1 AND check_type = $2 ${variantClause} AND completed_at IS NOT NULL AND archived = false
-     ORDER BY completed_at DESC LIMIT 1`,
-    params,
-  );
-  return rows[0]?.completed_at || null;
+  return lastCompletedLoaders.get(cacheKey)(crewMemberId).then((completedAt) => completedAt || null);
 }
 
 // Form details of the current completed Emergency Procedures check - which
 // parts were ticked (Theory/Dash8/Fokker 100/Metro) and the aircraft type -
 // so the CSV export can write only the parts actually done.
-async function lastEpDetails(crewMemberId) {
+const epDetailsLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    `SELECT details FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'EMERGENCY_PROCEDURES' AND completed_at IS NOT NULL AND archived = false
-     ORDER BY completed_at DESC LIMIT 1`,
-    [crewMemberId],
+    `SELECT DISTINCT ON (crew_member_id) crew_member_id, details FROM checks
+     WHERE crew_member_id = ANY($1::uuid[]) AND check_type = 'EMERGENCY_PROCEDURES' AND completed_at IS NOT NULL AND archived = false
+     ORDER BY crew_member_id, completed_at DESC`,
+    [ids],
   );
-  return rows[0]?.details || null;
+  return new Map(rows.map((r) => [r.crew_member_id, r.details]));
+});
+function lastEpDetails(crewMemberId) {
+  return epDetailsLoader(crewMemberId).then((details) => details || null);
 }
 
 // Every completed Cabin Attendant Line Check, newest first, with the
@@ -144,25 +159,41 @@ async function lastEpDetails(crewMemberId) {
 // AIRCRAFT_TYPES). Archived rows are included: completing a new check
 // archives every earlier one regardless of aircraft (see checks.js
 // supersede), so the other aircraft's last check only survives there.
-async function caLineCheckHistory(crewMemberId) {
+const caHistoryLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    `SELECT completed_at, archived, details->>'actype' AS actype FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NOT NULL
+    `SELECT crew_member_id, completed_at, archived, details->>'actype' AS actype FROM checks
+     WHERE crew_member_id = ANY($1::uuid[]) AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NOT NULL
      ORDER BY completed_at DESC`,
-    [crewMemberId],
+    [ids],
   );
-  return rows;
+  return groupBy(rows, 'crew_member_id');
+});
+function caLineCheckHistory(crewMemberId) {
+  return caHistoryLoader(crewMemberId).then((history) => history || []);
 }
 
 // Aircraft of any in-progress (issued, not yet completed) Cabin Attendant
 // Line Check forms - '' where none was chosen yet.
-async function inProgressCaLineCheckAircraft(crewMemberId) {
+const caInProgressLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    `SELECT COALESCE(details->>'actype', '') AS actype FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NULL AND archived = false`,
-    [crewMemberId],
+    `SELECT crew_member_id, COALESCE(details->>'actype', '') AS actype FROM checks
+     WHERE crew_member_id = ANY($1::uuid[]) AND check_type = 'CABIN_ATTENDANT_LINE_CHECK' AND completed_at IS NULL AND archived = false`,
+    [ids],
   );
-  return rows.map((r) => r.actype);
+  return groupBy(rows, 'crew_member_id');
+});
+function inProgressCaLineCheckAircraft(crewMemberId) {
+  return caInProgressLoader(crewMemberId).then((rows) => (rows || []).map((r) => r.actype));
+}
+
+// Groups rows into a Map of key -> array, keeping the query's row order.
+function groupBy(rows, key) {
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r[key])) map.set(r[key], []);
+    map.get(r[key]).push(r);
+  }
+  return map;
 }
 
 const CA_AIRCRAFT = { DASH_8: 'Dash 8', FOKKER_100: 'Fokker 100' };
@@ -209,19 +240,26 @@ function caLineCheckCurrency(member, history, planned, trainingGate, inProgressA
 // tells dueInfo whether an active (non-archived), not-yet-completed check
 // of this type already exists, so the UI can say "Check Form Issued"
 // instead of the planned note just vanishing.
-async function hasInProgressCheck(crewMemberId, checkType, variant) {
-  const params = [crewMemberId, checkType];
-  let variantClause = '';
-  if (variant) {
-    params.push(variant);
-    variantClause = `AND details->>'variant' = $${params.length}`;
+const inProgressLoaders = new Map();
+function hasInProgressCheck(crewMemberId, checkType, variant) {
+  const cacheKey = `${checkType}|${variant || ''}`;
+  if (!inProgressLoaders.has(cacheKey)) {
+    inProgressLoaders.set(cacheKey, batchLoader(async (ids) => {
+      const params = [ids, checkType];
+      let variantClause = '';
+      if (variant) {
+        params.push(variant);
+        variantClause = `AND details->>'variant' = $${params.length}`;
+      }
+      const { rows } = await pool.query(
+        `SELECT DISTINCT crew_member_id FROM checks
+         WHERE crew_member_id = ANY($1::uuid[]) AND check_type = $2 ${variantClause} AND completed_at IS NULL AND archived = false`,
+        params,
+      );
+      return new Map(rows.map((r) => [r.crew_member_id, true]));
+    }));
   }
-  const { rows } = await pool.query(
-    `SELECT 1 FROM checks
-     WHERE crew_member_id = $1 AND check_type = $2 ${variantClause} AND completed_at IS NULL AND archived = false LIMIT 1`,
-    params,
-  );
-  return rows.length > 0;
+  return inProgressLoaders.get(cacheKey)(crewMemberId).then((found) => !!found);
 }
 
 // pilotLineCheckDue below treats lineCheckAnchorDate as "check zero" (the
@@ -250,16 +288,35 @@ async function hasInProgressCheck(crewMemberId, checkType, variant) {
 // anything within 3 days of the anchor, otherwise it counted as the first
 // yearly check and pushed the next due date out to 24 months for every new
 // pilot who came through LOFT.
-async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
+// A pilot's next Line Check: the fixed anniversary of their Check to Line
+// (pilotLineCheckDue) - but never later than 365 days after the Line Check they
+// last completed, per the operator. A check done well ahead of its
+// anniversary used to leave the next one well over a year away (560 days in
+// one case); now the anniversary still applies unless that would stretch past
+// 365 days. With no anniversary on file it's simply 365 days from the last.
+function pilotLineCheckNextDue(anchorDate, completedCount, lastCompleted) {
+  const anniversary = pilotLineCheckDue(anchorDate, completedCount);
+  const rolling = nextDueRolling(lastCompleted);
+  if (anniversary && rolling) return anniversary < rolling ? anniversary : rolling;
+  return anniversary || rolling;
+}
+
+const pilotLineCheckDatesLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    `SELECT completed_at FROM checks
-     WHERE crew_member_id = $1 AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL
-       AND ($2::timestamptz IS NULL OR completed_at > $2::timestamptz + interval '3 days')
+    `SELECT crew_member_id, completed_at FROM checks
+     WHERE crew_member_id = ANY($1::uuid[]) AND check_type = 'PILOT_LINE_CHECK' AND completed_at IS NOT NULL
      ORDER BY completed_at ASC`,
-    [crewMemberId, anchorDate || null],
+    [ids],
   );
-  if (!anchorDate) return rows.length;
+  return groupBy(rows, 'crew_member_id');
+});
+
+async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
+  const allRows = (await pilotLineCheckDatesLoader(crewMemberId)) || [];
+  if (!anchorDate) return allRows.length;
   const anchor = new Date(anchorDate);
+  const afterCheckToLine = new Date(anchor.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const rows = allRows.filter((r) => new Date(r.completed_at) > afterCheckToLine);
   let met = 0;
   for (const r of rows) {
     const completed = new Date(r.completed_at);
@@ -276,18 +333,20 @@ async function completedPilotLineCheckCount(crewMemberId, anchorDate) {
 // overdue on EP/IPC/PC/Line Check just because they've never done one;
 // they haven't been trained for it yet. NA'd items (see the Ground
 // School First Aid toggle) don't count as outstanding.
-async function hasIncompleteGroundSchool(traineeId) {
-  if (!traineeId) return false;
+const incompleteGroundSchoolLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    `SELECT gsi.id FROM trainees t
+    `SELECT DISTINCT t.id FROM trainees t
      JOIN ground_school_items gsi ON gsi.fleet = t.fleet AND gsi.syllabus_id IS NOT DISTINCT FROM t.syllabus_id
      LEFT JOIN ground_school_progress gsp ON gsp.ground_school_item_id = gsi.id AND gsp.trainee_id = t.id
-     WHERE t.id = $1 AND gsi.required = true
-       AND gsp.completed_at IS NULL AND COALESCE((gsp.details->>'na')::boolean, false) = false
-     LIMIT 1`,
-    [traineeId],
+     WHERE t.id = ANY($1::uuid[]) AND gsi.required = true
+       AND gsp.completed_at IS NULL AND COALESCE((gsp.details->>'na')::boolean, false) = false`,
+    [ids],
   );
-  return rows.length > 0;
+  return new Map(rows.map((r) => [r.id, true]));
+});
+async function hasIncompleteGroundSchool(traineeId) {
+  if (!traineeId) return false;
+  return !!(await incompleteGroundSchoolLoader(traineeId));
 }
 
 // Whether this crew member still has an active (non-archived) linked
@@ -297,10 +356,13 @@ async function hasIncompleteGroundSchool(traineeId) {
 // in LOFT, regardless of where ground school itself is up to (that only
 // covers the earlier phase - see hasIncompleteGroundSchool above), so
 // those shouldn't show as overdue just because they've never been done.
+const traineeArchivedLoader = batchLoader(async (ids) => {
+  const { rows } = await pool.query('SELECT id, archived FROM trainees WHERE id = ANY($1::uuid[])', [ids]);
+  return new Map(rows.map((r) => [r.id, r.archived]));
+});
 async function isInLoft(traineeId) {
   if (!traineeId) return false;
-  const { rows } = await pool.query('SELECT archived FROM trainees WHERE id = $1', [traineeId]);
-  return rows.length > 0 && !rows[0].archived;
+  return (await traineeArchivedLoader(traineeId)) === false;
 }
 
 // An existing crew member sent back to LOFT for an upgrade or fleet
@@ -314,12 +376,17 @@ async function isInLoft(traineeId) {
 // Check reading overdue while they're mid-Captain-upgrade in LOFT, since
 // that Line Check is about to be superseded by their new Check to Line
 // anyway. Reported live for Mathew Joubert (FO-to-Captain upgrade).
-async function activeUpgradeTraineeId(crewMemberId) {
+const activeUpgradeLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    'SELECT id FROM trainees WHERE source_crew_member_id = $1 AND archived = false ORDER BY created_at DESC LIMIT 1',
-    [crewMemberId],
+    `SELECT DISTINCT ON (source_crew_member_id) source_crew_member_id, id FROM trainees
+     WHERE source_crew_member_id = ANY($1::uuid[]) AND archived = false
+     ORDER BY source_crew_member_id, created_at DESC`,
+    [ids],
   );
-  return rows[0]?.id || null;
+  return new Map(rows.map((r) => [r.source_crew_member_id, r.id]));
+});
+function activeUpgradeTraineeId(crewMemberId) {
+  return activeUpgradeLoader(crewMemberId).then((id) => id || null);
 }
 
 // Same reverse link as activeUpgradeTraineeId, but not restricted to a
@@ -336,11 +403,15 @@ async function activeUpgradeTraineeId(crewMemberId) {
 // recent first); printCrewFile.js's Print file feature is the consumer -
 // it needs the whole career's worth of LOFT paperwork, not just the
 // latest cycle.
-async function allLinkedTraineeIds(crewMemberId, directTraineeId) {
+const linkedTraineesLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    'SELECT id FROM trainees WHERE source_crew_member_id = $1 ORDER BY created_at DESC',
-    [crewMemberId],
+    'SELECT id, source_crew_member_id FROM trainees WHERE source_crew_member_id = ANY($1::uuid[]) ORDER BY created_at DESC',
+    [ids],
   );
+  return groupBy(rows, 'source_crew_member_id');
+});
+async function allLinkedTraineeIds(crewMemberId, directTraineeId) {
+  const rows = (await linkedTraineesLoader(crewMemberId)) || [];
   const ids = rows.map((r) => r.id);
   if (directTraineeId && !ids.includes(directTraineeId)) ids.unshift(directTraineeId);
   return ids;
@@ -452,11 +523,15 @@ function assessorDetailsFor(checkType, assignedToId, assignee) {
   return { assessorId: assignedToId, assessor: assignee.assignedToName, assessorArn: assignee.assignedToArn };
 }
 
-async function plannedDatesFor(crewMemberId) {
+const plannedDatesLoader = batchLoader(async (ids) => {
   const { rows } = await pool.query(
-    'SELECT check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason, rostered FROM crew_planned_checks WHERE crew_member_id = $1',
-    [crewMemberId],
+    'SELECT crew_member_id, check_key, planned_date, assigned_to, assigned_to_name, assigned_to_arn, assigned_to_role, reason, rostered FROM crew_planned_checks WHERE crew_member_id = ANY($1::uuid[])',
+    [ids],
   );
+  return groupBy(rows, 'crew_member_id');
+});
+async function plannedDatesFor(crewMemberId) {
+  const rows = (await plannedDatesLoader(crewMemberId)) || [];
   return Object.fromEntries(rows.map((r) => [r.check_key, {
     plannedDate: r.planned_date,
     assignedTo: r.assigned_to,
@@ -633,16 +708,17 @@ async function itemsFor(member, currency, inLoft) {
   return { fromCurrency, fromCompetencies };
 }
 
-async function urgentItemsFor(member, currency, inLoft) {
-  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+// The five list builders below all derive from one itemsFor result (computed
+// once per person in withCurrency) rather than each re-running itemsFor's
+// competency query.
+function urgentItemsFor({ fromCurrency, fromCompetencies }) {
   return [...fromCurrency, ...fromCompetencies].filter((i) => isUrgent(i.status));
 }
 
 // Every recurrent check and competency, whatever its status - Currency
 // Overview shows the whole roster's picture (not just problems) so
 // "everything's fine" is as visible as "this is overdue".
-async function allItemsFor(member, currency, inLoft) {
-  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+function allItemsFor({ fromCurrency, fromCompetencies }) {
   return [...fromCurrency, ...fromCompetencies];
 }
 
@@ -650,8 +726,7 @@ async function allItemsFor(member, currency, inLoft) {
 // stays part of the Expiration tab's top block, not the Competencies list -
 // see CrewDetail.jsx) - drives the Competencies tab's own "⚠" warning,
 // independent of the Expiration tab's, now that they live on separate tabs.
-async function urgentCompetencyItemsFor(member, currency, inLoft) {
-  const { fromCompetencies } = await itemsFor(member, currency, inLoft);
+function urgentCompetencyItemsFor({ fromCompetencies }) {
   return fromCompetencies.filter((i) => i.label !== 'Medical' && isUrgent(i.status));
 }
 
@@ -659,8 +734,7 @@ async function urgentCompetencyItemsFor(member, currency, inLoft) {
 // the Expiration tab's top block rather than the Competencies list - see
 // CrewDetail.jsx) - drives the Expiration tab's own "⚠" warning,
 // independent of the Competencies tab's above.
-async function urgentCoreItemsFor(member, currency, inLoft) {
-  const { fromCurrency, fromCompetencies } = await itemsFor(member, currency, inLoft);
+function urgentCoreItemsFor({ fromCurrency, fromCompetencies }) {
   const medical = fromCompetencies.filter((i) => i.label === 'Medical');
   const core = fromCurrency.filter((i) => !SAFETY_EQUIPMENT_LABELS.includes(i.label));
   return [...core, ...medical].filter((i) => isUrgent(i.status));
@@ -670,8 +744,7 @@ async function urgentCoreItemsFor(member, currency, inLoft) {
 // on the crew profile's own tab (see CrewDetail.jsx) - drives that tab's
 // own "⚠" warning icon, independent of the Expiration tab's above (which
 // deliberately excludes these three).
-async function urgentSafetyEquipmentItemsFor(member, currency, inLoft) {
-  const { fromCurrency } = await itemsFor(member, currency, inLoft);
+function urgentSafetyEquipmentItemsFor({ fromCurrency }) {
   const labels = [CURRENCY_LABELS.emergencyProcedures, ...SAFETY_EQUIPMENT_LABELS];
   return fromCurrency.filter((i) => labels.includes(i.label) && isUrgent(i.status));
 }
@@ -808,7 +881,7 @@ async function withCurrency(member) {
       // to a rolling 365 days from the last completion instead (same rule
       // EP/IPC/PC already use), rather than leaving them stuck reading
       // "never completed" forever despite a real completed check on file.
-      lineCheck: dueInfo(pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, loftGateReason, lineCheckIssued),
+      lineCheck: dueInfo(pilotLineCheckNextDue(member.lineCheckAnchorDate, lineCheckCount, lastLineCheckChk), lastLineCheckChk || member.lineCheckAnchorDate, planned.lineCheck, loftGateReason, lineCheckIssued),
       ...safetyEquipment,
     };
   } else {
@@ -827,7 +900,8 @@ async function withCurrency(member) {
     };
   }
 
-  const allItems = await allItemsFor(member, currency, inLoft);
+  const items = await itemsFor(member, currency, inLoft);
+  const allItems = allItemsFor(items);
   const epDetails = await lastEpDetails(member.id);
 
   return {
@@ -844,7 +918,7 @@ async function withCurrency(member) {
     // through LOFT at all.
     loftTraineeIds,
     currency,
-    urgentItems: await urgentItemsFor(member, currency, inLoft),
+    urgentItems: urgentItemsFor(items),
     allItems,
     // What the Currency Overview CSV export writes for this person - allItems
     // with each recurrent check under the exact name the rostering system
@@ -860,14 +934,14 @@ async function withCurrency(member) {
     }))),
     // Drives the Expiration tab's own "⚠" warning icon (CrewDetail.jsx
     // topTabs) - see urgentCoreItemsFor above.
-    urgentCoreItems: await urgentCoreItemsFor(member, currency, inLoft),
+    urgentCoreItems: urgentCoreItemsFor(items),
     // Drives the Competencies tab's own "⚠" warning icon (CrewDetail.jsx
     // topTabs) - see urgentCompetencyItemsFor above.
-    urgentCompetencyItems: await urgentCompetencyItemsFor(member, currency, inLoft),
+    urgentCompetencyItems: urgentCompetencyItemsFor(items),
     // Drives the Emergency Procedures & Safety Equipment tab's own "⚠"
     // warning icon (CrewDetail.jsx topTabs) - see
     // urgentSafetyEquipmentItemsFor above.
-    urgentSafetyEquipmentItems: await urgentSafetyEquipmentItemsFor(member, currency, inLoft),
+    urgentSafetyEquipmentItems: urgentSafetyEquipmentItemsFor(items),
     ipcPcRaw,
   };
 }
@@ -1488,7 +1562,7 @@ router.get('/:id/competencies', async (req, res) => {
       completedPilotLineCheckCount(member.id, member.lineCheckAnchorDate),
       lastCompletedCheck(member.id, 'PILOT_LINE_CHECK'),
     ]);
-    lineCheckDueDate = pilotLineCheckDue(member.lineCheckAnchorDate, lineCheckCount) || nextDueRolling(lastLineCheckChk);
+    lineCheckDueDate = pilotLineCheckNextDue(member.lineCheckAnchorDate, lineCheckCount, lastLineCheckChk);
   }
   res.json(rows.map(rowToCamel).map((c) => ({ ...c, dueDate: withRefresherDefaultDue(member, c.name, c.dueDate, lineCheckDueDate) })));
 });

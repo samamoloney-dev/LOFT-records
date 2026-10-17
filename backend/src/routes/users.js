@@ -7,7 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
 const { GROUND_INSTRUCTOR, FS_PERSONNEL_PILOT, FS_PERSONNEL_CABIN } = require('../lib/exportNames');
 const { logAction } = require('../lib/audit');
-const { nextDueRolling, statusFor } = require('../lib/currency');
+const { nextDueRolling, statusFor, addMonths } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -72,21 +72,28 @@ async function withGroundInstructorCheck(user) {
 // Flight Standards Personnel (Air) Competency Check (SA_518) currency -
 // only Training Captain/Check Captain/CA Trainer/CA Checker need this
 // (Examiners are excluded, unlike the Ground Instructor Competency Check
-// above) - renews every 24 months (730 days) from the most recent
-// completed check, same rolling-due mechanics as EP/IPC/CA Line Check.
+// above) - renews every 24 months from the date on the most recent
+// completed form.
 async function withPersonnelAirCompetency(user) {
   if (!PERSONNEL_AIR_COMPETENCY_ROLES.includes(user.role)) return user;
   // Excludes archived checks - see crew.js's lastCompletedCheck for why an
   // archived one (superseded or manually archived) must never be treated
   // as current for due-date purposes. Same bug class, same fix.
+  // The date that counts is the date written on the form (check_date), not
+  // when the form was submitted (completed_at) - historical checks were keyed
+  // in long after the fact. Expiry is 24 calendar months from it. A form with
+  // no date, or an implausible one (a mistyped year), falls back to the
+  // submission date so it still shows rather than breaking.
   const { rows } = await pool.query(
-    `SELECT completed_at FROM personnel_competency_checks
+    `SELECT check_date, completed_at FROM personnel_competency_checks
      WHERE user_id = $1 AND completed_at IS NOT NULL AND archived = false
-     ORDER BY completed_at DESC LIMIT 1`,
+     ORDER BY check_date DESC NULLS LAST, completed_at DESC LIMIT 1`,
     [user.id],
   );
-  const completedDate = rows[0]?.completed_at || null;
-  const dueDate = nextDueRolling(completedDate, 730);
+  const formDate = rows[0]?.check_date ? new Date(rows[0].check_date) : null;
+  const formDateOk = formDate && formDate.getUTCFullYear() >= 2000 && formDate.getUTCFullYear() <= 2100;
+  const completedDate = formDateOk ? formDate : (rows[0]?.completed_at || null);
+  const dueDate = completedDate ? addMonths(new Date(completedDate), 24) : null;
   return {
     ...user,
     personnelAirCompetency: { status: statusFor(dueDate), dueDate, completedDate },

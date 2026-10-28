@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { EpChecks } from './EpChecks';
+import { SafetyEquipmentChecksList } from './SafetyEquipmentChecks';
 import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
@@ -20,16 +21,12 @@ export function Checks() {
   // Simulator-only staff can reach the Pilots tab, but only its IPC/PC
   // sub-tabs - not Emergency Procedures.
   const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
-  // Cabin Attendant Manager is authorised to train and check Emergency
-  // Procedures for all pilots and cabin crew unconditionally - no
-  // checkAccess tick required (mirrors lib/checkAccess.js isEligibleForCheck
-  // and backend checks.js canAccessCheckType).
-  const isCaManager = user.role === 'CA_MANAGER';
-  // A staff member ticked for Emergency Procedures on their Staff profile
-  // (checkAccess) can conduct/check EP for both pilots and cabin attendants,
-  // even if their broader role isn't one of the roles that otherwise unlocks
-  // the Pilots/Cabin Attendants tabs (e.g. a CA_CHECKER or CA_TRAINER).
-  const hasEpAccess = isCaManager || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  // Only staff holding the CASA 121.010 approval - the Emergency procedures
+  // tick on their FS Staff profile - conduct Emergency Procedures, wet drills
+  // (Life Jacket), Smoke & Fire and F100 Slide training, for both pilots and
+  // cabin attendants, whatever their role (mirrors lib/checkAccess.js
+  // isEligibleForCheck and backend/src/lib/epApproval.js).
+  const hasEpAccess = (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
   // Line Check / Check to Line checkAccess ticks let a Check Captain (whose
   // whole purpose is conducting Line Checks) or a Training Captain reach
   // these tabs even though CC/TRAINING_CAPTAIN aren't in the blanket-access
@@ -63,6 +60,9 @@ export function Checks() {
     canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
     canAccessPilotChecks && { key: 'pc', label: 'PC' },
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
+    canAccessPilotEp && { key: 'lifeJacket', label: 'Life Jacket' },
+    canAccessPilotEp && { key: 'smokeFire', label: 'Smoke & Fire' },
+    canAccessPilotEp && { key: 'f100Slide', label: 'F100 Slide' },
     canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check' },
     canAccessPilotCtl && { key: 'ctl', label: 'Check to Line' },
     // SA 538 - assesses a Training Captain/Check Captain/Examiner's own
@@ -75,6 +75,9 @@ export function Checks() {
 
   const caTabs = [
     canAccessEpForCa && { key: 'ep', label: 'Emergency Procedures' },
+    canAccessEpForCa && { key: 'lifeJacket', label: 'Life Jacket' },
+    canAccessEpForCa && { key: 'smokeFire', label: 'Smoke & Fire' },
+    canAccessEpForCa && { key: 'f100Slide', label: 'F100 Slide' },
     canAccessCaOnly && { key: 'ctl', label: 'Check to Line' },
     canAccessCaOnly && { key: 'linecheck', label: 'Line Check' },
   ].filter(Boolean);
@@ -97,6 +100,9 @@ export function Checks() {
           {pilotTab === 'ipc' && canAccessPilotChecks && <ProficiencyChecks variant="IPC_PC" label="IPC" />}
           {pilotTab === 'pc' && canAccessPilotChecks && <ProficiencyChecks variant="PC" label="Proficiency Check" />}
           {pilotTab === 'ep' && canAccessPilotEp && <EpChecks appliesTo="PILOT" />}
+          {pilotTab === 'lifeJacket' && canAccessPilotEp && <SafetyEquipmentChecksList configKey="LIFE_JACKET" appliesTo="PILOT" />}
+          {pilotTab === 'smokeFire' && canAccessPilotEp && <SafetyEquipmentChecksList configKey="SMOKE_FIRE_TRAINING" appliesTo="PILOT" />}
+          {pilotTab === 'f100Slide' && canAccessPilotEp && <SafetyEquipmentChecksList configKey="F100_SLIDE_TRAINING" appliesTo="PILOT" />}
           {pilotTab === 'linecheck' && canAccessPilotLineCheck && <PilotLineCheck />}
           {pilotTab === 'ctl' && canAccessPilotCtl && <CheckToLinePicker traineeType="PILOT" />}
           {pilotTab === 'fsRecurrent' && canAccessPilotChecks && <FlightStandardsRecurrentTraining />}
@@ -107,6 +113,9 @@ export function Checks() {
         <div>
           <TabBar tabs={caTabs} active={caTab} onSelect={setCaTab} />
           {caTab === 'ep' && canAccessEpForCa && <EpChecks appliesTo="CABIN_ATTENDANT" />}
+          {caTab === 'lifeJacket' && canAccessEpForCa && <SafetyEquipmentChecksList configKey="LIFE_JACKET" appliesTo="CABIN_ATTENDANT" />}
+          {caTab === 'smokeFire' && canAccessEpForCa && <SafetyEquipmentChecksList configKey="SMOKE_FIRE_TRAINING" appliesTo="CABIN_ATTENDANT" />}
+          {caTab === 'f100Slide' && canAccessEpForCa && <SafetyEquipmentChecksList configKey="F100_SLIDE_TRAINING" appliesTo="CABIN_ATTENDANT" />}
           {caTab === 'ctl' && canAccessCaOnly && <CheckToLinePicker traineeType="CABIN_ATTENDANT" />}
           {caTab === 'linecheck' && canAccessCaOnly && <CaChecks />}
         </div>

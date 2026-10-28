@@ -74,7 +74,7 @@ export const CA_CHECK_ROLES = ['HOTC', 'CA_CHECKER', 'CA_MANAGER'];
 // checkAccess ticks).
 export function canAccessChecksTab(user) {
   const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
-  const hasEpAccess = user.role === 'CA_MANAGER' || (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  const hasEpAccess = (user.checkAccess || []).includes('EMERGENCY_PROCEDURES');
   const hasLineCheckAccess = (user.checkAccess || []).includes('LINE_CHECK');
   const hasCheckToLineAccess = (user.checkAccess || []).includes('CHECK_TO_LINE');
   return CHECK_ROLES.includes(user.role)

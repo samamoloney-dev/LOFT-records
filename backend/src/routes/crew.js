@@ -12,6 +12,7 @@ const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/flee
 const { exportNamesFor, CA_LINE_CHECK_DASH_8, CA_LINE_CHECK_FOKKER_100 } = require('../lib/exportNames');
 const { isPlausibleDate } = require('../lib/dates');
 const { batchLoader } = require('../lib/batch');
+const { epAssigneeError } = require('../lib/epApproval');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
@@ -470,6 +471,8 @@ function trainingGateReason(groundSchoolIncomplete, inLoft, extra) {
 // lineCheckDash8/lineCheckFokker100 are the cabin attendant equivalents of
 // lineCheck (pilots only now) - one per aircraft, see caLineCheckCurrency.
 const PLANNED_CHECK_KEYS = ['emergencyProcedures', 'ipc', 'proficiencyCheck', 'lineCheck', 'lineCheckDash8', 'lineCheckFokker100', 'lifeJacket', 'smokeFireTraining', 'f100SlideTraining'];
+
+const EP_PLANNED_CHECK_KEYS = ['emergencyProcedures', 'lifeJacket', 'smokeFireTraining', 'f100SlideTraining'];
 
 // Maps a planned-check key to what the real check record needs once the
 // "Create check form" button (see the create-check route below) turns it
@@ -1341,6 +1344,13 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
   const hasReason = Object.prototype.hasOwnProperty.call(req.body, 'reason');
   const hasRostered = Object.prototype.hasOwnProperty.call(req.body, 'rostered');
 
+  // Emergency Procedures, wet drills, Smoke & Fire and F100 Slide can only be
+  // planned against staff holding the CASA 121.010 approval.
+  if (EP_PLANNED_CHECK_KEYS.includes(req.params.checkKey) && hasAssignedTo && parsed.data.assignedTo) {
+    const assigneeError = await epAssigneeError(parsed.data.assignedTo);
+    if (assigneeError) return res.status(400).json({ error: assigneeError });
+  }
+
   const { rows: existingRows } = await pool.query(
     'SELECT planned_date, reason, rostered FROM crew_planned_checks WHERE crew_member_id = $1 AND check_key = $2',
     [member.id, req.params.checkKey],
@@ -1406,6 +1416,10 @@ router.post('/:id/planned-checks/:checkKey/create-check', blockCaManager, async 
   const planned = rowToCamel(plannedRows[0]);
   if (!planned.plannedDate || !planned.assignedTo) {
     return res.status(400).json({ error: 'A planned date and an assigned examiner are both required' });
+  }
+  if (EP_PLANNED_CHECK_KEYS.includes(req.params.checkKey)) {
+    const assigneeError = await epAssigneeError(planned.assignedTo);
+    if (assigneeError) return res.status(400).json({ error: `${assigneeError} - reassign this plan first` });
   }
   // Closes the same loophole the Planning tab's button gating exists to
   // close (see Planning.jsx PlannedChecksSection) - enforced here too so a

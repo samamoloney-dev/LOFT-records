@@ -9,6 +9,7 @@ const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
 const { isPlausibleDate } = require('../lib/dates');
+const { EP_FAMILY_CHECK_TYPES, hasEpApproval, epAssigneeError } = require('../lib/epApproval');
 const { localDateString } = require('../lib/currency');
 const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCertificate');
 
@@ -37,10 +38,11 @@ function canAccessCheckType(user, checkType) {
   // Procedures under the crew profile's own tab (see CrewDetail.jsx) and
   // share its exact authority rules, per the operator's explicit request.
   if (checkType === 'EMERGENCY_PROCEDURES' || checkType === 'LIFE_JACKET' || checkType === 'SMOKE_FIRE_TRAINING' || checkType === 'F100_SLIDE_TRAINING') {
-    // Cabin Attendant Manager is authorised to train and check Emergency
-    // Procedures for all pilots and cabin crew, unconditionally - not just
-    // when ticked on their staff profile (that tick system is for everyone
-    // else, see the checkAccess branch below).
+    // This is the read/access gate (listing and opening these forms) - who may
+    // be ASSIGNED one or COMPLETE one is stricter: only staff holding the CASA
+    // 121.010 approval (the Emergency procedures tick), enforced where
+    // assignments and completions are saved (see lib/epApproval.js). The
+    // Cabin Attendant Manager keeps view access by role.
     if (user.role === 'CA_MANAGER') return true;
     // Anyone else ticked for Emergency Procedures on their staff profile
     // (Staff tab checkAccess) is authorised to actually fill in and complete
@@ -157,11 +159,11 @@ const FLEET_UNSCOPED_CHECK_ROLES = ['HOTC', 'HOFO', 'ALTERNATE'];
 // to tick even if they wanted to be scoped), so fleet-filtering their own
 // list here would silently take that back for any fleet they don't hold a
 // CA_-prefixed tick for.
-const EP_FAMILY_CHECK_TYPES = ['EMERGENCY_PROCEDURES', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING'];
-
+// Anyone holding the CASA 121.010 approval conducts these for every pilot and
+// cabin crew member, so the same applies to approval holders generally.
 function checkVisibleToFleetScopedUser(user, check, fleetsById) {
   if (check.result === 'PASS') return false;
-  if (user.role === 'CA_MANAGER' && EP_FAMILY_CHECK_TYPES.includes(check.checkType)) return true;
+  if (EP_FAMILY_CHECK_TYPES.includes(check.checkType) && (user.role === 'CA_MANAGER' || hasEpApproval(user))) return true;
   const userFleets = (user.fleets || []).map(baseFleet);
   if (userFleets.length === 0) return true; // no fleet ticks on file - fail open rather than hiding everything
   const subjectFleets = fleetsById.get(check.crewMemberId || check.traineeId);
@@ -456,6 +458,11 @@ router.post('/', async (req, res) => {
     : isAdmin(req.user);
   if (!canCreate) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can add a check' });
 
+  if (EP_FAMILY_CHECK_TYPES.includes(parsed.data.checkType)) {
+    const assigneeError = await epAssigneeError(parsed.data.assignedTo);
+    if (assigneeError) return res.status(400).json({ error: assigneeError });
+  }
+
   if (parsed.data.crewMemberId && await isCrewMemberArchived(parsed.data.crewMemberId)) {
     return res.status(403).json({ error: 'This crew member is archived - their records cannot be edited' });
   }
@@ -541,6 +548,19 @@ router.patch('/:id', async (req, res) => {
   const hasAssignedTo = Object.prototype.hasOwnProperty.call(req.body, 'assignedTo');
   if (hasAssignedTo && !isAdmin(req.user)) {
     return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can assign checks' });
+  }
+  // Emergency Procedures, wet drills, Smoke & Fire and F100 Slide: only staff
+  // with the CASA 121.010 approval can be assigned, and only they can sign one
+  // off as completed - an admin can still correct dates/details and reassign,
+  // but can't complete the training themselves.
+  if (EP_FAMILY_CHECK_TYPES.includes(existing.checkType)) {
+    if (hasAssignedTo && d.assignedTo) {
+      const assigneeError = await epAssigneeError(d.assignedTo);
+      if (assigneeError) return res.status(400).json({ error: assigneeError });
+    }
+    if (d.result && !hasEpApproval(req.user)) {
+      return res.status(403).json({ error: 'Only staff holding the CASA 121.010 approval can complete this check' });
+    }
   }
   // Re-snapshot name/ARN/role whenever the assignee changes - stale otherwise.
   const assignee = hasAssignedTo

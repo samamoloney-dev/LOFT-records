@@ -65,12 +65,12 @@ const emptyDetails = () => ({ date: '', assessorId: '', assessor: '', assessorAr
 // own profile (see CrewDetail.jsx) - unlike EpChecks.jsx, these three never
 // need a free-text/standalone candidate flow, so that complexity is left
 // out entirely.
-export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberName, appliesTo, fleet, archived = false, crewArchived = false }) {
+export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberName, appliesTo, fleet, archived = false, crewArchived = false, initialSelectedId = null, onBackToList = null }) {
   const config = SAFETY_EQUIPMENT_CONFIGS[configKey];
   const { user } = useAuth();
   const isAdmin = ADMIN_ROLES.includes(user.role);
   const [checks, setChecks] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialSelectedId);
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(() => ({ ...emptyDetails(), assignedTo: '' }));
   const [error, setError] = useState(null);
@@ -160,7 +160,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <button onClick={() => setSelectedId(null)}>← Back</button>
+          <button onClick={() => (onBackToList ? onBackToList() : setSelectedId(null))}>← Back</button>
           <div style={{ display: 'flex', gap: 6 }}>
             <ArchiveButton
               archived={selected.archived}
@@ -309,6 +309,69 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
             </div>
           </div>
           {c.result && <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Every Life Jacket / Smoke & Fire / F100 Slide form across the roster, for
+// the Checks page - so the staff holding the CASA 121.010 approval can open
+// the forms assigned to them without needing access to each crew member's own
+// profile (the Crew tab is admin-only, and the Cabin Attendant Manager's is
+// limited to cabin attendants). Open forms first; completed ones on request.
+export function SafetyEquipmentChecksList({ configKey, appliesTo }) {
+  const config = SAFETY_EQUIPMENT_CONFIGS[configKey];
+  const [checks, setChecks] = useState(null);
+  const [error, setError] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  function load() {
+    api.get(`/api/checks?checkType=${config.checkType}&archived=false`)
+      .then((rows) => setChecks(rows.filter((c) => c.appliesTo === appliesTo && c.crewMemberId)))
+      .catch((e) => setError(e.message));
+  }
+  useEffect(load, [configKey, appliesTo]);
+
+  if (selected) {
+    return (
+      <SafetyEquipmentCheckForm
+        configKey={configKey} appliesTo={appliesTo}
+        crewMemberId={selected.crewMemberId} crewMemberName={selected.crewMemberName}
+        initialSelectedId={selected.id}
+        onBackToList={() => { setSelected(null); load(); }}
+      />
+    );
+  }
+
+  if (error) return <div className="error-text">{error}</div>;
+  if (!checks) return null;
+
+  const open = checks.filter((c) => !c.completedAt);
+  const completed = checks.filter((c) => c.completedAt);
+  const shown = showCompleted ? [...open, ...completed] : open;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          {config.label} forms for {appliesTo === 'PILOT' ? 'pilots' : 'cabin attendants'} - {open.length} open. {config.cycleText}
+        </div>
+        {completed.length > 0 && (
+          <button onClick={() => setShowCompleted((v) => !v)}>{showCompleted ? 'Hide completed' : `Show completed (${completed.length})`}</button>
+        )}
+      </div>
+      {shown.length === 0 && <div className="card" style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No open {config.label.toLowerCase()} forms.</div>}
+      {shown.map((c) => (
+        <div key={c.id} className="card row" onClick={() => setSelected(c)}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>{c.crewMemberName}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {c.details?.date ? formatDate(c.details.date) : 'No date'} · {c.assignedToName ? `Assigned to ${c.assignedToName}` : 'Unassigned'}
+            </div>
+          </div>
+          {c.result ? <span className={`badge ${c.result === 'PASS' ? 'pass' : 'fail'}`}>{c.result}</span> : <span className="badge warn">Open</span>}
         </div>
       ))}
     </div>

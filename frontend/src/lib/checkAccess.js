@@ -34,13 +34,18 @@ export function isEligibleForCheck(staffMember, accessType, fleet) {
   if (accessType === 'FLIGHT_STANDARDS_RECURRENT_TRAINING') {
     return FLIGHT_STANDARDS_RECURRENT_TRAINING_ASSESSOR_ROLES.includes(staffMember.role);
   }
+  // Emergency Procedures, wet drills (Life Jacket), 3-yearly Smoke & Fire and
+  // F100 Slide training can only be conducted by staff holding the CASA
+  // 121.010 approval - the "Emergency procedures" tick on their FS Staff
+  // profile. No role qualifies without it (not HOTC, HOFO, Alternate,
+  // Examiners or the Cabin Attendant Manager), and the approval isn't
+  // fleet-specific. Mirrors backend/src/lib/epApproval.js.
+  if (accessType === 'EMERGENCY_PROCEDURES') {
+    return (staffMember.checkAccess || []).includes('EMERGENCY_PROCEDURES');
+  }
   if (ALWAYS_ELIGIBLE_ASSESSOR_ROLES.includes(staffMember.role)) return true;
   if (staffMember.role === 'FLIGHT_OPS_ADMIN') return false;
   if (staffMember.role === 'CA_TRAINER' && LINE_CHECK_ACCESS_TYPES.includes(accessType)) return false;
-  // Cabin Attendant Manager is authorised to train and check Emergency
-  // Procedures for all pilots and cabin crew, unconditionally - no
-  // checkAccess tick or fleet match required, unlike everyone else below.
-  if (staffMember.role === 'CA_MANAGER' && accessType === 'EMERGENCY_PROCEDURES') return true;
   if (!(staffMember.checkAccess || []).includes(accessType)) return false;
   return !fleet || (staffMember.fleets || []).includes(fleet);
 }

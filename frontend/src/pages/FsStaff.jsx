@@ -29,7 +29,7 @@ const CHECK_ACCESS_OPTIONS = [
   { value: 'IPC', label: 'IPC' },
   { value: 'LINE_CHECK', label: 'Line Check' },
   { value: 'CHECK_TO_LINE', label: 'Check to line' },
-  { value: 'EMERGENCY_PROCEDURES', label: 'Emergency procedures' },
+  { value: 'EMERGENCY_PROCEDURES', label: 'Emergency procedures, wet drills & fire/smoke (CASA 121.010 approval)' },
 ];
 
 const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });

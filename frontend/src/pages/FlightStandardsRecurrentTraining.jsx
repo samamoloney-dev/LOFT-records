@@ -14,6 +14,7 @@ import { formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
+import { useOptimisticSave } from '../lib/optimisticSave';
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', items: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
@@ -71,12 +72,16 @@ export function FlightStandardsRecurrentTraining({ archived = false, crewMemberI
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function patchDetails(check, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
-      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    const details = { ...check.details, ...patch };
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === check.id ? { ...c, details } : c))),
+      send: () => api.patch(`/api/checks/${check.id}`, { details }),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   // No result on this check type - completion is signalled purely by

@@ -11,6 +11,7 @@ import { buildCaptainInTrainingHtml } from '../lib/printBuilders';
 import { formatDate, formatUserRole } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
+import { useOptimisticSave } from '../lib/optimisticSave';
 
 // Captain in Training upgrade assessments (SA 567 Preliminary, SA 568
 // Final) - assigned ad hoc when a First Officer is upgrading to Captain,
@@ -185,12 +186,16 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function patchDetails(check, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
-      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    const details = { ...check.details, ...patch };
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === check.id ? { ...c, details } : c))),
+      send: () => api.patch(`/api/checks/${check.id}`, { details }),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function setItemValue(check, key, value) {

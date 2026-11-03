@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useOptimisticSave } from '../lib/optimisticSave';
 import { useAuth } from '../context/AuthContext';
 import { formatDate, formatUserRole } from '../lib/format';
 import { LANDING_ASSESSMENT_EDIT_ROLES } from '../lib/roles';
@@ -160,12 +161,15 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
   const form = data?.form || { observationSectors: [], demonstrationSectors: [], comments: '', releaseSignature: '', releaseDate: '', exempt: false, hotcHofoSignature: '' };
   const locked = !canEdit || !!form.completedAt;
 
+  const optimisticSave = useOptimisticSave();
   async function save(patch) {
     setError(null);
-    try {
-      const updated = await api.put(`/api/landing-assessment/${traineeId}`, patch);
-      setData((d) => ({ ...d, form: updated }));
-    } catch (err) { setError(err.message); }
+    return optimisticSave({
+      apply: () => setData((d) => ({ ...d, form: { ...(d.form || form), ...patch } })),
+      send: () => api.put(`/api/landing-assessment/${traineeId}`, patch),
+      onServer: (updated) => setData((d) => ({ ...d, form: updated })),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function updateObservation(index, sector) {

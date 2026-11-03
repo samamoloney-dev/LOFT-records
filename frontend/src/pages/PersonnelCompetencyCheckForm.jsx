@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useOptimisticSave } from '../lib/optimisticSave';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/format';
 import { PinSignature } from '../components/PinSignature';
@@ -233,12 +234,15 @@ export function PersonnelCompetencyCheckForm({ userId, userName }) {
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function save(id, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/personnel-checks/${id}`, patch);
-      setChecks((cs) => cs.map((c) => (c.id === id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c))),
+      send: () => api.patch(`/api/personnel-checks/${id}`, patch),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function setLocal(id, patch) {

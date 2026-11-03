@@ -15,6 +15,7 @@ import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
+import { useOptimisticSave } from '../lib/optimisticSave';
 
 // Cabin attendants only ever fly Fokker 100 or Dash 8 - Metro 23 is a
 // pilot-only fleet (there's no CA_METRO), so it never belongs in this list.
@@ -89,12 +90,16 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function patchDetails(check, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
-      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    const details = { ...check.details, ...patch };
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === check.id ? { ...c, details } : c))),
+      send: () => api.patch(`/api/checks/${check.id}`, { details }),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   // completedAt drives the next-expiry calculation (crew.js), so it must

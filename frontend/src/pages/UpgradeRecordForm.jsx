@@ -15,6 +15,7 @@ import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES, COMPETENCY_CHECK_ASSESSOR_ROLE
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { PersonnelCompetencyCheckEditor } from './PersonnelCompetencyCheckForm';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
+import { useOptimisticSave } from '../lib/optimisticSave';
 
 // One tab per "page" of the paper upgrade package, same idea as the LOFT
 // package's own tab bar - Briefing, (Simulator, Training Captain only, see
@@ -413,12 +414,16 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function patchDetails(check, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
-      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    const details = { ...check.details, ...patch };
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === check.id ? { ...c, details } : c))),
+      send: () => api.patch(`/api/checks/${check.id}`, { details }),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function signOffItem(check, listKey, itemId, signerId, signerName) {

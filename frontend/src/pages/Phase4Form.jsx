@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { useOptimisticSave } from '../lib/optimisticSave';
 import { formatDate } from '../lib/format';
 import { PinSignature } from '../components/PinSignature';
 
@@ -89,12 +90,15 @@ export function Phase4Form({ traineeId, flights }) {
   const canSignApplicant = isTrainee ? user.traineeId === traineeId && !assessment.completedAt : !assessment.completedAt;
   const canComplete = canEdit && !!assessment.trainingCaptainSignature && !!assessment.applicantSignature && !assessment.completedAt;
 
+  const optimisticSave = useOptimisticSave();
   async function save(patch) {
     setError(null);
-    try {
-      const updated = await api.put(`/api/phase4/${traineeId}`, patch);
-      setData((d) => ({ ...d, assessment: updated }));
-    } catch (err) { setError(err.message); }
+    return optimisticSave({
+      apply: () => setData((d) => ({ ...d, assessment: { ...(d.assessment || assessment), ...patch } })),
+      send: () => api.put(`/api/phase4/${traineeId}`, patch),
+      onServer: (updated) => setData((d) => ({ ...d, assessment: updated })),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function updateSector(key, value) {

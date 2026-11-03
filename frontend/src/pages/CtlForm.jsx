@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useOptimisticSave } from '../lib/optimisticSave';
 import { useAuth } from '../context/AuthContext';
 import { formatDate, formatUserRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
@@ -112,12 +113,15 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
   const canEdit = ['HOTC', 'HOFO', 'ALTERNATE', 'EXAMINER'].includes(user.role);
   const form = data?.form || { assessmentItems: {}, sectorDetails: {}, ntsScores: {}, comments: '', overallResult: null, overallScore: null };
 
+  const optimisticSave = useOptimisticSave();
   async function save(patch) {
     setError(null);
-    try {
-      const updated = await api.put(`/api/ctl/${traineeId}`, patch);
-      setData((d) => ({ ...d, form: updated }));
-    } catch (err) { setError(err.message); }
+    return optimisticSave({
+      apply: () => setData((d) => ({ ...d, form: { ...(d.form || form), ...patch } })),
+      send: () => api.put(`/api/ctl/${traineeId}`, patch),
+      onServer: (updated) => setData((d) => ({ ...d, form: updated })),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   function updateSector(key, value) {

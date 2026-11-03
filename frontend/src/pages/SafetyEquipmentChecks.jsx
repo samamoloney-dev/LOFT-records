@@ -9,6 +9,7 @@ import { DeleteButton } from '../components/DeleteButton';
 import { formatUserRole, formatDate } from '../lib/format';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
+import { useOptimisticSave } from '../lib/optimisticSave';
 
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
 // record - mirrors backend/src/routes/checks.js POST /.
@@ -97,12 +98,16 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
     } catch (err) { setError(err.message); }
   }
 
+  const optimisticSave = useOptimisticSave();
   async function patchDetails(check, patch) {
     setError(null);
-    try {
-      const updated = await api.patch(`/api/checks/${check.id}`, { details: { ...check.details, ...patch } });
-      setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c)));
-    } catch (err) { setError(err.message); }
+    const details = { ...check.details, ...patch };
+    return optimisticSave({
+      apply: () => setChecks((cs) => cs.map((c) => (c.id === check.id ? { ...c, details } : c))),
+      send: () => api.patch(`/api/checks/${check.id}`, { details }),
+      onServer: (updated) => setChecks((cs) => cs.map((c) => (c.id === updated.id ? updated : c))),
+      onError: (err) => { setError(err.message); load(); },
+    });
   }
 
   // completedAt drives the next-expiry calculation (crew.js), so it must

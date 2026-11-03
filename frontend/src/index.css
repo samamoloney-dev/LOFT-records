@@ -155,6 +155,30 @@ input, select, textarea {
 }
 .tab-bar button.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
 .tab-bar button:hover { color: var(--text-primary); }
+/* The instructor reference line shown on each check form. */
+.ref-doc-line {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+/* Red numbered circle on a tab: how many check forms are waiting there for
+   the logged-in person. */
+.tab-badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  vertical-align: 1px;
+}
 
 .card {
   background: var(--surface-2);

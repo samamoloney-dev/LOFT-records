@@ -757,15 +757,45 @@ function urgentSafetyEquipmentItemsFor({ fromCurrency }) {
 // the pilot and cabin attendant branches of withCurrency below since all
 // three apply to either crew type identically (no seed dates - these are
 // new check types with no pre-app history to backfill).
-async function safetyEquipmentCurrency(member, planned) {
-  const [lifeJacketChk, smokeFireChk, f100SlideChk, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
+// The date entered against the Ground School "F100 Slide Training (3 yearly)"
+// item (ground_school_items.currency_key) for any LOFT trainee record linked to
+// this crew member - someone transferring onto the Fokker 100 does it as part
+// of their ground school, and that date is their F100 slide training from then
+// on. The latest valid date wins. Dates are checked here rather than cast in
+// SQL so a mistyped value can't fail the whole roster query.
+const f100GroundSchoolLoader = batchLoader(async (traineeIds) => {
+  const { rows } = await pool.query(
+    `SELECT gsp.trainee_id, gsp.details->>'completedDate' AS raw
+     FROM ground_school_progress gsp
+     JOIN ground_school_items gsi ON gsi.id = gsp.ground_school_item_id
+     WHERE gsi.currency_key = 'F100_SLIDE_TRAINING' AND gsp.trainee_id = ANY($1::uuid[])`,
+    [traineeIds],
+  );
+  const best = new Map();
+  for (const r of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.raw || '') || !isPlausibleDate(r.raw)) continue;
+    if (!best.has(r.trainee_id) || r.raw > best.get(r.trainee_id)) best.set(r.trainee_id, r.raw);
+  }
+  return best;
+});
+async function f100SlideGroundSchoolDate(traineeIds) {
+  const dates = await Promise.all((traineeIds || []).map((id) => f100GroundSchoolLoader(id)));
+  return dates.filter(Boolean).reduce((a, b) => latestOf(a, b), null);
+}
+
+async function safetyEquipmentCurrency(member, planned, traineeIds) {
+  const [lifeJacketChk, smokeFireChk, f100CheckDate, f100GroundDate, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
     lastCompletedCheck(member.id, 'LIFE_JACKET'),
     lastCompletedCheck(member.id, 'SMOKE_FIRE_TRAINING'),
     lastCompletedCheck(member.id, 'F100_SLIDE_TRAINING'),
+    f100SlideGroundSchoolDate(traineeIds),
     hasInProgressCheck(member.id, 'LIFE_JACKET'),
     hasInProgressCheck(member.id, 'SMOKE_FIRE_TRAINING'),
     hasInProgressCheck(member.id, 'F100_SLIDE_TRAINING'),
   ]);
+  // Whichever is later: a completed F100 Slide Training check, or the date
+  // entered on the Ground School item.
+  const f100SlideChk = latestOf(f100CheckDate, f100GroundDate);
   // Once-off, per the operator's explicit rule ("once completed it is not
   // required to be done again") - a 100-year rolling window stands in for
   // "no expiry" rather than adding a whole separate never-expires code path
@@ -778,7 +808,9 @@ async function safetyEquipmentCurrency(member, planned) {
   // itemsFor's fromCurrency mapping already skips a null entry here (see
   // its `.filter(([, info]) => !!info)`), same as any other optional
   // currency field.
-  const isFokker100 = member.fleets?.includes('FOKKER_100') || member.fleets?.includes('CA_FOKKER_100');
+  // Also shown once the Ground School date has been entered, even before the
+  // transfer is complete and their fleets change.
+  const isFokker100 = member.fleets?.includes('FOKKER_100') || member.fleets?.includes('CA_FOKKER_100') || !!f100GroundDate;
   const f100SlideTraining = isFokker100 ? dueInfo(nextDueRolling(f100SlideChk, 1095), f100SlideChk, planned.f100SlideTraining, null, f100SlideIssued) : null;
   return { lifeJacket, smokeFireTraining, f100SlideTraining };
 }
@@ -796,7 +828,7 @@ async function withCurrency(member) {
   // Only set for pilots - see lastPcOnly below and planning.js's IPC/PC
   // Spacing report, the sole consumer.
   let ipcPcRaw = null;
-  const safetyEquipment = await safetyEquipmentCurrency(member, planned);
+  const safetyEquipment = await safetyEquipmentCurrency(member, planned, loftTraineeIds);
 
   if (member.type === 'PILOT') {
     const [epChk, ipcChk, pcChk, lineCheckCount, lastLineCheckChk, groundSchoolIncomplete, epIssued, ipcIssued, pcIssued, lineCheckIssued] = await Promise.all([

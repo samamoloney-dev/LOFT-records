@@ -8,6 +8,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { DeleteButton } from '../components/DeleteButton';
 import { formatUserRole, formatDate } from '../lib/format';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
 // record - mirrors backend/src/routes/checks.js POST /.
@@ -178,6 +179,7 @@ export function SafetyEquipmentCheckForm({ configKey, crewMemberId, crewMemberNa
           </div>
         </div>
 
+        <ReferenceDocLine formKey={config.checkType} />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

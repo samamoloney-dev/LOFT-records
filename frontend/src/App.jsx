@@ -24,6 +24,7 @@ import { ChangePassword } from './components/ChangePassword';
 import { formatUserRole } from './lib/format';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_CHECKER_ROLES, canAccessCertificates, canAccessChecksTab } from './lib/roles';
 import { FsUpgrades } from './pages/FsUpgrades';
+import { useAssignedChecks, refreshAssignedChecks } from './lib/assignedChecks';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // Every staff role - meeting minutes is for the whole operation, trainees
@@ -73,7 +74,11 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const checksAlertCount = useChecksAlertCount(user.role);
+  // The Checks item's red circle = completed checks waiting for an admin to
+  // review (admins only) plus check forms issued to this person to conduct.
+  const assignedChecks = useAssignedChecks();
+  const checksAlertCount = useChecksAlertCount(user.role) + assignedChecks.total;
+  useEffect(() => { refreshAssignedChecks(); }, [location.pathname]);
 
   // One list drives both the desktop sidebar links and the mobile <select>
   // below, so the two can never drift apart. Cabin attendants are most

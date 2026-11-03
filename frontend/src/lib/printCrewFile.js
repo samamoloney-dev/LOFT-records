@@ -15,6 +15,7 @@
 import { api } from '../api/client';
 import { openPrintWindow } from './print';
 import { UPGRADE_VARIANTS } from './roles';
+import { ensureReferenceDocs } from './referenceDocs';
 import {
   buildCrewFileSummary, buildEpCheckHtml, buildCaLineCheckHtml, buildProficiencyCheckHtml,
   buildPilotLineCheckHtml, buildCtlFormHtml, buildCaptainInTrainingHtml, buildLandingAssessmentHtml,
@@ -70,6 +71,7 @@ function historicalChecks(checks, count = HISTORY_COUNT) {
 }
 
 export async function printCrewFile(member, competencies) {
+  await ensureReferenceDocs();
   const isPilot = member.type === 'PILOT';
   const fleet = member.fleets?.length === 1 ? member.fleets[0] : undefined;
   const sections = [];

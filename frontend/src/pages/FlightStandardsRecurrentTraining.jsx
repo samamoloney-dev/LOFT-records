@@ -13,6 +13,7 @@ import { buildFlightStandardsRecurrentTrainingHtml } from '../lib/printBuilders'
 import { formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', items: {}, comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });
@@ -158,6 +159,7 @@ export function FlightStandardsRecurrentTraining({ archived = false, crewMemberI
           </div>
         </div>
 
+        <ReferenceDocLine formKey="FLIGHT_STANDARDS_RECURRENT_TRAINING" />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `Assigned to ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

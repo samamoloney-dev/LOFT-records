@@ -10,6 +10,7 @@ import { openPrintWindow } from '../lib/print';
 import { buildCaptainInTrainingHtml } from '../lib/printBuilders';
 import { formatDate, formatUserRole } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // Captain in Training upgrade assessments (SA 567 Preliminary, SA 568
 // Final) - assigned ad hoc when a First Officer is upgrading to Captain,
@@ -265,6 +266,7 @@ export function CaptainInTrainingForm({ variant, crewMemberId, traineeId, crewMe
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
+        <ReferenceDocLine formKey={`CAPTAIN_IN_TRAINING_${variant}`} />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assessor'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

@@ -4,11 +4,18 @@
 // Documents tab and the Archive page's own Documents search, both of which
 // need to view a document's PDF once fetched from the API.
 export function viewPdf(dataUri) {
-  const [, base64] = dataUri.split(',');
+  viewFile(dataUri, 'application/pdf');
+}
+
+// Same, for any base64 data-URI file (PDF or JPEG) - the type is read from the
+// data URI itself, falling back to the one given.
+export function viewFile(dataUri, fallbackType = 'application/pdf') {
+  const [header, base64] = dataUri.split(',');
+  const type = (/^data:([^;]+);/.exec(header) || [])[1] || fallbackType;
   const bytes = atob(base64);
   const array = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) array[i] = bytes.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([array], { type: 'application/pdf' }));
+  const url = URL.createObjectURL(new Blob([array], { type }));
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }

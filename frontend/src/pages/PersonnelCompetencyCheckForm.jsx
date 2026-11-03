@@ -12,6 +12,7 @@ import { buildPersonnelCompetencyCheckHtml } from '../lib/printBuilders';
 import { COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const TRAINING_CHECK_TYPES = ['LOFT', 'Check to Line', 'Line Check'];
 // A Simulator Only Examiner never trains/checks on the line - their own
@@ -128,6 +129,7 @@ export function PersonnelCompetencyCheckEditor({ check, userName, candidateRole,
 
   return (
     <div>
+      <ReferenceDocLine formKey="PERSONNEL_AIR_COMPETENCY" />
       <div className="grid2">
         <div className="field">
           <label>Training / Check Type</label>

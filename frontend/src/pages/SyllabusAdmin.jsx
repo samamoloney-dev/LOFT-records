@@ -7,6 +7,7 @@ import { SyllabusPicker } from '../components/SyllabusPicker';
 import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 import { formatFleet, formatUserRole } from '../lib/format';
+import { setReferenceDocLocal } from '../lib/referenceDocs';
 
 const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 const ROLE_SCOPES = ['BOTH', 'CAPTAIN_ONLY', 'FO_ONLY'];
@@ -1506,6 +1507,62 @@ function DocumentNamesSection() {
   );
 }
 
+// The document number printed on each check form in the line "Check
+// conducted IAW specific Instructor Reference Documents <number>". Every form
+// starts on the placeholder DOC### until the real numbers are confirmed here.
+function InstructorReferenceDocsSection() {
+  const [rows, setRows] = useState([]);
+  const [values, setValues] = useState({});
+  const [savedKey, setSavedKey] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.get('/api/reference-docs')
+      .then((list) => { setRows(list); setValues(Object.fromEntries(list.map((r) => [r.formKey, r.docRef]))); })
+      .catch((e) => setError(e.message));
+  }, []);
+
+  async function save(row) {
+    const docRef = (values[row.formKey] || '').trim();
+    if (!docRef) return;
+    setError(null);
+    try {
+      await api.put(`/api/reference-docs/${row.formKey}`, { docRef });
+      setReferenceDocLocal(row.formKey, docRef);
+      setValues((v) => ({ ...v, [row.formKey]: docRef }));
+      setRows((list) => list.map((r) => (r.formKey === row.formKey ? { ...r, docRef } : r)));
+      setSavedKey(row.formKey);
+    } catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontWeight: 500, marginBottom: 4 }}>Instructor Reference Documents</div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        Each check form carries the line "Check conducted IAW specific Instructor Reference Documents" followed by the number set here, on screen and on its print. DOC### is shown until you confirm the real number - more than one can be entered, e.g. "DOC123, DOC124".
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {rows.map((row) => (
+        <div key={row.formKey} className="card" style={{ cursor: 'default' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px', fontSize: 13, fontWeight: 500 }}>{row.label}</div>
+            <input
+              style={{ flex: '0 1 200px' }} maxLength={60} value={values[row.formKey] ?? ''}
+              onChange={(e) => { setSavedKey(null); setValues((v) => ({ ...v, [row.formKey]: e.target.value })); }}
+              placeholder="DOC###"
+            />
+            <button
+              className="primary" onClick={() => save(row)}
+              disabled={!(values[row.formKey] || '').trim() || (values[row.formKey] || '').trim() === row.docRef}
+            >Save</button>
+            {savedKey === row.formKey && <span style={{ fontSize: 12, color: 'var(--text-success)' }}>Saved</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Codes for the recurrent checks (Emergency Procedures, Line Check, IPC and
 // so on), shown at the bottom of the Competencies tab so every code the
 // Currency Overview CSV export writes is managed in one place. The names are
@@ -1704,7 +1761,12 @@ export function SyllabusAdmin() {
       {tab === 'syllabi' && <SyllabiSection />}
       {tab === 'syllabus' && <SyllabusItemsSection />}
       {tab === 'ground-school' && <GroundSchoolAdminSection />}
-      {tab === 'check-forms' && !isCaManager && <CheckFormItemsSection />}
+      {tab === 'check-forms' && !isCaManager && (
+        <>
+          <CheckFormItemsSection />
+          <InstructorReferenceDocsSection />
+        </>
+      )}
       {tab === 'competencies' && !isCaManager && (
         <>
           <CompetencyTypesSection />

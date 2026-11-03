@@ -10,6 +10,7 @@ import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { openPrintWindow } from '../lib/print';
 import { buildCtlFormHtml } from '../lib/printBuilders';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // Check to Line Preparation Checklist, from SA_541 Cabin Crew Dash 8 Line
 // Training Record.
@@ -252,6 +253,7 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
         </div>
       </div>
       {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
+      <ReferenceDocLine formKey={isCabinAttendant ? 'CHECK_TO_LINE_CABIN_ATTENDANT' : 'CHECK_TO_LINE_PILOT'} />
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
         {form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
       </div>

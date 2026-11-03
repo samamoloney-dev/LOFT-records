@@ -14,6 +14,7 @@ import { buildCaLineCheckHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // Cabin attendants only ever fly Fokker 100 or Dash 8 - Metro 23 is a
 // pilot-only fleet (there's no CA_METRO), so it never belongs in this list.
@@ -202,6 +203,7 @@ export function CaChecks({ archived = false, crewMemberId, crewMemberName, fleet
           </div>
         </div>
 
+        <ReferenceDocLine formKey="CABIN_ATTENDANT_LINE_CHECK" />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

@@ -387,6 +387,60 @@ router.get('/upgrade-candidates', async (req, res) => {
   res.json(candidates);
 });
 
+// Which Checks-page tab (top tab / inner tab) an assigned form lives on - see
+// frontend/src/pages/Checks.jsx's tab keys.
+function checksTabFor(checkType, appliesTo, variant) {
+  const top = appliesTo === 'CABIN_ATTENDANT' ? 'cabin-attendants' : 'pilots';
+  switch (checkType) {
+    case 'RECURRENT_SIMULATOR': return { top: 'pilots', tab: variant === 'IPC_PC' ? 'ipc' : 'pc' };
+    case 'EMERGENCY_PROCEDURES': return { top, tab: 'ep' };
+    case 'LIFE_JACKET': return { top, tab: 'lifeJacket' };
+    case 'SMOKE_FIRE_TRAINING': return { top, tab: 'smokeFire' };
+    case 'F100_SLIDE_TRAINING': return { top, tab: 'f100Slide' };
+    case 'PILOT_LINE_CHECK': return { top: 'pilots', tab: 'linecheck' };
+    case 'CABIN_ATTENDANT_LINE_CHECK': return { top: 'cabin-attendants', tab: 'linecheck' };
+    case 'FLIGHT_STANDARDS_RECURRENT_TRAINING': return { top: 'pilots', tab: 'fsRecurrent' };
+    default: return null;
+  }
+}
+
+// How many check forms are issued to the logged-in person and not yet
+// completed, and which Checks tab each is on - drives the red numbered circles
+// on the Checks nav item and its tabs, so they know there's work waiting.
+router.get('/assigned-to-me', async (req, res) => {
+  const [{ rows: checkRows }, { rows: ctlRows }] = await Promise.all([
+    pool.query(
+      `SELECT check_type, applies_to, details->>'variant' AS variant, COUNT(*)::int AS n
+       FROM checks
+       WHERE assigned_to = $1 AND completed_at IS NULL AND archived = false
+         AND check_type IN ('RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING',
+                            'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK', 'FLIGHT_STANDARDS_RECURRENT_TRAINING')
+       GROUP BY check_type, applies_to, details->>'variant'`,
+      [req.user.id],
+    ),
+    pool.query(
+      `SELECT t.type AS applies_to, COUNT(*)::int AS n
+       FROM check_to_line_forms f JOIN trainees t ON t.id = f.trainee_id
+       WHERE f.assigned_to = $1 AND f.completed_at IS NULL AND f.archived = false
+       GROUP BY t.type`,
+      [req.user.id],
+    ),
+  ]);
+
+  const tabs = {};
+  const tops = {};
+  let total = 0;
+  const add = (where, n) => {
+    if (!where) return;
+    tabs[`${where.top}/${where.tab}`] = (tabs[`${where.top}/${where.tab}`] || 0) + n;
+    tops[where.top] = (tops[where.top] || 0) + n;
+    total += n;
+  };
+  for (const r of checkRows) add(checksTabFor(r.check_type, r.applies_to, r.variant), r.n);
+  for (const r of ctlRows) add({ top: r.applies_to === 'CABIN_ATTENDANT' ? 'cabin-attendants' : 'pilots', tab: 'ctl' }, r.n);
+  res.json({ total, tops, tabs });
+});
+
 router.get('/:id', async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM checks WHERE id = $1', [req.params.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });

@@ -14,6 +14,7 @@ import { formatDate, formatUserRole, formatFleet } from '../lib/format';
 import { UPGRADE_VARIANTS, UPGRADE_CHECKER_ROLES, COMPETENCY_CHECK_ASSESSOR_ROLES } from '../lib/roles';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { PersonnelCompetencyCheckEditor } from './PersonnelCompetencyCheckForm';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // One tab per "page" of the paper upgrade package, same idea as the LOFT
 // package's own tab bar - Briefing, (Simulator, Training Captain only, see
@@ -560,6 +561,7 @@ export function UpgradeRecordForm({ variant, crewMemberId, crewMemberName, fleet
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
+        <ReferenceDocLine formKey={`UPGRADE_${variant}`} />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Mentor'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

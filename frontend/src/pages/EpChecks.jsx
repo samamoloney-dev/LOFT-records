@@ -14,6 +14,7 @@ import { buildEpCheckHtml } from '../lib/printBuilders';
 import { formatUserRole, formatDate } from '../lib/format';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const EP_TYPES = ['Theory', 'Metro', 'Dash8', 'Fokker 100'];
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -179,6 +180,7 @@ export function EpChecks({ appliesTo = 'CABIN_ATTENDANT', archived = false, crew
           </div>
         </div>
 
+        <ReferenceDocLine formKey="EMERGENCY_PROCEDURES" />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

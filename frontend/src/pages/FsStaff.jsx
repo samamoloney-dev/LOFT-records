@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatUserRole, formatFleet } from '../lib/format';
 import { DueBadge } from '../components/DueBadge';
+import { StaffDocuments } from '../components/StaffDocuments';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
 import { isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
@@ -94,13 +95,20 @@ function staffSurname(name) {
   return parts[parts.length - 1] || '';
 }
 
-function CheckAccessPicker({ value, onChange, disabled }) {
+// adminRole: HOTC/HOFO/Flight Ops Admin/Alternate already have every check
+// below by role, so those ticks are locked - except the Emergency procedures
+// one (the CASA 121.010 approval), which no role grants by itself and must
+// always be ticked individually.
+const EP_APPROVAL = 'EMERGENCY_PROCEDURES';
+function CheckAccessPicker({ value, onChange, adminRole }) {
   function toggle(v) {
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {CHECK_ACCESS_OPTIONS.map((opt) => (
+      {CHECK_ACCESS_OPTIONS.map((opt) => {
+        const disabled = adminRole && opt.value !== EP_APPROVAL;
+        return (
         <div
           key={opt.value}
           onClick={() => !disabled && toggle(opt.value)}
@@ -111,9 +119,22 @@ function CheckAccessPicker({ value, onChange, disabled }) {
             color: value.includes(opt.value) ? 'var(--text-accent)' : 'inherit',
           }}
         >{opt.label}</div>
-      ))}
+        );
+      })}
     </div>
   );
+}
+
+// What the "Check access" line on a staff card says. Admin roles have every
+// check by role except Emergency procedures, which needs the individual tick.
+function checkAccessText(u) {
+  const labels = (u.checkAccess || []).map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v);
+  if (ADMIN_ROLES.includes(u.role)) {
+    return (u.checkAccess || []).includes(EP_APPROVAL)
+      ? 'Check access: all, including the CASA 121.010 approval'
+      : 'Check access: all except Emergency procedures (no CASA 121.010 approval)';
+  }
+  return `Check access: ${labels.length ? labels.join(', ') : 'none'}`;
 }
 
 // Mirrors CheckAccessPicker's pill-button pattern. In single mode (Training
@@ -176,11 +197,7 @@ function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
             ? 'Fleets: all'
             : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-          {ADMIN_ROLES.includes(u.role)
-            ? 'Check access: all'
-            : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
-        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{checkAccessText(u)}</div>
         {u.groundInstructorCheck && (
           <div style={{ marginTop: 6 }}>
             <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />
@@ -198,6 +215,13 @@ function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
           <div style={{ fontWeight: 500, marginBottom: 8 }}>Password</div>
           <ResetPasswordButton userId={u.id} userName={u.name} />
         </div>
+      )}
+      {u.role === 'SIMULATOR_ONLY' && (
+        <StaffDocuments
+          userId={u.id}
+          title="Examiner Proficiency Check"
+          description="Scans or photos (JPEG or PDF) of this examiner's Examiner Proficiency Check. Removing a file archives it, so nothing is lost."
+        />
       )}
       {showGic && <GroundInstructorCheckForm userId={u.id} userName={u.name} />}
       {showPac && <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />}
@@ -393,11 +417,11 @@ export function FsStaff() {
             />
           </div>
           <div className="field">
-            <label>Check access{isAdminRole ? ' (this role already has access to everything)' : ' (which checks can this person be picked for)'}</label>
+            <label>Check access{isAdminRole ? ' (this role already has every check except Emergency procedures - tick that only for staff holding the CASA 121.010 approval)' : ' (which checks can this person be picked for)'}</label>
             <CheckAccessPicker
               value={form.checkAccess}
               onChange={(checkAccess) => setForm({ ...form, checkAccess })}
-              disabled={isAdminRole}
+              adminRole={isAdminRole}
             />
           </div>
           <button type="submit" className="primary">{editingId ? 'Save changes' : 'Create'}</button>
@@ -415,11 +439,7 @@ export function FsStaff() {
                 ? 'Fleets: all'
                 : `Fleets: ${(u.fleets || []).length ? u.fleets.map(formatFleet).join(', ') : 'none'}`}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {ADMIN_ROLES.includes(u.role)
-                ? 'Check access: all'
-                : `Check access: ${(u.checkAccess || []).length ? u.checkAccess.map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v).join(', ') : 'none'}`}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{checkAccessText(u)}</div>
             {u.groundInstructorCheck && (
               <div style={{ marginTop: 6 }}>
                 <DueBadge label="Ground Instructor Check" info={u.groundInstructorCheck} />

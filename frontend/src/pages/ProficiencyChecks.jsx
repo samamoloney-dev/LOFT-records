@@ -15,6 +15,7 @@ import { SURVEY_FILL_ROLES } from '../lib/roles';
 import { compressImage } from '../lib/imageCompress';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
 const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
@@ -399,6 +400,7 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'} · Assessor: {d.assessor || '—'}</div>
         </div>
 
+        <ReferenceDocLine formKey={d.variant === 'IPC_PC' ? 'IPC' : 'PC'} />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

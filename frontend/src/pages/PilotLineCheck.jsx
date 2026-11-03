@@ -15,6 +15,7 @@ import { formatDate, formatUserRole } from '../lib/format';
 import { competencyStatus } from '../lib/dueStatus';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 // Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
@@ -326,6 +327,7 @@ export function PilotLineCheck({ crewMemberId, crewMemberName, archived = false,
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.actype || 'No aircraft type'} · {d.date ? formatDate(d.date) : 'No date'}</div>
         </div>
 
+        <ReferenceDocLine formKey="PILOT_LINE_CHECK" />
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
             {selected.assignedToName ? `${selected.assignedToRole ? formatUserRole(selected.assignedToRole) : 'Assigned to'} ${selected.assignedToName}${selected.assignedToArn ? ` · ARN ${selected.assignedToArn}` : ''}` : 'Unassigned'}

@@ -17,6 +17,11 @@ import { formatDate, formatUserRole } from './format';
 import { competencyStatus } from './dueStatus';
 import { visibleCheckFormItems } from './checkFormItems';
 import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
+import { referenceDocLine } from './referenceDocs';
+
+// The "Check conducted IAW specific Instructor Reference Documents DOC###" line
+// printed under each form's title - see lib/referenceDocs.js.
+const refLine = (formKey) => `<div class="meta">${referenceDocLine(formKey)}</div>`;
 
 // ---- Emergency Procedures (EpChecks.jsx) ----
 export function buildEpCheckHtml(check, epItems) {
@@ -25,6 +30,7 @@ export function buildEpCheckHtml(check, epItems) {
   return `
     <h1>Emergency Procedures Check</h1>
     <div class="meta">${d.name || ''} · ${d.date ? formatDate(d.date) : ''} · ${(d.types || []).join(', ') || 'No type selected'}</div>
+    ${refLine('EMERGENCY_PROCEDURES')}
     ${section('Details', [
       ['Aircraft type', d.actype],
       ['Assessor', d.assessor],
@@ -52,6 +58,7 @@ export function buildFlightStandardsRecurrentTrainingHtml(check, items) {
   return `
     <h1>Flight Standards Pilot Recurrent Training</h1>
     <div class="meta">${d.name || ''} · ${d.date ? formatDate(d.date) : ''}</div>
+    ${refLine('FLIGHT_STANDARDS_RECURRENT_TRAINING')}
     ${section('Details', [
       ['Assessor', d.assessor],
       ['Assigned to', check.assignedToName ? `${check.assignedToName}${check.assignedToArn ? ` (ARN ${check.assignedToArn})` : ''}` : 'Unassigned'],
@@ -112,6 +119,7 @@ export function buildCaLineCheckHtml(check, caItems, ntsMarkers) {
   return `
     <h1>Cabin Attendant Line Check (SA 540)</h1>
     <div class="meta">${d.name || ''} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
+    ${refLine('CABIN_ATTENDANT_LINE_CHECK')}
     ${section('Details', [
       ['Assessor', d.assessor],
       ['Assessor ARN', d.assessorArn],
@@ -185,6 +193,7 @@ export function buildProficiencyCheckHtml(check, pcItems) {
   return `
     <div class="compact">
       ${formTitleRow(title, d.applicantArn || d.arn)}
+      ${refLine(isIpc ? 'IPC' : 'PC')}
       ${fieldGrid([
         ["Candidate's Name", d.name], ['Date', d.date ? formatDate(d.date) : ''],
         ['Assessor(s)', d.assessor], ['Aircraft Type', d.actype],
@@ -261,6 +270,7 @@ export function buildPilotLineCheckHtml(check, items, refresherCompetency, crewM
     <div class="compact">
       <h1>Line Check</h1>
       <div class="meta">${crewMemberName} · ${d.actype || 'No aircraft type'} · ${d.date ? formatDate(d.date) : ''}</div>
+      ${refLine('PILOT_LINE_CHECK')}
       ${tickTable(rows, { twoColumn: true })}
       ${section('Details', [
         ['Check conducted in', seatCheck.length > 0 ? seatCheck.join(', ') : '—'],
@@ -303,6 +313,7 @@ export function buildCtlFormHtml(data, traineeType) {
   }
 
   let body = `<h1>Check to Line Assessment</h1>`;
+  body += refLine(isCabinAttendant ? 'CHECK_TO_LINE_CABIN_ATTENDANT' : 'CHECK_TO_LINE_PILOT');
   body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
 
   if (isCabinAttendant) {
@@ -352,6 +363,7 @@ export function buildCaptainInTrainingHtml(check, variant, items, crewMemberName
   const label = CIT_VARIANT_LABELS[variant];
   const sections = groupBySection(items || []);
   let body = `<h1>${label}</h1><div class="meta">${crewMemberName} · ${d.date ? formatDate(d.date) : ''}</div>`;
+  body += refLine(`CAPTAIN_IN_TRAINING_${variant}`);
   for (const [sectionName, sectionItems] of sections) {
     body += section(sectionName, sectionItems.map((item) => {
       const v = answers[item.id] || {};
@@ -381,6 +393,7 @@ function padded(list, count) {
 // `form` is the raw GET /api/landing-assessment/:traineeId response's `.form`.
 export function buildLandingAssessmentHtml(form) {
   let body = '<h1>Initial Take-Off & Landing Assessment</h1>';
+  body += refLine('LANDING_ASSESSMENT');
   body += `<div class="meta">Completed ${form.completedAt ? formatDate(form.completedAt) : '—'} · ${form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` (ARN ${form.assignedToArn})` : ''}` : 'Unassigned'}</div>`;
   padded(form.observationSectors, OBSERVATION_COUNT).forEach((s, i) => {
     body += section(`Observation - Sector ${i + 1}`, [['Date', s.date ? formatDate(s.date) : ''], ['Route', s.route]]);
@@ -451,6 +464,7 @@ export function buildUpgradeRecordHtml(check, context) {
   const d = check.details || {};
   const items = d.briefingItems || {};
   let body = formTitleRow(label);
+  body += refLine(`UPGRADE_${variant}`);
   body += fieldGrid([
     ['Candidate', crewMemberName],
     ['Aircraft Type', fleetLabel || ''],
@@ -510,6 +524,7 @@ export function buildUpgradeRecordHtml(check, context) {
 // ---- Ground Instructor Competency Check (GroundInstructorCheckForm.jsx) ----
 export function buildGroundInstructorCheckHtml(check, items, userName) {
   let body = '<h1>Flight Standards Personnel (Ground) Competency Check</h1>';
+  body += refLine('GROUND_INSTRUCTOR_COMPETENCY');
   body += `<div class="meta">Applicant (Instructor): ${userName} · Completed ${check.completedAt ? formatDate(check.completedAt) : '—'}</div>`;
   body += section('Details', [
     ['Course Title', check.courseTitle],
@@ -555,6 +570,7 @@ export function buildPersonnelCompetencyCheckHtml(check, items, userName) {
   const rowFor = (item) => [item.description, check.items?.[item.id] || ''];
 
   let body = '<h1>Flight Standards Personnel (Air) Competency Check</h1>';
+  body += refLine('PERSONNEL_AIR_COMPETENCY');
   body += `<div class="meta">Candidate: ${userName} · ${SECTION_LABELS[check.candidateSection] || ''} · Completed ${check.completedAt ? formatDate(check.completedAt) : '—'}</div>`;
   body += section('Details', [
     ['Training / Check Type', check.trainingCheckType],

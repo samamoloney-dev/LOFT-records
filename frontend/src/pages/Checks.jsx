@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { EpChecks } from './EpChecks';
 import { SafetyEquipmentChecksList } from './SafetyEquipmentChecks';
@@ -12,12 +12,16 @@ import { FlightStandardsRecurrentTraining } from './FlightStandardsRecurrentTrai
 import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
 import { CompletedChecksAlert } from '../components/CompletedChecksAlert';
+import { useAssignedChecks, refreshAssignedChecks } from '../lib/assignedChecks';
 import { CHECK_ROLES, CA_CHECK_ROLES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 export function Checks() {
   const { user } = useAuth();
+  // Red numbered circles: check forms issued to this person, on the tab they're on.
+  const assigned = useAssignedChecks();
+  const tabCount = (top, tab) => assigned.tabs[`${top}/${tab}`] || 0;
   // Simulator-only staff can reach the Pilots tab, but only its IPC/PC
   // sub-tabs - not Emergency Procedures.
   const isSimulatorOnly = user.role === 'SIMULATOR_ONLY';
@@ -49,39 +53,42 @@ export function Checks() {
   const canAccessOthers = CHECK_ROLES.includes(user.role);
 
   const topTabs = [
-    canAccessPilots && { key: 'pilots', label: 'Pilots' },
-    canAccessCabinAttendants && { key: 'cabin-attendants', label: 'Cabin Attendants' },
+    canAccessPilots && { key: 'pilots', label: 'Pilots', badge: assigned.tops.pilots },
+    canAccessCabinAttendants && { key: 'cabin-attendants', label: 'Cabin Attendants', badge: assigned.tops['cabin-attendants'] },
     canAccessOthers && { key: 'others', label: 'Others' },
   ].filter(Boolean);
 
   const [topTab, setTopTab] = useState(topTabs[0]?.key);
 
   const pilotTabs = [
-    canAccessPilotChecks && { key: 'ipc', label: 'IPC' },
-    canAccessPilotChecks && { key: 'pc', label: 'PC' },
-    canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures' },
-    canAccessPilotEp && { key: 'lifeJacket', label: 'Life Jacket' },
-    canAccessPilotEp && { key: 'smokeFire', label: 'Smoke & Fire' },
-    canAccessPilotEp && { key: 'f100Slide', label: 'F100 Slide' },
-    canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check' },
-    canAccessPilotCtl && { key: 'ctl', label: 'Check to Line' },
+    canAccessPilotChecks && { key: 'ipc', label: 'IPC', badge: tabCount('pilots', 'ipc') },
+    canAccessPilotChecks && { key: 'pc', label: 'PC', badge: tabCount('pilots', 'pc') },
+    canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures', badge: tabCount('pilots', 'ep') },
+    canAccessPilotEp && { key: 'lifeJacket', label: 'Life Jacket', badge: tabCount('pilots', 'lifeJacket') },
+    canAccessPilotEp && { key: 'smokeFire', label: 'Smoke & Fire', badge: tabCount('pilots', 'smokeFire') },
+    canAccessPilotEp && { key: 'f100Slide', label: 'F100 Slide', badge: tabCount('pilots', 'f100Slide') },
+    canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check', badge: tabCount('pilots', 'linecheck') },
+    canAccessPilotCtl && { key: 'ctl', label: 'Check to Line', badge: tabCount('pilots', 'ctl') },
     // SA 538 - assesses a Training Captain/Check Captain/Examiner's own
     // instructional technique during simulator sessions, same checkers who
     // can reach the other pilot check forms here (see checks.js
     // canAccessCheckType's FLIGHT_STANDARDS_RECURRENT_TRAINING branch).
-    canAccessPilotChecks && { key: 'fsRecurrent', label: 'Flight Standards Recurrent' },
+    canAccessPilotChecks && { key: 'fsRecurrent', label: 'Flight Standards Recurrent', badge: tabCount('pilots', 'fsRecurrent') },
   ].filter(Boolean);
   const [pilotTab, setPilotTab] = useState(pilotTabs[0]?.key);
 
   const caTabs = [
-    canAccessEpForCa && { key: 'ep', label: 'Emergency Procedures' },
-    canAccessEpForCa && { key: 'lifeJacket', label: 'Life Jacket' },
-    canAccessEpForCa && { key: 'smokeFire', label: 'Smoke & Fire' },
-    canAccessEpForCa && { key: 'f100Slide', label: 'F100 Slide' },
-    canAccessCaOnly && { key: 'ctl', label: 'Check to Line' },
-    canAccessCaOnly && { key: 'linecheck', label: 'Line Check' },
+    canAccessEpForCa && { key: 'ep', label: 'Emergency Procedures', badge: tabCount('cabin-attendants', 'ep') },
+    canAccessEpForCa && { key: 'lifeJacket', label: 'Life Jacket', badge: tabCount('cabin-attendants', 'lifeJacket') },
+    canAccessEpForCa && { key: 'smokeFire', label: 'Smoke & Fire', badge: tabCount('cabin-attendants', 'smokeFire') },
+    canAccessEpForCa && { key: 'f100Slide', label: 'F100 Slide', badge: tabCount('cabin-attendants', 'f100Slide') },
+    canAccessCaOnly && { key: 'ctl', label: 'Check to Line', badge: tabCount('cabin-attendants', 'ctl') },
+    canAccessCaOnly && { key: 'linecheck', label: 'Line Check', badge: tabCount('cabin-attendants', 'linecheck') },
   ].filter(Boolean);
   const [caTab, setCaTab] = useState(caTabs[0]?.key);
+  // Keep the red circles current as you move between tabs (e.g. after
+  // finishing a form and coming back to the list).
+  useEffect(() => { refreshAssignedChecks(); }, [topTab, pilotTab, caTab]);
 
   const othersTabs = [
     { key: 'gic', label: 'Ground Instructor Check' },

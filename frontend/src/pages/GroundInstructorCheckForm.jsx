@@ -11,6 +11,7 @@ import { openPrintWindow } from '../lib/print';
 import { buildGroundInstructorCheckHtml } from '../lib/printBuilders';
 import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const COURSE_TITLES = ['Emergency procedures', 'PMI', 'Ground school'];
 
@@ -179,6 +180,7 @@ export function GroundInstructorCheckForm({ userId, userName }) {
 
             {open && (
               <div style={{ marginTop: 8 }}>
+                <ReferenceDocLine formKey="GROUND_INSTRUCTOR_COMPETENCY" />
                 <div className="grid2">
                   <div className="field">
                     <label>Course Title</label>

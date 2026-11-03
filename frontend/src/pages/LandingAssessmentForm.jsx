@@ -7,6 +7,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow } from '../lib/print';
 import { buildLandingAssessmentHtml } from '../lib/printBuilders';
+import { ReferenceDocLine } from '../components/ReferenceDocLine';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 const OBSERVATION_COUNT = 4;
@@ -229,6 +230,7 @@ export function LandingAssessmentForm({ traineeId, fleet }) {
         </div>
       </div>
       {form.completedAt && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Completed {formatDate(form.completedAt)}</div>}
+      <ReferenceDocLine formKey="LANDING_ASSESSMENT" />
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
         {form.assignedToName ? `${form.assignedToRole ? formatUserRole(form.assignedToRole) : 'Assigned to'} ${form.assignedToName}${form.assignedToArn ? ` · ARN ${form.assignedToArn}` : ''}` : 'Unassigned'}
       </div>

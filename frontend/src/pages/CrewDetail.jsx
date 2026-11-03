@@ -860,7 +860,7 @@ function CompetencyRow({ c, onUpdate, onDelete, unlocked, setUnlocked, archived 
   const header = (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ fontWeight: 500 }}>{c.name}{isAdHoc && <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 400 }}> · one-off</span>}</div>
-      {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, plannedDate: c.plannedDate }} />}
+      {!c.na && status && <DueBadge label="Status" info={{ dueDate: c.dueDate, status, completedDate: c.completedDate, plannedDate: c.plannedDate }} />}
     </div>
   );
 

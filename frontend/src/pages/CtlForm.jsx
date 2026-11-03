@@ -231,6 +231,12 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
     ? CA_ASSESSMENT_ITEMS.every((item) => form.assessmentItems[item] !== undefined)
     : visibleItems.length > 0 && visibleItems.every((item) => form.assessmentItems[itemKey(item)] !== undefined);
 
+  // Named in the hint under the form so a single blank text box (e.g. "Approach
+  // type flown") isn't a mystery when the Overall result stays greyed out.
+  const missingItems = isCabinAttendant
+    ? CA_ASSESSMENT_ITEMS.filter((item) => form.assessmentItems[item] === undefined)
+    : visibleItems.filter((item) => form.assessmentItems[itemKey(item)] === undefined).map((item) => `${item.section} - ${item.description}`);
+
   function printForm() {
     openPrintWindow('Check to Line Assessment', buildCtlFormHtml(data, traineeType));
   }
@@ -384,7 +390,8 @@ export function CtlForm({ traineeId, traineeType, fleet, onCompleted }) {
 
           {!locked && !allItemsAnswered && (
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0.75rem 0' }}>
-              Every item above must be ticked before the overall result can be set.
+              Every item above must be ticked or filled in before the overall result can be set.
+              {missingItems.length > 0 && <> Still to do: {missingItems.join('; ')}.</>}
             </div>
           )}
           <div className="field" style={{ marginTop: 12 }}>

@@ -4,7 +4,7 @@ const { baseFleet } = require('./fleetOrder');
 // Currency Overview CSV export, per the operator's "Competency Names"
 // spreadsheet - these checks are split by aircraft there, while the app
 // records one Emergency Procedures / Line Check / IPC / Proficiency Check
-// per person. Spelling (including "Proficency") is deliberately verbatim.
+// per person. Spelling is deliberately verbatim (including "Practial" in the F100 slide name).
 // The codes for these live in course_codes, keyed by exact name (loaded by
 // migration 0122), and are edited from Edit Forms > Competencies (see
 // course-codes.js /checks).
@@ -24,14 +24,14 @@ const PILOT_LINE_CHECK = {
   METRO_23: 'Line Check - Metro',
 };
 const PROFICIENCY_CHECK = {
-  DASH_8: 'Part 121 Proficency Check Dash 8',
-  FOKKER_100: 'Part 121 Proficency Check F100',
-  METRO_23: 'Part 121 Proficency Check Metro',
+  DASH_8: 'Part 121 Proficiency Check - D8',
+  FOKKER_100: 'Part 121 Proficiency Check - F100',
+  METRO_23: 'Part 121 Proficiency Check - M23',
 };
 const IPC = {
-  DASH_8: 'Part 121 IPC & Proficency Check Dash 8',
-  FOKKER_100: 'Part 121 IPC & Proficency Check F100',
-  METRO_23: 'Part 121 IPC & Proficency Check Metro',
+  DASH_8: 'Part 61 IPC and 121 Proficiency Check - DHC8',
+  FOKKER_100: 'Part 61 IPC and 121 Proficiency Check - F100',
+  METRO_23: 'Part 61 IPC and 121 Proficiency Check - M23',
 };
 const CA_LINE_CHECK_DASH_8 = 'Cabin Attendant Dash 8 Line Check';
 const CA_LINE_CHECK_FOKKER_100 = 'Cabin Attendant F100 Line Check';

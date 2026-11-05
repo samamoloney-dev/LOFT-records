@@ -201,7 +201,17 @@ router.post('/:traineeId/complete', async (req, res) => {
   // Computed once in JS (rather than two separate SQL now() calls) so the
   // CTL's own completedAt and the Line Check anchor it starts always agree
   // to the same instant.
-  const completedAt = new Date();
+  // An admin backfilling a Check to Line that was actually conducted earlier
+  // can pass the real date as completedDate (YYYY-MM-DD); it's stored as noon
+  // in the operator's timezone so localDateString reads back the same day.
+  // Everyone else (and any call without it) completes as of now.
+  let completedAt = new Date();
+  if (req.body?.completedDate !== undefined) {
+    if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can set the Check to Line date' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(req.body.completedDate))) return res.status(400).json({ error: 'completedDate must be YYYY-MM-DD' });
+    completedAt = new Date(`${req.body.completedDate}T04:00:00Z`);
+    if (Number.isNaN(completedAt.getTime()) || completedAt > new Date()) return res.status(400).json({ error: 'completedDate must be a valid date that is not in the future' });
+  }
   const { rows: updatedRows } = await pool.query(
     'UPDATE check_to_line_forms SET completed_at = $2 WHERE id = $1 RETURNING *',
     [form.id, completedAt],

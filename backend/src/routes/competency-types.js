@@ -13,7 +13,7 @@ const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKE
 // a staff account holding one of these specific roles (see
 // 0077_competency_type_staff_roles.sql) - null/empty applies to every
 // pilot, same as today.
-const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN'];
+const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'HOTC', 'HOFO', 'ALTERNATE'];
 
 // node-postgres doesn't decode arrays of custom enum types (fleet[]) on
 // its own - see db/serialize.js's parsePgArray - so fleets needs parsing

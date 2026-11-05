@@ -1123,7 +1123,7 @@ const APPLIES_TO_LABELS = { PILOT: 'Pilots only', CABIN_ATTENDANT: 'Cabin attend
 // Examiners need) - see 0077_competency_type_staff_roles.sql. Only
 // meaningful when appliesTo is 'PILOT'; leaving none ticked applies to
 // every pilot, same as before this option existed.
-const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN'];
+const STAFF_ROLE_VALUES = ['EXAMINER', 'CC', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'HOTC', 'HOFO', 'ALTERNATE'];
 
 function StaffRolePicker({ value, onChange }) {
   function toggle(r) {
@@ -1204,7 +1204,7 @@ function CompetencyTypesSection() {
     try {
       await api.post('/api/competency-types', {
         name: name.trim(), courseCode: courseCode.trim() || null, appliesTo: appliesTo || null, fleets: fleets.length ? fleets : null,
-        staffRoles: appliesTo === 'PILOT' && staffRoles.length ? staffRoles : null,
+        staffRoles: staffRoles.length ? staffRoles : null,
         syllabusId: viewSyllabusId,
       });
       setName('');
@@ -1222,7 +1222,7 @@ function CompetencyTypesSection() {
     try {
       await api.patch(`/api/competency-types/${id}`, {
         name: editingName.trim(), courseCode: editingCourseCode.trim() || null, appliesTo: editingAppliesTo || null, fleets: editingFleets.length ? editingFleets : null,
-        staffRoles: editingAppliesTo === 'PILOT' && editingStaffRoles.length ? editingStaffRoles : null,
+        staffRoles: editingStaffRoles.length ? editingStaffRoles : null,
       });
       setEditingId(null);
       load();
@@ -1273,12 +1273,10 @@ function CompetencyTypesSection() {
           <label>Fleets (leave none ticked for every fleet - e.g. tick only Fokker 100/Cabin Fokker 100 for a Fokker-specific course)</label>
           <CompetencyFleetPicker value={fleets} onChange={setFleets} />
         </div>
-        {appliesTo === 'PILOT' && (
-          <div className="field">
-            <label>Pilot roles (leave none ticked for every pilot - tick one or more to require this only of pilots who are also staff with that role)</label>
-            <StaffRolePicker value={staffRoles} onChange={setStaffRoles} />
-          </div>
-        )}
+        <div className="field">
+          <label>Staff roles (leave none ticked for every crew member - tick one or more to require this only of crew who are also staff with that role)</label>
+          <StaffRolePicker value={staffRoles} onChange={setStaffRoles} />
+        </div>
         <button type="submit" className="primary">Add</button>
       </form>
       {error && <div className="error-text">{error}</div>}
@@ -1297,11 +1295,9 @@ function CompetencyTypesSection() {
                 </select>
               </div>
               <CompetencyFleetPicker value={editingFleets} onChange={setEditingFleets} />
-              {editingAppliesTo === 'PILOT' && (
-                <div style={{ marginTop: 8 }}>
-                  <StaffRolePicker value={editingStaffRoles} onChange={setEditingStaffRoles} />
-                </div>
-              )}
+              <div style={{ marginTop: 8 }}>
+                <StaffRolePicker value={editingStaffRoles} onChange={setEditingStaffRoles} />
+              </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 <button onClick={() => saveName(t.id)}>Save</button>
                 <button onClick={() => setEditingId(null)}>Cancel</button>

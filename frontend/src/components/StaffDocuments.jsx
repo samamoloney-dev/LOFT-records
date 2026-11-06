@@ -101,14 +101,19 @@ export function StaffDocuments({ userId, title, description, kind }) {
     ? [...new Set([...topics.map((t) => t.name), ...Object.keys(lastDone)])]
     : [];
 
+  // PMI is a once-off: as soon as its certificate is on file the box shows just
+  // that certificate - no upload fields and no "Show removed" toggle. (Remove
+  // is kept on the certificate itself so a wrong file can still be replaced.)
+  const certificateOnly = kind === 'PMI' && !showArchived && !!docs && docs.length > 0;
+
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
           <div style={{ fontWeight: 500 }}>{title}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{description}</div>
+          {!certificateOnly && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{description}</div>}
         </div>
-        <button onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Show current' : 'Show removed'}</button>
+        {!certificateOnly && <button onClick={() => setShowArchived((v) => !v)}>{showArchived ? 'Show current' : 'Show removed'}</button>}
       </div>
 
       {summaryTopics.length > 0 && docs !== null && (
@@ -122,7 +127,7 @@ export function StaffDocuments({ userId, title, description, kind }) {
         </div>
       )}
 
-      {!showArchived && (
+      {!showArchived && !certificateOnly && (
         <div className="grid2" style={{ marginTop: 10, alignItems: 'end' }}>
           {isPd && (
             <div className="field" style={{ margin: 0 }}>

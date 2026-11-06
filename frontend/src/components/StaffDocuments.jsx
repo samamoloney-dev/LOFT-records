@@ -29,8 +29,8 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 // so the record is always kept.
 export function StaffDocuments({ userId, title, description, kind }) {
   const isPd = kind === PERSONAL_DEVELOPMENT;
-  // Human Factors for Supervisors files carry a completed date too, but have no topic.
-  const dated = isPd || kind === 'HUMAN_FACTORS_SUPERVISOR';
+  // Human Factors for Supervisors and PMI files carry a completed date too, but have no topic.
+  const dated = isPd || kind === 'HUMAN_FACTORS_SUPERVISOR' || kind === 'PMI';
   const [docs, setDocs] = useState(null);
   const [topics, setTopics] = useState([]);
   const [showArchived, setShowArchived] = useState(false);

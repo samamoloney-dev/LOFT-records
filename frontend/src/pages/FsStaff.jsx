@@ -235,6 +235,12 @@ function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
         title="Human Factors for Supervisors"
         description="Evidence (JPEG or PDF) of this staff member's Human Factors for Supervisors training, with the date it was completed. Removing a file archives it, so nothing is lost."
       />
+      <StaffDocuments
+        userId={u.id}
+        kind="PMI"
+        title="PMI"
+        description="Evidence (JPEG or PDF) of this staff member's PMI, with the date it was completed. Removing a file archives it, so nothing is lost."
+      />
       {showGic && <GroundInstructorCheckForm userId={u.id} userName={u.name} />}
       {showPac && <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />}
     </div>

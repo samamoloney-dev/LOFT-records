@@ -17,7 +17,7 @@ router.use(requireRole(...ADMIN_ROLES));
 
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg'];
 const MAX_DATA_CHARS = 14000000; // roughly a 10 MB file once base64-encoded
-const KINDS = ['EXAMINER_PROFICIENCY_CHECK', 'PERSONAL_DEVELOPMENT', 'HUMAN_FACTORS_SUPERVISOR'];
+const KINDS = ['EXAMINER_PROFICIENCY_CHECK', 'PERSONAL_DEVELOPMENT', 'HUMAN_FACTORS_SUPERVISOR', 'PMI'];
 const LIST_COLUMNS = 'id, user_id, kind, name, topic, document_date, file_name, mime_type, archived, archived_at, uploaded_by_name, created_at';
 
 function mimeTypeOf(dataUri) {

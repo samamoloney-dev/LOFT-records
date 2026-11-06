@@ -29,6 +29,8 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 // so the record is always kept.
 export function StaffDocuments({ userId, title, description, kind }) {
   const isPd = kind === PERSONAL_DEVELOPMENT;
+  // Human Factors for Supervisors files carry a completed date too, but have no topic.
+  const dated = isPd || kind === 'HUMAN_FACTORS_SUPERVISOR';
   const [docs, setDocs] = useState(null);
   const [topics, setTopics] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -54,7 +56,7 @@ export function StaffDocuments({ userId, title, description, kind }) {
     if (!file) return;
     setError(null);
     if (isPd && !topic) { setError('Choose the topic first'); return; }
-    if (isPd && !docDate) { setError('Enter the date it was completed first'); return; }
+    if (dated && !docDate) { setError('Enter the date it was completed first'); return; }
     const okType = /\.(pdf|jpe?g)$/i.test(file.name) || ['application/pdf', 'image/jpeg'].includes(file.type);
     if (!okType) { setError('Only JPEG or PDF files can be stored here'); return; }
     if (file.size > MAX_BYTES) { setError('That file is too large - the limit is about 10 MB'); return; }
@@ -62,7 +64,9 @@ export function StaffDocuments({ userId, title, description, kind }) {
     try {
       const fileData = await readFileAsDataUrl(file);
       const body = { userId, name: name.trim() || (isPd ? topic : nameFromFileName(file.name)), fileName: file.name, fileData };
-      if (isPd) Object.assign(body, { kind, topic, documentDate: docDate });
+      if (kind) body.kind = kind;
+      if (isPd) body.topic = topic;
+      if (dated) body.documentDate = docDate;
       await api.post('/api/staff-documents', body);
       setName('');
       load();
@@ -121,23 +125,23 @@ export function StaffDocuments({ userId, title, description, kind }) {
       {!showArchived && (
         <div className="grid2" style={{ marginTop: 10, alignItems: 'end' }}>
           {isPd && (
-            <>
-              <div className="field" style={{ margin: 0 }}>
-                <label htmlFor={`sd-topic-${kind || "x"}-${userId}`}>Topic</label>
-                <select id={`sd-topic-${kind || "x"}-${userId}`} value={topic} disabled={busy} onChange={(e) => setTopic(e.target.value)}>
-                  <option value="">{topics.length === 0 ? 'No topics set up yet' : 'Choose a topic…'}</option>
-                  {topics.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label htmlFor={`sd-date-${kind || "x"}-${userId}`}>Date completed</label>
-                <input id={`sd-date-${kind || "x"}-${userId}`} type="date" max={todayIso()} value={docDate} disabled={busy} onChange={(e) => setDocDate(e.target.value)} />
-              </div>
-            </>
+            <div className="field" style={{ margin: 0 }}>
+              <label htmlFor={`sd-topic-${kind || "x"}-${userId}`}>Topic</label>
+              <select id={`sd-topic-${kind || "x"}-${userId}`} value={topic} disabled={busy} onChange={(e) => setTopic(e.target.value)}>
+                <option value="">{topics.length === 0 ? 'No topics set up yet' : 'Choose a topic…'}</option>
+                {topics.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+          {dated && (
+            <div className="field" style={{ margin: 0 }}>
+              <label htmlFor={`sd-date-${kind || "x"}-${userId}`}>Date completed</label>
+              <input id={`sd-date-${kind || "x"}-${userId}`} type="date" max={todayIso()} value={docDate} disabled={busy} onChange={(e) => setDocDate(e.target.value)} />
+            </div>
           )}
           <div className="field" style={{ margin: 0 }}>
             <label htmlFor={`sd-name-${kind || "x"}-${userId}`}>Name (optional)</label>
-            <input id={`sd-name-${kind || "x"}-${userId}`} value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder={isPd ? 'Defaults to the topic' : 'e.g. Examiner Proficiency Check 2026'} />
+            <input id={`sd-name-${kind || "x"}-${userId}`} value={name} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder={isPd ? 'Defaults to the topic' : `e.g. ${title} 2026`} />
           </div>
           <div className="field" style={{ margin: 0 }}>
             <label htmlFor={`sd-file-${kind || "x"}-${userId}`}>{busy ? 'Uploading…' : 'Add a JPEG or PDF'}</label>

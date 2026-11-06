@@ -229,6 +229,12 @@ function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
         title="Personal Development"
         description="Evidence (JPEG or PDF) of this staff member's Personal Development. File each one under its topic with the date it was completed - the topics rotate, and the summary shows when each was last done. Removing a file archives it, so nothing is lost."
       />
+      <StaffDocuments
+        userId={u.id}
+        kind="HUMAN_FACTORS_SUPERVISOR"
+        title="Human Factors for Supervisors"
+        description="Evidence (JPEG or PDF) of this staff member's Human Factors for Supervisors training, with the date it was completed. Removing a file archives it, so nothing is lost."
+      />
       {showGic && <GroundInstructorCheckForm userId={u.id} userName={u.name} />}
       {showPac && <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />}
     </div>

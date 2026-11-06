@@ -1503,6 +1503,77 @@ function DocumentNamesSection() {
   );
 }
 
+// The Personal Development topics that rotate through the years. A staff
+// member's Personal Development file (FS Staff page) is filed under one of
+// these with the date it was completed. Archiving hides a topic from the picker
+// without touching files already filed under it; renaming carries over to them.
+function PersonalDevelopmentTopicsSection() {
+  const [topics, setTopics] = useState([]);
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.get('/api/personal-development-topics?includeArchived=true').then(setTopics).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function addTopic(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    try { await api.post('/api/personal-development-topics', { name: name.trim() }); setName(''); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function saveName(id) {
+    if (!editingName.trim()) return;
+    setError(null);
+    try { await api.patch(`/api/personal-development-topics/${id}`, { name: editingName.trim() }); setEditingId(null); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  async function toggleArchive(topic) {
+    setError(null);
+    try { await api.patch(`/api/personal-development-topics/${topic.id}`, { archived: !topic.archived }); load(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontWeight: 500, marginBottom: 4 }}>Personal Development topics</div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        The topics that cycle through Personal Development (for example 3 or 4 topics, each coming round again every 3-4 years). Staff evidence on the FS Staff page is filed under one of these with the date it was completed. Archiving a topic hides it from the list without affecting files already filed under it.
+      </div>
+      <form className="card" onSubmit={addTopic}>
+        <div className="field"><label>Add a topic</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fatigue and Wellbeing" required /></div>
+        <button type="submit" className="primary">Add</button>
+      </form>
+      {error && <div className="error-text">{error}</div>}
+      {topics.map((t) => (
+        <div key={t.id} className="card" style={{ cursor: 'default' }}>
+          {editingId === t.id ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ flex: 1 }} value={editingName} onChange={(e) => setEditingName(e.target.value)} />
+              <button onClick={() => saveName(t.id)}>Save</button>
+              <button onClick={() => setEditingId(null)}>Cancel</button>
+            </div>
+          ) : (
+            <div className="row" style={{ cursor: 'default' }}>
+              <div style={{ flex: 1, fontWeight: 500, opacity: t.archived ? 0.6 : 1 }}>{t.name}{t.archived ? ' (archived)' : ''}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setEditingId(t.id); setEditingName(t.name); }}>Rename</button>
+                <button onClick={() => toggleArchive(t)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // The document number printed on each check form in the line "Check
 // conducted IAW specific Instructor Reference Documents <number>". Every form
 // starts on the placeholder DOC### until the real numbers are confirmed here.
@@ -1770,7 +1841,12 @@ export function SyllabusAdmin() {
         </>
       )}
       {tab === 'certificates' && !isCaManager && <CertificateChecklistSection />}
-      {tab === 'documents' && !isCaManager && <DocumentNamesSection />}
+      {tab === 'documents' && !isCaManager && (
+        <>
+          <DocumentNamesSection />
+          <PersonalDevelopmentTopicsSection />
+        </>
+      )}
       {tab === 'approvals' && canReviewChanges && <PendingApprovalsSection />}
       {tab === 'survey' && canManageSurveyQuestions && <SurveyQuestionsSection />}
     </div>

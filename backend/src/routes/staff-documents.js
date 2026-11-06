@@ -17,21 +17,30 @@ router.use(requireRole(...ADMIN_ROLES));
 
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg'];
 const MAX_DATA_CHARS = 14000000; // roughly a 10 MB file once base64-encoded
-const LIST_COLUMNS = 'id, user_id, kind, name, file_name, mime_type, archived, archived_at, uploaded_by_name, created_at';
+const KINDS = ['EXAMINER_PROFICIENCY_CHECK', 'PERSONAL_DEVELOPMENT'];
+const LIST_COLUMNS = 'id, user_id, kind, name, topic, document_date, file_name, mime_type, archived, archived_at, uploaded_by_name, created_at';
 
 function mimeTypeOf(dataUri) {
   const match = /^data:([a-z0-9/+.-]+);base64,/i.exec(dataUri || '');
   return match ? match[1].toLowerCase() : null;
 }
 
-const listSchema = z.object({ userId: z.string().uuid(), archived: z.enum(['true', 'false']).optional() });
+const listSchema = z.object({
+  userId: z.string().uuid(),
+  archived: z.enum(['true', 'false']).optional(),
+  kind: z.enum(KINDS).optional(),
+});
 
+// kind defaults to the Examiner Proficiency Check files, which is all this
+// table held before Personal Development was added. Newest document date
+// first (falling back to when it was added), so a topic's latest sitting leads.
 router.get('/', async (req, res) => {
   const parsed = listSchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: 'userId is required' });
   const { rows } = await pool.query(
-    `SELECT ${LIST_COLUMNS} FROM staff_documents WHERE user_id = $1 AND archived = $2 ORDER BY created_at DESC`,
-    [parsed.data.userId, parsed.data.archived === 'true'],
+    `SELECT ${LIST_COLUMNS} FROM staff_documents WHERE user_id = $1 AND archived = $2 AND kind = $3
+     ORDER BY document_date DESC NULLS LAST, created_at DESC`,
+    [parsed.data.userId, parsed.data.archived === 'true', parsed.data.kind || 'EXAMINER_PROFICIENCY_CHECK'],
   );
   res.json(rows.map(rowToCamel));
 });
@@ -50,6 +59,11 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(160),
   fileName: z.string().min(1).max(255),
   fileData: z.string().min(1),
+  kind: z.enum(KINDS).optional(),
+  // Personal Development files are filed under one of the rotating topics and
+  // carry the date that topic was completed.
+  topic: z.string().trim().min(1).max(120).nullable().optional(),
+  documentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 
 router.post('/', async (req, res) => {
@@ -65,13 +79,21 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'That file is too large - the limit is about 10 MB' });
   }
 
+  const kind = d.kind || 'EXAMINER_PROFICIENCY_CHECK';
+  if (kind === 'PERSONAL_DEVELOPMENT' && !d.topic) {
+    return res.status(400).json({ error: 'Choose the Personal Development topic this file belongs to' });
+  }
+  if (d.documentDate && (Number.isNaN(Date.parse(d.documentDate)) || d.documentDate > new Date().toISOString().slice(0, 10))) {
+    return res.status(400).json({ error: 'The date must be a real date that is not in the future' });
+  }
+
   const { rows: userRows } = await pool.query('SELECT name FROM users WHERE id = $1', [d.userId]);
   if (userRows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
 
   const { rows } = await pool.query(
-    `INSERT INTO staff_documents (user_id, name, file_name, mime_type, file_data, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${LIST_COLUMNS}`,
-    [d.userId, d.name, d.fileName, mimeType, d.fileData, req.user.name],
+    `INSERT INTO staff_documents (user_id, kind, name, topic, document_date, file_name, mime_type, file_data, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${LIST_COLUMNS}`,
+    [d.userId, kind, d.name, kind === 'PERSONAL_DEVELOPMENT' ? d.topic : null, d.documentDate || null, d.fileName, mimeType, d.fileData, req.user.name],
   );
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'staff_documents', targetId: rows[0].id,

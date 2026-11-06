@@ -223,6 +223,12 @@ function StaffProfile({ user: u, canResetPasswords, onEdit, onBack }) {
           description="Scans or photos (JPEG or PDF) of this examiner's Examiner Proficiency Check. Removing a file archives it, so nothing is lost."
         />
       )}
+      <StaffDocuments
+        userId={u.id}
+        kind="PERSONAL_DEVELOPMENT"
+        title="Personal Development"
+        description="Evidence (JPEG or PDF) of this staff member's Personal Development. File each one under its topic with the date it was completed - the topics rotate, and the summary shows when each was last done. Removing a file archives it, so nothing is lost."
+      />
       {showGic && <GroundInstructorCheckForm userId={u.id} userName={u.name} />}
       {showPac && <PersonnelCompetencyCheckForm userId={u.id} userName={u.name} />}
     </div>

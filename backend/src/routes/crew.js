@@ -763,38 +763,51 @@ function urgentSafetyEquipmentItemsFor({ fromCurrency }) {
 // of their ground school, and that date is their F100 slide training from then
 // on. The latest valid date wins. Dates are checked here rather than cast in
 // SQL so a mistyped value can't fail the whole roster query.
-const f100GroundSchoolLoader = batchLoader(async (traineeIds) => {
+// The same goes for the other Ground School courses marked with a currency_key:
+// the Wet Drill (Life Jacket Training) and the 3 Yearly Fire and Smoke
+// (Smoke & Fire Training). Each key's latest valid date across the person's
+// linked LOFT trainee records, as { KEY: 'YYYY-MM-DD' }.
+const groundSchoolDatesLoader = batchLoader(async (traineeIds) => {
   const { rows } = await pool.query(
-    `SELECT gsp.trainee_id, gsp.details->>'completedDate' AS raw
+    `SELECT gsp.trainee_id, gsi.currency_key, gsp.details->>'completedDate' AS raw
      FROM ground_school_progress gsp
      JOIN ground_school_items gsi ON gsi.id = gsp.ground_school_item_id
-     WHERE gsi.currency_key = 'F100_SLIDE_TRAINING' AND gsp.trainee_id = ANY($1::uuid[])`,
+     WHERE gsi.currency_key IS NOT NULL AND gsp.trainee_id = ANY($1::uuid[])`,
     [traineeIds],
   );
   const best = new Map();
   for (const r of rows) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.raw || '') || !isPlausibleDate(r.raw)) continue;
-    if (!best.has(r.trainee_id) || r.raw > best.get(r.trainee_id)) best.set(r.trainee_id, r.raw);
+    const byKey = best.get(r.trainee_id) || {};
+    if (!byKey[r.currency_key] || r.raw > byKey[r.currency_key]) byKey[r.currency_key] = r.raw;
+    best.set(r.trainee_id, byKey);
   }
   return best;
 });
-async function f100SlideGroundSchoolDate(traineeIds) {
-  const dates = await Promise.all((traineeIds || []).map((id) => f100GroundSchoolLoader(id)));
-  return dates.filter(Boolean).reduce((a, b) => latestOf(a, b), null);
+async function groundSchoolDates(traineeIds) {
+  const perTrainee = await Promise.all((traineeIds || []).map((id) => groundSchoolDatesLoader(id)));
+  const merged = {};
+  for (const byKey of perTrainee.filter(Boolean)) {
+    for (const [key, date] of Object.entries(byKey)) merged[key] = latestOf(merged[key] || null, date);
+  }
+  return merged;
 }
 
 async function safetyEquipmentCurrency(member, planned, traineeIds) {
-  const [lifeJacketChk, smokeFireChk, f100CheckDate, f100GroundDate, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
+  const [lifeJacketCheckDate, smokeFireCheckDate, f100CheckDate, groundDates, lifeJacketIssued, smokeFireIssued, f100SlideIssued] = await Promise.all([
     lastCompletedCheck(member.id, 'LIFE_JACKET'),
     lastCompletedCheck(member.id, 'SMOKE_FIRE_TRAINING'),
     lastCompletedCheck(member.id, 'F100_SLIDE_TRAINING'),
-    f100SlideGroundSchoolDate(traineeIds),
+    groundSchoolDates(traineeIds),
     hasInProgressCheck(member.id, 'LIFE_JACKET'),
     hasInProgressCheck(member.id, 'SMOKE_FIRE_TRAINING'),
     hasInProgressCheck(member.id, 'F100_SLIDE_TRAINING'),
   ]);
-  // Whichever is later: a completed F100 Slide Training check, or the date
-  // entered on the Ground School item.
+  // For each of these, whichever is later: a completed check, or the date
+  // entered on the matching Ground School course.
+  const lifeJacketChk = latestOf(lifeJacketCheckDate, groundDates.LIFE_JACKET || null);
+  const smokeFireChk = latestOf(smokeFireCheckDate, groundDates.SMOKE_FIRE_TRAINING || null);
+  const f100GroundDate = groundDates.F100_SLIDE_TRAINING || null;
   const f100SlideChk = latestOf(f100CheckDate, f100GroundDate);
   // Once-off, per the operator's explicit rule ("once completed it is not
   // required to be done again") - a 100-year rolling window stands in for
@@ -1952,7 +1965,21 @@ router.post('/:id/documents', async (req, res) => {
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,
     description: `Uploaded document "${d.name}" for ${member.name}`,
   });
-  res.status(201).json(rowToCamel(rows[0]));
+  // A new copy of a document that is already on file under the same name
+  // replaces it: the older current copy is archived (never deleted), so it
+  // stays findable under Show archived / the Archive page.
+  const { rowCount: replaced } = await pool.query(
+    `UPDATE crew_documents SET archived = true, archived_at = now()
+     WHERE crew_member_id = $1 AND archived = false AND id <> $2 AND lower(btrim(name)) = lower(btrim($3))`,
+    [member.id, rows[0].id, d.name],
+  );
+  if (replaced > 0) {
+    await logAction({
+      userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents', targetId: rows[0].id,
+      description: `Archived ${replaced} earlier cop${replaced === 1 ? 'y' : 'ies'} of "${d.name}" for ${member.name}, replaced by the new upload`,
+    });
+  }
+  res.status(201).json({ ...rowToCamel(rows[0]), replacedCount: replaced });
 });
 
 // Renaming an already-uploaded document - a bulk multi-file upload (see

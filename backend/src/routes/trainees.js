@@ -59,8 +59,11 @@ const createSchema = baseTraineeSchema.superRefine((d, ctx) => {
   if (d.newHire && d.type !== 'PILOT') {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newHire'], message: 'New hire is only for pilot trainees' });
   }
-  if (d.newHire && !d.arn?.trim()) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for a new hire crew profile' });
+  // Every brand-new trainee also gets a crew profile now (see POST /), and a
+  // pilot's crew profile needs an ARN. A crew member sent back to LOFT already
+  // has one, so only brand-new pilots are asked.
+  if (d.type === 'PILOT' && !d.sourceCrewMemberId && !d.arn?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required - the pilot is also added to the Crew tab' });
   }
 });
 
@@ -187,19 +190,20 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
         : `Added trainee ${trainee.firstName} ${trainee.lastName}`,
   });
 
-  // New hire (pilots only, see createSchema's superRefine) - also create
-  // their crew profile straight away, linked back via crew_members.
-  // trainee_id, through the exact same INSERT path Crew's own "Quick add"
-  // form uses (see crew.js createCrewMemberRecord) so the two never
-  // disagree on what a crew profile needs. Best effort: if this fails, the
-  // trainee record is still created; an admin can add the crew profile by
-  // hand from the Crew tab instead (its own "New hire" checkbox does the
-  // same thing in reverse).
+  // Every brand-new trainee (pilot or cabin attendant) is also put on the Crew
+  // tab straight away, linked back via crew_members.trainee_id, through the
+  // exact same INSERT path Crew's own "Quick add" form uses (see crew.js
+  // createCrewMemberRecord) so the two never disagree on what a crew profile
+  // needs. A crew member sent back to LOFT for a new fleet already has a crew
+  // profile, so nothing is created for them. The new-hire flag only decides
+  // whether the Proficiency Check/Refresher Training grace period applies
+  // (pilots). Best effort: if this fails, the trainee record is still created;
+  // an admin can add the crew profile by hand from the Crew tab instead.
   let crewMemberId = null;
-  if (newHire) {
+  if (!sourceCrewMemberId) {
     try {
       const result = await createCrewMemberRecord({
-        firstName, lastName, type: 'PILOT', role, fleets: [fleet], arn, syllabusId, newHire: true, traineeId: trainee.id,
+        firstName, lastName, type, role, fleets: [fleet], arn: type === 'PILOT' ? arn : undefined, syllabusId, newHire: !!newHire, traineeId: trainee.id,
       }, req);
       if (result.member) crewMemberId = result.member.id;
     } catch (err) {
@@ -280,6 +284,14 @@ router.post('/:id/promote-to-crew', async (req, res) => {
     const { rows: sourceRows } = await pool.query('SELECT * FROM crew_members WHERE id = $1', [trainee.sourceCrewMemberId]);
     if (sourceRows.length > 0) sourceCrew = rowToCamel(sourceRows[0]);
   }
+  // A trainee added from the Trainees tab is put on the Crew tab straight away
+  // (see POST / above), linked by crew_members.trainee_id - promote that
+  // profile rather than creating a second one.
+  let linkedCrew = null;
+  if (!sourceCrew) {
+    const { rows: linkedRows } = await pool.query('SELECT * FROM crew_members WHERE trainee_id = $1', [trainee.id]);
+    if (linkedRows.length > 0) linkedCrew = rowToCamel(linkedRows[0]);
+  }
 
   const client = await pool.connect();
   let crewMember;
@@ -316,6 +328,12 @@ router.post('/:id/promote-to-crew', async (req, res) => {
         `UPDATE crew_members SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
         params,
       ));
+    } else if (linkedCrew) {
+      // Already on the Crew tab - a pilot's Line Check anniversary starts from
+      // this Check to Line; a cabin attendant's record is simply carried on.
+      ({ rows } = trainee.type === 'PILOT'
+        ? await client.query('UPDATE crew_members SET line_check_anchor_date = $2 WHERE id = $1 RETURNING *', [linkedCrew.id, localDateString(ctl.completedAt)])
+        : await client.query('SELECT * FROM crew_members WHERE id = $1', [linkedCrew.id]));
     } else {
       ({ rows } = await client.query(
         `INSERT INTO crew_members (first_name, last_name, type, role, fleets, line_check_anchor_date)

@@ -174,15 +174,21 @@ export function Trainees() {
                   onChange={(e) => setForm({ ...form, newHire: e.target.checked })}
                   style={{ width: 'auto' }}
                 />
-                New hire - also create their Crew profile now
+                New hire
               </label>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                 Holds off flagging Proficiency Check/Refresher Training as overdue until 6 months after their Check to Line, instead of the moment they're added to Crew.
               </div>
             </div>
           )}
-          {form.newHire && (
-            <div className="field"><label>ARN</label><input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required /></div>
+          {form.type === 'PILOT' && !returningToLoft && (
+            <div className="field">
+              <label>ARN</label>
+              <input value={form.arn} onChange={(e) => setForm({ ...form, arn: e.target.value })} required />
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Everyone created here is also added to the Crew tab, and a pilot's crew profile needs an ARN.
+              </div>
+            </div>
           )}
           <button type="submit" className="primary">Create</button>
         </form>

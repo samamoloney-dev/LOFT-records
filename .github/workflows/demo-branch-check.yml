@@ -55,7 +55,8 @@ jobs:
         run: find src db -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run migrations on an empty database
         working-directory: backend
-        run: npm run migrate
+        run: |
+          set -o pipefail; npm run migrate 2>&1 | tee migrate.log || { tail -12 migrate.log | while read -r line; do echo "::error::${line:0:500}"; done; exit 1; }
       - name: Seed the demo data
         working-directory: backend
         run: |
@@ -128,7 +129,7 @@ jobs:
         working-directory: backend
         run: |
           npm install --no-audit --no-fund
-          npm run migrate
+          set -o pipefail; npm run migrate 2>&1 | tee migrate.log || { tail -12 migrate.log | while read -r line; do echo "::error::${line:0:500}"; done; exit 1; }
           nohup node src/server.js > server.log 2>&1 &
           for i in $(seq 1 20); do curl -fsS localhost:4000/health && break; sleep 1; done
       - name: Config reports the unchanged Skippers profile

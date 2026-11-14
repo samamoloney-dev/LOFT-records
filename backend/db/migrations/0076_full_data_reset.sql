@@ -43,7 +43,7 @@ UPDATE meeting_minutes SET created_by = NULL;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'sam.moloney@skippers.com.au') THEN
+  IF EXISTS (SELECT 1 FROM users) AND NOT EXISTS (SELECT 1 FROM users WHERE email = 'sam.moloney@skippers.com.au') THEN
     RAISE EXCEPTION 'Wipe aborted: no user found with email sam.moloney@skippers.com.au - refusing to delete all users';
   END IF;
 END $$;

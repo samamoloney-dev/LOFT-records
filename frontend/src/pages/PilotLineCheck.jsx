@@ -17,6 +17,7 @@ import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
 import { useOptimisticSave } from '../lib/optimisticSave';
+import { AIRCRAFT_TYPES as PROFILE_AIRCRAFT_TYPES } from '../lib/profile';
 
 // Recurring pilot Line Check (SA_490 - 365 days from the initial Check to
 // Line date, then every 365 days after - see backend/src/lib/currency.js).
@@ -28,7 +29,7 @@ import { useOptimisticSave } from '../lib/optimisticSave';
 // Line Check), a CrewMemberPicker lets the assessor pick any pilot instead,
 // mirroring CaChecks.jsx's identical ad-hoc mode.
 const REFRESHER_ITEM_NAME = 'Refresher training and check';
-const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const AIRCRAFT_TYPES = PROFILE_AIRCRAFT_TYPES;
 // Only HOTC, HOFO, Flight Ops Admin and Alternate can add a new check
 // record - mirrors backend/src/routes/checks.js POST /.
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];

@@ -13,6 +13,7 @@ import { StaffCheckPicker } from '../components/StaffCheckPicker';
 import { TabBar } from '../components/TabBar';
 import { CompletedChecksAlert } from '../components/CompletedChecksAlert';
 import { useAssignedChecks, refreshAssignedChecks } from '../lib/assignedChecks';
+import { hasCabinAttendants, profile } from '../lib/profile';
 import { CHECK_ROLES, CA_CHECK_ROLES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
@@ -46,7 +47,7 @@ export function Checks() {
   const canAccessPilots = canAccessPilotChecks || canAccessPilotEp || canAccessPilotLineCheck || canAccessPilotCtl;
   const canAccessEpForCa = CHECK_ROLES.includes(user.role) || hasEpAccess;
   const canAccessCaOnly = CA_CHECK_ROLES.includes(user.role);
-  const canAccessCabinAttendants = canAccessEpForCa || canAccessCaOnly;
+  const canAccessCabinAttendants = hasCabinAttendants() && (canAccessEpForCa || canAccessCaOnly);
   // Mirrors backend canAccessChecks (CHECK_ROLES) - the same staff who can
   // create/edit a Ground Instructor Check or Personnel (Air) Competency
   // Check, so Examiners aren't locked out of a tab they're allowed to use.
@@ -66,7 +67,7 @@ export function Checks() {
     canAccessPilotEp && { key: 'ep', label: 'Emergency Procedures', badge: tabCount('pilots', 'ep') },
     canAccessPilotEp && { key: 'lifeJacket', label: 'Life Jacket', badge: tabCount('pilots', 'lifeJacket') },
     canAccessPilotEp && { key: 'smokeFire', label: 'Smoke & Fire', badge: tabCount('pilots', 'smokeFire') },
-    canAccessPilotEp && { key: 'f100Slide', label: 'F100 Slide', badge: tabCount('pilots', 'f100Slide') },
+    canAccessPilotEp && profile.features.part121 && { key: 'f100Slide', label: 'F100 Slide', badge: tabCount('pilots', 'f100Slide') },
     canAccessPilotLineCheck && { key: 'linecheck', label: 'Line Check', badge: tabCount('pilots', 'linecheck') },
     canAccessPilotCtl && { key: 'ctl', label: 'Check to Line', badge: tabCount('pilots', 'ctl') },
     // SA 538 - assesses a Training Captain/Check Captain/Examiner's own

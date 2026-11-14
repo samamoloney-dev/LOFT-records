@@ -76,7 +76,9 @@ router.get('/planned-competencies', async (req, res) => {
 // Fleet-then-rank grouping, matching Crew.jsx's own "Fleet & Rank" sort
 // mode - pilots only (this report has no cabin attendant equivalent), so
 // the cabin fleets that list also carries aren't needed here.
-const SPACING_FLEET_ORDER = ['FOKKER_100', 'DASH_8', 'METRO_23'];
+// Skippers' order first (unchanged), then any other pilot fleet the operator's
+// profile adds - a fleet missing from the list would sort first.
+const SPACING_FLEET_ORDER = [...new Set(['FOKKER_100', 'DASH_8', 'METRO_23', ...require('../lib/profile').PILOT_FLEET_VALUES])];
 const SPACING_RANK_ORDER = { CAPTAIN: 0, FIRST_OFFICER: 1 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -1,7 +1,13 @@
 const PDFDocument = require('pdfkit');
 const { SKIPPERS_LOGO_DATA_URI } = require('../assets/skippersLogo');
 
-const LOGO_BUFFER = Buffer.from(SKIPPERS_LOGO_DATA_URI.split(',')[1], 'base64');
+const { profile } = require('./profile');
+
+// Only a deployment whose profile says logo: 'skippers' carries the Skippers
+// logo - any other operator gets its name set as text instead (see below).
+const LOGO_BUFFER = profile.logo === 'skippers'
+  ? Buffer.from(SKIPPERS_LOGO_DATA_URI.split(',')[1], 'base64')
+  : null;
 
 function formatDate(d) {
   if (!d) return null;
@@ -25,7 +31,11 @@ function buildCertificatePdfBuffer({ name, items, validFrom, validTo, assessorNa
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.image(LOGO_BUFFER, (doc.page.width - 150) / 2, 40, { width: 150 });
+    if (LOGO_BUFFER) {
+      doc.image(LOGO_BUFFER, (doc.page.width - 150) / 2, 40, { width: 150 });
+    } else {
+      doc.font('Helvetica-Bold').fontSize(26).text(profile.operatorName, 50, 90, { align: 'center', width: doc.page.width - 100 });
+    }
     doc.y = 210;
 
     doc.font('Helvetica').fontSize(14).text('This is to certify that', { align: 'center' });
@@ -41,7 +51,7 @@ function buildCertificatePdfBuffer({ name, items, validFrom, validTo, assessorNa
       doc.moveDown(0.3);
     }
     doc.moveDown(1);
-    doc.fontSize(12).text('Conducted by Skippers Aviation PTY LTD', { align: 'center' });
+    doc.fontSize(12).text(`Conducted by ${profile.operatorName}`, { align: 'center' });
 
     doc.moveDown(3);
     const bottomY = doc.y;

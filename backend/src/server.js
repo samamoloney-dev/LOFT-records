@@ -50,6 +50,10 @@ const courseCodeRoutes = require('./routes/course-codes');
 const staffDocumentRoutes = require('./routes/staff-documents');
 const personalDevelopmentTopicRoutes = require('./routes/personal-development-topics');
 const referenceDocRoutes = require('./routes/reference-docs');
+const configRoutes = require('./routes/config');
+const demoRoutes = require('./routes/demo');
+const { demoGuard } = require('./middleware/demoGuard');
+const { profile } = require('./lib/profile');
 
 const app = express();
 
@@ -61,7 +65,8 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // again for crew document PDFs (crew.js POST /:id/documents), which
 // can run several MB for a multi-page scan and aren't compressed
 // client-side the way photos are.
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: profile.demo ? '2mb' : '20mb' }));
+app.use(demoGuard);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
@@ -95,6 +100,8 @@ app.use('/api/course-codes', courseCodeRoutes);
 app.use('/api/staff-documents', staffDocumentRoutes);
 app.use('/api/personal-development-topics', personalDevelopmentTopicRoutes);
 app.use('/api/reference-docs', referenceDocRoutes);
+app.use('/api/config', configRoutes);
+if (profile.demo) app.use('/api/demo', demoRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

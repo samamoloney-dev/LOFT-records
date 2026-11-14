@@ -17,6 +17,7 @@ import { formatDate, formatUserRole } from './format';
 import { competencyStatus } from './dueStatus';
 import { visibleCheckFormItems } from './checkFormItems';
 import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
+import { profile as operatorProfile } from './profile';
 import { referenceDocLine } from './referenceDocs';
 
 // The "Check conducted IAW specific Instructor Reference Documents DOC###" line
@@ -90,12 +91,14 @@ export function buildCertificateHtml({ name, items, tickedKeys, validFrom, valid
     .map((item) => `<div>${item.label}</div>`)
     .join('');
   return `
-    <img class="cert-logo" src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />
+    ${operatorProfile.logo === 'skippers'
+    ? `<img class="cert-logo" src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />`
+    : `<div class="cert-logo" style="font-size:26px;font-weight:700;text-align:center;">${operatorProfile.operatorName}</div>`}
     <div class="cert-intro">This is to certify that</div>
     <div class="cert-name">${(name || '').toUpperCase()}</div>
     <div class="cert-subheading">Has successfully completed the following</div>
     <div class="cert-checklist">${checklistHtml}</div>
-    <div class="cert-conducted">Conducted by Skippers Aviation PTY LTD</div>
+    <div class="cert-conducted">Conducted by ${operatorProfile.operatorName}</div>
     <div class="cert-footer-row">
       <div class="cert-dates">
         <div><b>Valid From</b> ${validFrom ? formatDate(validFrom) : '—'}</div>

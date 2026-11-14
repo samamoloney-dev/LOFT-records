@@ -9,8 +9,9 @@ import { useAuth } from '../context/AuthContext';
 import { crewLinkForItem } from '../lib/checkNav';
 import { SyllabusPicker } from '../components/SyllabusPicker';
 import { BulkImportCrew } from './BulkImportCrew';
+import { orderedFleets, hasCabinAttendants } from '../lib/profile';
 
-const FLEETS = ['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const FLEETS = orderedFleets(['FOKKER_100', 'DASH_8', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']);
 
 function sortBySurname(members) {
   return [...members].sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
@@ -41,7 +42,7 @@ const SORT_MODES = [
 
 const emptyForm = (type) => ({
   firstName: '', lastName: '', type, role: type === 'PILOT' ? 'FIRST_OFFICER' : 'CABIN_ATTENDANT',
-  fleets: [type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8'],
+  fleets: [type === 'PILOT' ? orderedFleets(['DASH_8'], 'PILOT')[0] : 'CA_DASH_8'],
   lastEpDate: '', lastIpcDate: '', lastPcDate: '', lineCheckAnchorDate: '', lastLineCheckDate: '',
   userId: '', arn: '', newHire: false, licencePhoto: null, syllabusId: null,
 });
@@ -346,14 +347,14 @@ export function Crew() {
     ? [{ key: 'cabin-attendants', label: 'Cabin Attendants' }]
     : [
       { key: 'pilots', label: 'Pilots' },
-      { key: 'cabin-attendants', label: 'Cabin Attendants' },
+      hasCabinAttendants() && { key: 'cabin-attendants', label: 'Cabin Attendants' },
       { key: 'archived', label: 'Archived' },
       // Bulk-creating crew records is the same lifecycle-admin action as
       // "Quick add crew member" (see crew.js's blockCaManager) - CA Manager
       // doesn't get this tab for the same reason they don't get the
       // Pilots/Archived ones above.
       { key: 'bulk-import', label: 'Bulk Import' },
-    ];
+    ].filter(Boolean);
   const [tab, setTab] = useState(isCaManager ? 'cabin-attendants' : 'pilots');
 
   return (

@@ -7,6 +7,7 @@ const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, FLIGHT_CREATOR_ROLES, 
 const { logAction } = require('../lib/audit');
 const { hasIncompleteGroundSchool } = require('./crew');
 const { requestOrApply, applyToTable } = require('../lib/approvals');
+const { ALL_FLEET_VALUES } = require('../lib/profile');
 
 const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -52,7 +53,7 @@ router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res)
 });
 
 const createItemSchema = z.object({
-  fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']),
+  fleet: z.enum(ALL_FLEET_VALUES),
   roleScope: z.enum(['CAPTAIN_ONLY', 'FO_ONLY', 'BOTH']),
   phase: z.number().int().min(1),
   category: z.string().min(1),

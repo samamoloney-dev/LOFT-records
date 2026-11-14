@@ -76,7 +76,7 @@ router.patch('/questions/:id', requireRole(...CONTINUOUS_IMPROVEMENT_ROLES), asy
 // or any other one-off rating the operator wants on record without running
 // it through a real IPC/PC check. fleet/role are stored directly on the
 // survey itself rather than read off a linked check's details.
-const STANDALONE_FLEETS = ['Fokker 100', 'Dash 8', 'Metro'];
+const STANDALONE_FLEETS = ['Fokker 100', 'Dash 8', 'Metro', 'Citation 550', 'King Air B200'];
 const STANDALONE_ROLES = ['CAPTAIN', 'FIRST_OFFICER'];
 const standaloneSchema = z.object({
   fleet: z.enum(STANDALONE_FLEETS),

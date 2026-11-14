@@ -7,13 +7,18 @@ import { StaffDocuments } from '../components/StaffDocuments';
 import { GroundInstructorCheckForm } from './GroundInstructorCheckForm';
 import { PersonnelCompetencyCheckForm } from './PersonnelCompetencyCheckForm';
 import { isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from '../lib/roles';
+import { orderedFleets, hasCabinAttendants, profile } from '../lib/profile';
 
 // TRAINEE isn't offered here - trainee self-login accounts aren't created
 // through this Staff form (see users.js, which still accepts the role for
+// Wording for the emergency procedures approval - CASA 121.010 for an air transport (Part 121) operator.
+const EP_APPROVAL_WORDING = profile.features.part121 ? 'CASA 121.010 approval' : 'emergency procedures approval';
 // existing accounts).
-const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY'];
-const CA_FLEET_VALUES = ['CA_DASH_8', 'CA_FOKKER_100'];
-const PILOT_FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
+const ALL_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY'];
+// An operator without cabin attendants (see lib/profile.js) is not offered the cabin-crew staff roles.
+const ROLES = hasCabinAttendants() ? ALL_ROLES : ALL_ROLES.filter((r) => !['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'].includes(r));
+const CA_FLEET_VALUES = orderedFleets(['CA_DASH_8', 'CA_FOKKER_100'], 'CABIN_ATTENDANT');
+const PILOT_FLEET_VALUES = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23'], 'PILOT');
 const FLEET_VALUES = [...PILOT_FLEET_VALUES, ...CA_FLEET_VALUES];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // ARN (Air Registration Number) is a pilot licence reference - not
@@ -30,7 +35,7 @@ const CHECK_ACCESS_OPTIONS = [
   { value: 'IPC', label: 'IPC' },
   { value: 'LINE_CHECK', label: 'Line Check' },
   { value: 'CHECK_TO_LINE', label: 'Check to line' },
-  { value: 'EMERGENCY_PROCEDURES', label: 'Emergency procedures, wet drills & fire/smoke (CASA 121.010 approval)' },
+  { value: 'EMERGENCY_PROCEDURES', label: `Emergency procedures, wet drills & fire/smoke (${EP_APPROVAL_WORDING})` },
 ];
 
 const emptyForm = () => ({ name: '', email: '', password: '', role: 'TRAINING_CAPTAIN', fleets: [], arn: '', checkAccess: [] });
@@ -131,8 +136,8 @@ function checkAccessText(u) {
   const labels = (u.checkAccess || []).map((v) => CHECK_ACCESS_OPTIONS.find((o) => o.value === v)?.label || v);
   if (ADMIN_ROLES.includes(u.role)) {
     return (u.checkAccess || []).includes(EP_APPROVAL)
-      ? 'Check access: all, including the CASA 121.010 approval'
-      : 'Check access: all except Emergency procedures (no CASA 121.010 approval)';
+      ? `Check access: all, including the ${EP_APPROVAL_WORDING}`
+      : `Check access: all except Emergency procedures (no ${EP_APPROVAL_WORDING})`;
   }
   return `Check access: ${labels.length ? labels.join(', ') : 'none'}`;
 }
@@ -435,7 +440,7 @@ export function FsStaff() {
             />
           </div>
           <div className="field">
-            <label>Check access{isAdminRole ? ' (this role already has every check except Emergency procedures - tick that only for staff holding the CASA 121.010 approval)' : ' (which checks can this person be picked for)'}</label>
+            <label>Check access{isAdminRole ? ` (this role already has every check except Emergency procedures - tick that only for staff holding the ${EP_APPROVAL_WORDING})` : ' (which checks can this person be picked for)'}</label>
             <CheckAccessPicker
               value={form.checkAccess}
               onChange={(checkAccess) => setForm({ ...form, checkAccess })}

@@ -12,7 +12,7 @@ const { nextDueRolling, statusFor, addMonths } = require('../lib/currency');
 const router = express.Router();
 
 const checkAccessSchema = z.array(z.enum(CHECK_ACCESS_TYPES)).optional();
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { ALL_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 const fleetsSchema = z.array(z.enum(FLEET_VALUES)).optional();
 
 const createSchema = z.object({

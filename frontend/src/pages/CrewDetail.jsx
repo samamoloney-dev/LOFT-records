@@ -9,6 +9,7 @@ import { CaChecks } from './CaChecks';
 import { ProficiencyChecks } from './ProficiencyChecks';
 import { PilotLineCheck } from './PilotLineCheck';
 import { ClearanceTab } from './ClearanceTab';
+import { profile as operatorProfile } from '../lib/profile';
 import { CaptainInTrainingForm } from './CaptainInTrainingForm';
 import { FlightStandardsRecurrentTraining } from './FlightStandardsRecurrentTraining';
 import { UpgradeRecordForm } from './UpgradeRecordForm';
@@ -24,8 +25,9 @@ import { competencyStatus } from '../lib/dueStatus';
 import { compressImage } from '../lib/imageCompress';
 import { printCrewFile } from '../lib/printCrewFile';
 import { viewPdf } from '../lib/pdf';
+import { orderedFleets } from '../lib/profile';
 
-const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const FLEETS = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']);
 // Narrower than ADMIN_ROLES (excludes Alternate) - only these three can
 // change the new hire flag, per the operator's explicit request. Mirrors
 // backend/src/routes/crew.js's own NEW_HIRE_TOGGLE_ROLES.
@@ -1135,7 +1137,7 @@ export function CrewDetail() {
   // the Crew list) lands on Clearance Form by default, per the operator's
   // explicit request - falls back to Check Forms for non-admin roles, who
   // can't see that tab at all (see topTabs below).
-  const [topTab, setTopTab] = useState(searchParams.get('top') || (isAdmin ? 'clearance' : 'currency'));
+  const [topTab, setTopTab] = useState(searchParams.get('top') || (isAdmin && operatorProfile.features.clearanceForm ? 'clearance' : 'currency'));
   const initialSubTab = searchParams.get('sub');
   const [competencies, setCompetencies] = useState([]);
   const [competencyError, setCompetencyError] = useState(null);
@@ -1261,7 +1263,7 @@ export function CrewDetail() {
     // blocked for Cabin Attendant Manager (see crew.js blockCaManager on
     // GET /:id/clearances) - hide the tab entirely rather than show one
     // that always errors for them.
-    ...(isAdmin ? [{ key: 'clearance', label: 'Clearance Form' }] : []),
+    ...(isAdmin && operatorProfile.features.clearanceForm ? [{ key: 'clearance', label: 'Clearance Form' }] : []),
     { key: 'currency', label: 'Check Forms' },
     { key: 'expiry', label: needsAttention ? 'Expiration ⚠' : 'Expiration' },
     ...(medical ? [{ key: 'medical', label: 'Medical' }] : []),

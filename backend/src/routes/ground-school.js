@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { canAccessTraineeRecord, requireRole, ADMIN_ROLES, TRAINER_ROLES, PRE_SIM_ASSESSOR_ROLES, isCaOnlyRole, isAdmin } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { requestOrApply, applyToTable } = require('../lib/approvals');
+const { ALL_FLEET_VALUES } = require('../lib/profile');
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ router.get('/items', requireRole(...ADMIN_ROLES, 'CA_MANAGER'), async (req, res)
 });
 
 const createItemSchema = z.object({
-  fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']),
+  fleet: z.enum(ALL_FLEET_VALUES),
   category: z.string().min(1),
   description: z.string().min(1),
   notes: z.string().optional(),

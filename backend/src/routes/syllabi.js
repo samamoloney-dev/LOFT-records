@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { ALL_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
 
 function forbiddenFleetForCaManager(req, fleet) {

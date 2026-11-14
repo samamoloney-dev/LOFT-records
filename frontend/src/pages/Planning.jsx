@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { formatDate, formatFleet, formatTraineeRole } from '../lib/format';
 import { AssignedToPicker } from '../components/AssignedToPicker';
 import { DueBadge } from '../components/DueBadge';
+import { profile as operatorProfile } from '../lib/profile';
 
 // Maps a crew_planned_checks check_key to the CHECK_ACCESS_TYPES value
 // AssignedToPicker/isEligibleForCheck expect (see
@@ -579,7 +580,9 @@ function IpcPcSpacingSection() {
 const PLANNING_TABS = [
   { key: 'checks', label: 'Planned Checks' },
   { key: 'competencies', label: 'Planned Competencies' },
-  { key: 'ipcPcSpacing', label: 'IPC/PC Spacing' },
+  // The IPC/PC spacing report applies the Part 121 proficiency check spacing rule, so
+  // only an operator whose profile is Part 121 gets it.
+  ...(operatorProfile.features.part121 ? [{ key: 'ipcPcSpacing', label: 'IPC/PC Spacing' }] : []),
   { key: 'other', label: 'Other Planning Items' },
 ];
 

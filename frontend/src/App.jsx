@@ -25,6 +25,8 @@ import { formatUserRole } from './lib/format';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_CHECKER_ROLES, canAccessCertificates, canAccessChecksTab } from './lib/roles';
 import { FsUpgrades } from './pages/FsUpgrades';
 import { useAssignedChecks, refreshAssignedChecks } from './lib/assignedChecks';
+import { profile } from './lib/profile';
+import { DemoBanner } from './components/DemoBanner';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // Every staff role - meeting minutes is for the whole operation, trainees
@@ -116,9 +118,10 @@ function Shell({ children }) {
 
   return (
     <div className="app-shell">
+      <DemoBanner />
       <aside className="sidebar">
         <div className="top-bar">
-          <span className="brand">Flight Standards System</span>
+          <span className="brand">{profile.productName}</span>
           <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
         </div>
 

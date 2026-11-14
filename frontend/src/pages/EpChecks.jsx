@@ -16,9 +16,10 @@ import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
 import { useOptimisticSave } from '../lib/optimisticSave';
+import { AIRCRAFT_TYPES as PROFILE_AIRCRAFT_TYPES, EP_TYPES as PROFILE_EP_TYPES } from '../lib/profile';
 
-const EP_TYPES = ['Theory', 'Metro', 'Dash8', 'Fokker 100'];
-const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const EP_TYPES = PROFILE_EP_TYPES;
+const AIRCRAFT_TYPES = PROFILE_AIRCRAFT_TYPES;
 
 const emptyDetails = () => ({ name: '', date: '', assessorId: '', assessor: '', assessorArn: '', actype: '', types: [], items: {}, scenarios: '', comments: '', assessorSig: '', candidateSig: '' });
 const emptyNewForm = () => ({ ...emptyDetails(), assignedTo: '' });

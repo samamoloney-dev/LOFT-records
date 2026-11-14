@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
+    "demo:bootstrap": "node db/demo/bootstrap.js",
     "test": "vitest run"
   },
   "dependencies": {

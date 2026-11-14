@@ -17,7 +17,7 @@ const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole(...ADMIN_ROLES));
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { OFFERED_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 
 // None of these mean a check/competency has actually lapsed - 'ok' plus the
 // three graduated advance-warning bands (important/due_soon/approaching,

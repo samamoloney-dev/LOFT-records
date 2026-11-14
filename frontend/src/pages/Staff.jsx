@@ -5,13 +5,14 @@ import { useAuth } from '../context/AuthContext';
 import { TabBar } from '../components/TabBar';
 import { UpgradesPanel } from './FsUpgrades';
 import { UPGRADE_CHECKER_ROLES } from '../lib/roles';
+import { AIRCRAFT_TYPES as PROFILE_AIRCRAFT_TYPES } from '../lib/profile';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // Real per-aircraft FSTD facts (which simulator, its number/type) - set
 // once here by an admin, reused by the "Autofill FSTD" button on the
 // IPC/PC check form instead of being hardcoded or retyped every time.
-const FSTD_AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const FSTD_AIRCRAFT_TYPES = PROFILE_AIRCRAFT_TYPES;
 
 function FstdPresetsPanel() {
   const [presets, setPresets] = useState([]);

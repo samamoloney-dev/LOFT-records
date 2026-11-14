@@ -12,6 +12,7 @@ const { isPlausibleDate } = require('../lib/dates');
 const { EP_FAMILY_CHECK_TYPES, hasEpApproval, epAssigneeError } = require('../lib/epApproval');
 const { localDateString } = require('../lib/currency');
 const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCertificate');
+const { ALL_FLEET_VALUES } = require('../lib/profile');
 
 const router = express.Router();
 
@@ -457,7 +458,7 @@ const createSchema = z.object({
   traineeId: z.string().uuid().optional(),
   crewMemberId: z.string().uuid().optional(),
   checkType: z.enum(['RECURRENT_SIMULATOR', 'EMERGENCY_PROCEDURES', 'CABIN_ATTENDANT_LINE_CHECK', 'PILOT_LINE_CHECK', 'CAPTAIN_IN_TRAINING', 'UPGRADE_RECORD', 'LIFE_JACKET', 'SMOKE_FIRE_TRAINING', 'F100_SLIDE_TRAINING', 'FLIGHT_STANDARDS_RECURRENT_TRAINING']),
-  fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']).optional(),
+  fleet: z.enum(ALL_FLEET_VALUES).optional(),
   appliesTo: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   dueDate: z.string().optional(),
   assessorName: z.string().optional(),

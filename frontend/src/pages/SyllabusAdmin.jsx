@@ -8,8 +8,9 @@ import { ReferenceDocIcon } from '../components/ReferenceDocIcon';
 import { CONTINUOUS_IMPROVEMENT_ROLES, UPGRADE_VARIANTS } from '../lib/roles';
 import { formatFleet, formatUserRole } from '../lib/format';
 import { setReferenceDocLocal } from '../lib/referenceDocs';
+import { orderedFleets } from '../lib/profile';
 
-const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const FLEETS = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']);
 const ROLE_SCOPES = ['BOTH', 'CAPTAIN_ONLY', 'FO_ONLY'];
 const SECTIONS = ['SYLLABUS', 'DISCUSSION'];
 
@@ -19,8 +20,8 @@ const SECTIONS = ['SYLLABUS', 'DISCUSSION'];
 // suggestions/grouping must never cross this line. Fleets within the same
 // group (Dash 8/Fokker 100/Metro for pilots) can genuinely share a
 // category, since that's the same kind of training on a different type.
-const CA_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
-const PILOT_FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23'];
+const CA_FLEETS = orderedFleets(['CA_DASH_8', 'CA_FOKKER_100'], 'CABIN_ATTENDANT');
+const PILOT_FLEETS = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23'], 'PILOT');
 function fleetGroup(fleet) {
   return CA_FLEETS.includes(fleet) ? 'CA' : 'PILOT';
 }
@@ -29,13 +30,13 @@ function fleetGroup(fleet) {
 // comment below for why) - "All pilot fleets"/"All cabin crew fleets"
 // just set it to PILOT_FLEETS/CA_FLEETS in one click instead of ticking
 // each box.
-const emptyForm = () => ({ fleets: ['DASH_8'], roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
+const emptyForm = () => ({ fleets: [PILOT_FLEETS[0]], roleScope: 'BOTH', phase: 1, category: '', section: 'SYLLABUS', description: '', notes: '', required: true });
 
 // fleets is always an array in form state - when creating, every fleet
 // ticked gets its own item (one POST per fleet, see handleSubmit); when
 // editing an existing item, it's just a single-element array since one
 // row can only ever belong to one fleet.
-const emptyGroundSchoolForm = () => ({ fleets: ['DASH_8'], category: '', description: '', notes: '', required: true });
+const emptyGroundSchoolForm = () => ({ fleets: [PILOT_FLEETS[0]], category: '', description: '', notes: '', required: true });
 
 // Named alternate syllabi (e.g. "Direct Entry Captain" on the Metro) - a
 // wholly separate Ground School/LOFT Package/Check Forms/Competencies set
@@ -368,7 +369,7 @@ function SyllabusItemsSection() {
   const [notice, setNotice] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(() => ({ ...emptyForm(), fleets: [isCaManager ? CA_FLEETS[0] : 'DASH_8'] }));
+  const [form, setForm] = useState(() => ({ ...emptyForm(), fleets: [isCaManager ? CA_FLEETS[0] : PILOT_FLEETS[0]] }));
   const [expandedFleet, setExpandedFleet] = useState(null);
   // Whether the Category field is showing a free-text box (for a brand new
   // category) rather than a dropdown of ones already in use for this
@@ -824,11 +825,7 @@ const CIT_FORM_KEYS = ['CAPTAIN_IN_TRAINING_PRELIMINARY', 'CAPTAIN_IN_TRAINING_F
 
 // Check to Line items vary per pilot fleet (the cabin attendant Check to
 // Line items are a fixed 6-item list, not admin-editable here).
-const CTL_FLEET_TABS = [
-  { key: 'DASH_8', label: 'Dash 8' },
-  { key: 'FOKKER_100', label: 'Fokker 100' },
-  { key: 'METRO_23', label: 'Metro 23' },
-];
+const CTL_FLEET_TABS = PILOT_FLEETS.map((code) => ({ key: code, label: code === 'METRO_23' ? 'Metro 23' : formatFleet(code) }));
 
 const emptyCheckFormItemForm = (formKey, fleet) => ({
   formKey, fleet: fleet || '', section: '', kind: CIT_FORM_KEYS.includes(formKey) ? 'satisfactory' : 'tick', description: '', notes: '', mos: '', ipcOnly: false,
@@ -856,7 +853,7 @@ function readFileAsDataUri(file) {
 // PersonnelCompetencyCheckForm.jsx) instead of being fixed in source code.
 function CheckFormItemsSection() {
   const [formKey, setFormKey] = useState('EMERGENCY_PROCEDURES');
-  const [ctlFleet, setCtlFleet] = useState('DASH_8');
+  const [ctlFleet, setCtlFleet] = useState(PILOT_FLEETS[0]);
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -874,7 +871,7 @@ function CheckFormItemsSection() {
   // (see syllabi.js). The fleet picker here is just for browsing which
   // fleet's named syllabi to choose from, independent of this form key's
   // own fleet scoping (e.g. Check to Line's ctlFleet tabs above).
-  const [viewFleet, setViewFleet] = useState('DASH_8');
+  const [viewFleet, setViewFleet] = useState(PILOT_FLEETS[0]);
   const [viewSyllabusId, setViewSyllabusId] = useState(null);
 
   function load() {

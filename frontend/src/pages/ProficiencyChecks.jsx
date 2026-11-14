@@ -17,9 +17,10 @@ import { visibleCheckFormItems } from '../lib/checkFormItems';
 import { sortNotCompletedFirst } from '../lib/sortChecks';
 import { ReferenceDocLine } from '../components/ReferenceDocLine';
 import { useOptimisticSave } from '../lib/optimisticSave';
+import { AIRCRAFT_TYPES as PROFILE_AIRCRAFT_TYPES } from '../lib/profile';
 
 const VARIANT_LABELS = { PC: 'Proficiency Check', IPC_PC: 'IPC and Proficiency Check' };
-const AIRCRAFT_TYPES = ['Fokker 100', 'Dash 8', 'Metro'];
+const AIRCRAFT_TYPES = PROFILE_AIRCRAFT_TYPES;
 const RANK_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
 const SEAT_OPTIONS = ['LHS', 'RHS', 'Other Seat'];
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];

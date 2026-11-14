@@ -4,9 +4,10 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatFleet, formatTraineeRole } from '../lib/format';
 import { SyllabusPicker } from '../components/SyllabusPicker';
+import { orderedFleets, hasCabinAttendants } from '../lib/profile';
 
-const FLEETS = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
-const TYPES = ['PILOT', 'CABIN_ATTENDANT'];
+const FLEETS = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']);
+const TYPES = hasCabinAttendants() ? ['PILOT', 'CABIN_ATTENDANT'] : ['PILOT'];
 // Scoped by type - a Cabin Attendant trainee was never actually offered
 // Captain/First Officer, this just closes a gap where the raw list showed
 // every role regardless of the type picked above it. Picking Captain here
@@ -31,7 +32,7 @@ export function Trainees() {
   // with the form already open, instead of requiring an extra click.
   const [showForm, setShowForm] = useState(isAdmin && searchParams.get('new') === '1');
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null, newHire: false, arn: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: orderedFleets(['DASH_8'], 'PILOT')[0], syllabusId: null, newHire: false, arn: '' });
   // Sends an existing, already-qualified crew member back through LOFT for
   // a new fleet (e.g. a Cabin Attendant converting from Dash 8 to Fokker
   // 100) instead of only supporting brand-new hires - see backend
@@ -80,7 +81,7 @@ export function Trainees() {
   }
 
   function resetForm() {
-    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: 'DASH_8', syllabusId: null, newHire: false, arn: '' });
+    setForm({ firstName: '', lastName: '', type: 'PILOT', role: 'FIRST_OFFICER', fleet: orderedFleets(['DASH_8'], 'PILOT')[0], syllabusId: null, newHire: false, arn: '' });
     setReturningToLoft(false);
     setSourceCrewMemberId('');
   }
@@ -144,7 +145,7 @@ export function Trainees() {
                 value={form.type}
                 onChange={(e) => {
                   const type = e.target.value;
-                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? 'DASH_8' : 'CA_DASH_8', syllabusId: null, newHire: false, arn: '' });
+                  setForm({ ...form, type, role: ROLES_BY_TYPE[type][0], fleet: type === 'PILOT' ? orderedFleets(['DASH_8'], 'PILOT')[0] : 'CA_DASH_8', syllabusId: null, newHire: false, arn: '' });
                   setSourceCrewMemberId('');
                 }}
               >

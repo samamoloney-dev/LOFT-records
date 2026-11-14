@@ -45,7 +45,11 @@ const USER_ROLE_LABELS = {
   TRAINEE: 'Trainee',
 };
 
+import { fleetLabelFromProfile } from './profile';
+
 export function formatFleet(fleet) {
+  const fromProfile = fleetLabelFromProfile(fleet);
+  if (fromProfile) return fromProfile;
   return FLEET_LABELS[fleet] || fleet;
 }
 

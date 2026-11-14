@@ -2,8 +2,9 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
 import { formatFleet } from '../lib/format';
+import { orderedFleets } from '../lib/profile';
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const FLEET_VALUES = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']);
 
 function normalizeHeader(h) {
   return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -47,6 +48,8 @@ const FLEET_NAME_TO_CODE = {
   DASH8: 'DASH_8', DHC8: 'DASH_8',
   FOKKER100: 'FOKKER_100', F100: 'FOKKER_100',
   METRO: 'METRO_23', METRO23: 'METRO_23',
+  CITATION550: 'CITATION_550', CITATION: 'CITATION_550', C550: 'CITATION_550',
+  KINGAIRB200: 'KING_AIR_B200', KINGAIR: 'KING_AIR_B200', B200: 'KING_AIR_B200',
   CABINDASH8: 'CA_DASH_8', CADASH8: 'CA_DASH_8',
   CABINFOKKER100: 'CA_FOKKER_100', CAFOKKER100: 'CA_FOKKER_100',
 };

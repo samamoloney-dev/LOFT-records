@@ -53,7 +53,7 @@ export function CertificateGenerator() {
   return (
     <div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-        Generate a Skippers completion certificate for any crew member - tick whichever course(s) were completed, set the validity dates, and print.
+        Generate a completion certificate for any crew member - tick whichever course(s) were completed, set the validity dates, and print.
         The checklist itself is managed from the Syllabus tab's Certificate Checklist section.
       </div>
       {error && <div className="error-text">{error}</div>}

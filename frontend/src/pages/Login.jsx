@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { profile } from '../lib/profile';
+import { DemoBanner } from '../components/DemoBanner';
 
 export function Login() {
   const { user, login } = useAuth();
@@ -27,8 +29,10 @@ export function Login() {
 
   return (
     <div className="login-shell">
+      <DemoBanner />
       <div className="card">
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Flight Standards System</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{profile.productName}</div>
+        {profile.id !== 'skippers' && <div style={{ fontSize: 13, marginBottom: 4 }}>{profile.operatorName}</div>}
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem' }}>Sign in to continue</div>
         <form onSubmit={handleSubmit}>
           <div className="field">

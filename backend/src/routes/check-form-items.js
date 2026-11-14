@@ -36,7 +36,7 @@ const FORM_KEYS = [
 // Satisfactory/Unsatisfactory (the latter three are Captain in Training's
 // own answer styles, see CaptainInTrainingForm.jsx).
 const ITEM_KINDS = ['tick', 'score_code', 'text', 'score', 'observation', 'yesno', 'satisfactory'];
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { ALL_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 
 // Anyone who can reach a check form needs to be able to read its item
 // list (Examiners/Training Captains/CA Checkers etc, not just HOTC/HOFO/

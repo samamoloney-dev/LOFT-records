@@ -9,6 +9,7 @@ import { openPrintWindow } from '../lib/print';
 import { buildCurrencyOverviewHtml } from '../lib/printBuilders';
 import { downloadCsv } from '../lib/exportCsv';
 import { BulkImportCompetencies } from './BulkImportCompetencies';
+import { orderedFleets, hasCabinAttendants } from '../lib/profile';
 
 // Overdue and not-yet-completed rank above the three graduated advance-
 // warning bands (important > due_soon > approaching - closest deadline
@@ -45,16 +46,16 @@ const STATUS_FILTERS = [
   { key: 'in_training', label: 'In Training' },
 ];
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
+const FLEET_VALUES = orderedFleets(['DASH_8', 'FOKKER_100', 'METRO_23'], 'PILOT');
 // Dash 8 / Fokker 100 mean pilots; Cabin Dash 8 / Cabin Fokker 100 mean cabin
 // attendants rated on that aircraft (stored as CA_DASH_8 / CA_FOKKER_100).
 // "Cabin Attendants" is everyone in cabin crew, either aircraft. The Home
 // dashboard's Fleet Currency Snapshot deep-links with the raw fleet value.
-const CABIN_FLEETS = ['CA_DASH_8', 'CA_FOKKER_100'];
+const CABIN_FLEETS = orderedFleets(['CA_DASH_8', 'CA_FOKKER_100'], 'CABIN_ATTENDANT');
 const FLEET_FILTERS = [
   { key: 'all', label: 'All fleets' },
   ...FLEET_VALUES.map((f) => ({ key: f, label: formatFleet(f) })),
-  { key: 'CABIN_ATTENDANTS', label: 'Cabin Attendants' },
+  ...(hasCabinAttendants() ? [{ key: 'CABIN_ATTENDANTS', label: 'Cabin Attendants' }] : []),
   ...CABIN_FLEETS.map((f) => ({ key: f, label: formatFleet(f) })),
 ];
 

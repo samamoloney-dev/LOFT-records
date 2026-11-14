@@ -9,6 +9,7 @@ const { fleetOrderError, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 const { localDateString } = require('../lib/currency');
 const { createCrewMemberRecord, FLEET_TO_AIRCRAFT_TYPE } = require('./crew');
+const { ALL_FLEET_VALUES } = require('../lib/profile');
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ const baseTraineeSchema = z.object({
   lastName: z.string().min(1),
   type: z.enum(['PILOT', 'CABIN_ATTENDANT']),
   role: z.enum(['CAPTAIN', 'FIRST_OFFICER', 'CABIN_ATTENDANT']),
-  fleet: z.enum(['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100']),
+  fleet: z.enum(ALL_FLEET_VALUES),
   phase: z.number().int().min(1).optional(),
   // Set when this trainee record represents an existing, already-qualified
   // crew member sent back into LOFT for a new fleet (e.g. Dash 8 -> Fokker

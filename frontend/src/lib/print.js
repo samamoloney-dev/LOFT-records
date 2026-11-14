@@ -5,6 +5,15 @@
 // layout.
 import { formatDate } from './format';
 import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
+import { profile as operatorProfile } from './profile';
+
+// The operator's mark for the top of a printed page: the embedded logo for a
+// deployment whose profile carries one, otherwise just the operator's name.
+function operatorMarkHtml() {
+  return operatorProfile.logo === 'skippers'
+    ? `<img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" />`
+    : `<b>${operatorProfile.operatorName}</b>`;
+}
 
 // Colour palette lifted directly from the operator's own SA518 Flight
 // Standards Personnel (Air) Competency Check paper form (the two navy
@@ -234,7 +243,7 @@ export function openPrintWindow(title, bodyHtml) {
   // sheet when a table spans multiple printed pages, which is what
   // actually keeps the letterhead/footer in place (see the .print-shell
   // comment in PRINT_STYLES for why this replaced position:fixed).
-  const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;"><img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" /><span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
+  const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;">${operatorMarkHtml()}<span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
   const footer = `<div class="print-footer"><span>Flight Standards System</span><span>System-generated record</span></div>`;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body><table class="print-shell"><thead><tr><td>${letterhead}</td></tr></thead><tfoot><tr><td>${footer}</td></tr></tfoot><tbody><tr><td id="print-content">${bodyHtml}</td></tr></tbody></table><div id="page-numbers"></div></body></html>`);
   win.document.close();

@@ -8,7 +8,7 @@ const { logAction } = require('../lib/audit');
 
 const router = express.Router();
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { ALL_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 // Further scopes a Pilots-only competency to pilots who are also linked to
 // a staff account holding one of these specific roles (see
 // 0077_competency_type_staff_roles.sql) - null/empty applies to every

@@ -15,7 +15,7 @@ const { batchLoader } = require('../lib/batch');
 const { epAssigneeError } = require('../lib/epApproval');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 
-const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
+const { ALL_FLEET_VALUES: FLEET_VALUES } = require('../lib/profile');
 
 const router = express.Router();
 
@@ -500,6 +500,8 @@ const FLEET_TO_AIRCRAFT_TYPE = {
   DASH_8: 'Dash 8',
   FOKKER_100: 'Fokker 100',
   METRO_23: 'Metro',
+  CITATION_550: 'Citation 550',
+  KING_AIR_B200: 'King Air B200',
   CA_DASH_8: 'Dash 8',
   CA_FOKKER_100: 'Fokker 100',
 };
@@ -509,6 +511,8 @@ const EP_TYPE_FOR_FLEET = {
   DASH_8: 'Dash8',
   FOKKER_100: 'Fokker 100',
   METRO_23: 'Metro',
+  CITATION_550: 'Citation 550',
+  KING_AIR_B200: 'King Air B200',
   CA_DASH_8: 'Dash8',
   CA_FOKKER_100: 'Fokker 100',
 };

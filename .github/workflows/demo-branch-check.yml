@@ -1,0 +1,142 @@
+# Checks the demonstration branch builds and runs. It only ever runs for pushes
+# to branches named demo/** - never for main - and it deploys nothing and uses
+# no secrets: everything below happens on a throwaway database inside the
+# GitHub runner, with throwaway passwords that exist only for this check.
+name: Demo branch check
+
+on:
+  push:
+    branches: ['demo/**']
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+  backend-demo:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      JWT_SECRET: ci-only-secret
+      CORS_ORIGIN: http://localhost:5173
+      PORT: '4000'
+      OPERATOR_PROFILE: demo135
+      DEMO_MODE: 'true'
+      DEMO_PASSWORD: ci-demo-password
+      DEMO_RESET_TOKEN: ci-reset-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install backend
+        working-directory: backend
+        run: npm install --no-audit --no-fund
+      - name: Syntax check every backend file
+        working-directory: backend
+        run: find src db -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Run migrations on an empty database
+        working-directory: backend
+        run: npm run migrate
+      - name: Seed the demo data
+        working-directory: backend
+        run: |
+          npm run demo:bootstrap 2>&1 | tee seed.log
+          if grep -q -E '^(FAIL|demo bootstrap failed)' seed.log; then
+            grep -E '^(FAIL|demo bootstrap failed)' seed.log | while read -r line; do echo "::error::${line:0:600}"; done
+            exit 1
+          fi
+      - name: Start the server
+        working-directory: backend
+        run: |
+          nohup node src/server.js > server.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS localhost:4000/health && break; sleep 1; done
+      - name: Config endpoint reports the demo operator
+        run: |
+          curl -fsS localhost:4000/api/config | tee config.json
+          jq -e '.id == "demo135" and .demo == true and (.fleets | length) == 2 and .features.cabinAttendants == false' config.json
+      - name: Demo login works
+        run: |
+          curl -fsS -X POST localhost:4000/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"hotc@demo.example","password":"ci-demo-password"}' > login.json
+          jq -e '.token' login.json > /dev/null
+      - name: Roster has 10 pilots and 2 trainees
+        run: |
+          TOKEN=$(jq -r .token login.json)
+          curl -fsS -H "Authorization: Bearer $TOKEN" 'localhost:4000/api/crew?type=PILOT' > crew.json
+          echo "crew: $(jq 'length' crew.json)"
+          curl -fsS -H "Authorization: Bearer $TOKEN" 'localhost:4000/api/trainees' > trainees.json
+          echo "trainees: $(jq 'length' trainees.json)"
+          jq -e 'length == 10' crew.json > /dev/null || { echo "::error::expected 10 pilots on the roster, got $(jq 'length' crew.json)"; exit 1; }
+          jq -e 'length == 2' trainees.json > /dev/null || { echo "::error::expected 2 LOFT trainees, got $(jq 'length' trainees.json)"; exit 1; }
+      - name: Main screens load without errors
+        run: |
+          TOKEN=$(jq -r .token login.json)
+          for path in /api/dashboard/summary /api/currency /api/competency-types /api/syllabus/items /api/ground-school/items /api/users /api/planning/checks; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "localhost:4000$path")
+            echo "$code $path"
+            if [ "$code" -ge 500 ]; then echo "::error::$path returned $code"; fail=1; fi
+          done
+          exit ${fail:-0}
+      - name: Server log (errors only)
+        if: always()
+        working-directory: backend
+        run: grep -i -E 'error|unhandled' server.log | head -20 | while read -r line; do echo "::warning::${line:0:400}"; done || true
+
+  backend-default-profile:
+    # Makes sure a deployment that sets none of the new settings (which is how
+    # the live Skippers site runs) still starts and behaves as before.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      JWT_SECRET: ci-only-secret
+      CORS_ORIGIN: http://localhost:5173
+      PORT: '4000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install, migrate and start with no operator settings
+        working-directory: backend
+        run: |
+          npm install --no-audit --no-fund
+          npm run migrate
+          nohup node src/server.js > server.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS localhost:4000/health && break; sleep 1; done
+      - name: Config reports the unchanged Skippers profile
+        run: |
+          curl -fsS localhost:4000/api/config | tee config.json
+          jq -e '.id == "skippers" and .demo == false and (.fleets | length) == 5 and .features.cabinAttendants == true and .banner == null' config.json
+      - name: Demo-only routes do not exist
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:4000/api/demo/reset)
+          echo "reset route: $code"
+          test "$code" = "404"

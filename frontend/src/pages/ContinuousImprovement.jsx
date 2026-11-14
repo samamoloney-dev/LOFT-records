@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { CONTINUOUS_IMPROVEMENT_ROLES } from '../lib/roles';
 import { formatDate } from '../lib/format';
+import { AIRCRAFT_TYPES as PROFILE_AIRCRAFT_TYPES } from '../lib/profile';
 
 const RANGE_OPTIONS = [
   { key: '12m', label: 'Last 12 months' },
@@ -11,7 +12,7 @@ const RANGE_OPTIONS = [
   { key: 'last_year', label: 'Last year' },
 ];
 
-const FLEET_OPTIONS = ['Fokker 100', 'Dash 8', 'Metro'];
+const FLEET_OPTIONS = PROFILE_AIRCRAFT_TYPES;
 const RANK_FILTER_OPTIONS = [{ value: 'CAPTAIN', label: 'Captain' }, { value: 'FIRST_OFFICER', label: 'First Officer' }];
 
 const RANK_LABELS = { CAPTAIN: 'Captain', FIRST_OFFICER: 'FO', UNSPECIFIED: 'Unspecified rank' };

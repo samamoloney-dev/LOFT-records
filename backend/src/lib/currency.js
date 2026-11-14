@@ -110,7 +110,7 @@ function competencyStatus(dueDate) {
 // sequence a day earlier than the real event. Use this instead of now()
 // wherever a moment-in-time needs to become "today's date" for a DATE
 // column.
-const OPERATOR_TIMEZONE = 'Australia/Perth';
+const OPERATOR_TIMEZONE = require('./profile').profile.timezone;
 function localDateString(instant = new Date(), timeZone = OPERATOR_TIMEZONE) {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
 }

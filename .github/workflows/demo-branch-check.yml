@@ -57,8 +57,6 @@ jobs:
         working-directory: backend
         run: |
           set -o pipefail; npm run migrate 2>&1 | tee migrate.log || { tail -12 migrate.log | while read -r line; do echo "::error::${line:0:500}"; done; exit 1; }
-      - name: Dump form catalogue (temporary)
-        run: bash .github/scripts/dump-forms.sh
       - name: Seed the demo data
         working-directory: backend
         run: |
@@ -67,6 +65,20 @@ jobs:
             grep -E '^(FAIL|demo bootstrap failed)' seed.log | while read -r line; do echo "::error::${line:0:600}"; done
             exit 1
           fi
+      - name: Part 135 form content is in place
+        run: |
+          q() { psql "$DATABASE_URL" -At -c "$1"; }
+          for fleet in CITATION_550 KING_AIR_B200; do
+            n=$(q "SELECT count(*) FROM check_form_items WHERE form_key = 'CHECK_TO_LINE' AND fleet = '$fleet' AND archived = false")
+            echo "Check to Line items for $fleet: $n"
+            [ "$n" -ge 30 ] || { echo "::error::too few Check to Line items for $fleet ($n)"; exit 1; }
+          done
+          left=$(q "SELECT count(*) FROM check_form_items WHERE archived = false AND (description LIKE '%Part 121%' OR section LIKE '%Part 121%' OR description LIKE '%Skippers%')")
+          echo "active items still mentioning Part 121 or Skippers: $left"
+          [ "$left" -eq 0 ] || { echo "::error::$left form items still mention Part 121 or Skippers"; exit 1; }
+          docs=$(q "SELECT count(*) FROM form_reference_docs WHERE doc_ref LIKE '%Demo Air Charter%'")
+          echo "reference docs set: $docs"
+          [ "$docs" -ge 15 ] || { echo "::error::reference documents not set ($docs)"; exit 1; }
       - name: Start the server
         working-directory: backend
         run: |

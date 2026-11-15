@@ -108,7 +108,96 @@ const GROUND_SCHOOL_COMMON = [
 // operator or aircraft (matched case-insensitively) - archived in the demo.
 const COMPETENCY_ARCHIVE_PATTERNS = ['f100', 'fokker', 'dash', 'metro', 'slide', 'cabin', 'skippers', 'smoke and fir'];
 
+// ---------------------------------------------------------------------------
+// Part 135 form content. These are illustrative items for the demonstration
+// only - written for a small charter operator, not taken from any real
+// operator's forms or manuals. A real customer's own forms replace them.
+// ---------------------------------------------------------------------------
+
+// Check to Line (the initial line check for a newly qualified pilot), same
+// layout the form already uses: [section, kind, [items...]]. "text" items are
+// free-text boxes the examiner fills in (emergency procedures assessed,
+// systems discussed). Each fleet also gets one fleet-specific system item.
+const CTL_SECTIONS = [
+  ['Preflight', 'tick', [
+    'Pre-flight and daily inspection (per the flight manual and operator checklist)',
+    'Cockpit setup and flows',
+    'Flight planning, including weather and NOTAMs',
+    'Crew coordination and briefing',
+    'Passenger supervision and customer service',
+    'Licence, medical and duty times checked',
+  ]],
+  ['Performance Calculations', 'tick', [
+    'Take-off performance and limits',
+    'Landing performance and limits',
+    'Engine-out and emergency re-calculations',
+  ]],
+  ['Weight and Balance', 'tick', [
+    'Load sheet complete and accurate',
+    'Fuel, passenger and baggage distribution within limits',
+  ]],
+  ['Procedures', 'tick', [
+    'Scans and flight instrument monitoring',
+    'Checklist use',
+    'Standard operating procedures',
+    'Radio communication',
+    'Knowledge of company manuals',
+    'Clear and concise briefings',
+  ]],
+  ['Route Knowledge', 'tick', [
+    'Appropriate use of GNSS and en-route navigation aids',
+    'Knowledge of airspace, air traffic services and alternate aerodromes',
+  ]],
+  ['General Aircraft Handling', 'tick', [
+    'Flying accurate and smooth, in line with SOPs',
+    'Aircraft systems used correctly',
+  ]],
+  ['Aircraft System Knowledge', 'tick', ['__FLEET_SYSTEM__']],
+  ['Emergency Procedures', 'text', [
+    'Emergency procedure 1 assessed',
+    'Emergency procedure 2 assessed',
+    'Emergency procedure 3 assessed',
+  ]],
+  ['Instrument Approach 1', 'tick', [
+    'Tracking', 'Instrument flying smooth and accurate', 'Configuration',
+    'Speed control', 'Vertical profile', 'Crew coordination and standard calls',
+  ]],
+  ['Instrument Approach 2', 'tick', [
+    'Tracking', 'Instrument flying smooth and accurate', 'Configuration',
+    'Speed control', 'Vertical profile', 'Crew coordination and standard calls',
+  ]],
+  ['Maintenance Procedures', 'tick', [
+    'Defect reporting and maintenance release procedure',
+    'Knowledge of minimum equipment list (MEL) application',
+  ]],
+  ['Post Flight Duties', 'tick', [
+    'Actioned with due care',
+    'Coordination with ground handling and maintenance',
+  ]],
+  ['Aircraft System Knowledge', 'text', ['System discussed 1', 'System discussed 2', 'System discussed 3']],
+];
+
+const CTL_FLEET_SYSTEM_ITEM = {
+  [CITATION]: 'System: bleed air, pressurisation and anti-ice',
+  [KING_AIR]: 'System: propeller governing and autofeather',
+};
+
+// The Emergency Procedures form is shared with the original operator and is
+// built around cabin and slide items - for the demo aircraft, drop the
+// escape-slide item and add three that apply to a small charter aeroplane.
+const EP_ARCHIVE_PATTERN = '%escape slide%';
+const EP_NEW_ITEMS = [
+  'Fire extinguisher selection and use',
+  'Oxygen system, and smoke or fumes in the cockpit',
+  'Ditching and forced landing procedures',
+];
+
+// What the "Check conducted IAW specific Instructor Reference Documents" line
+// shows on every form in the demo (replaces the DOC### placeholder).
+const DEMO_DOC_REF = 'Demo Air Charter Operations Manual, Part D';
+
 module.exports = {
   CITATION, KING_AIR, STAFF, LINE_PILOTS, LOFT_TRAINEES, SYLLABUS,
   GROUND_SCHOOL_COMMON, COMPETENCY_ARCHIVE_PATTERNS,
+  CTL_SECTIONS, CTL_FLEET_SYSTEM_ITEM, EP_NEW_ITEMS, EP_ARCHIVE_PATTERN, DEMO_DOC_REF,
 };

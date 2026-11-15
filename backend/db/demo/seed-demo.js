@@ -83,6 +83,77 @@ async function tidyCatalogue(log) {
   log('tidied competency catalogue');
 }
 
+// Part 135 content for the check forms. The form item catalogue is shared
+// configuration (kept, not wiped, on reset), so every statement here is safe
+// to run again: it either replaces text in place or deletes-then-inserts.
+async function applyFormContent(log) {
+  const fleets = [content.CITATION, content.KING_AIR];
+
+  // Check to Line: the shared catalogue has items for the original operator's
+  // aircraft only, so the demo fleets would otherwise have an empty form.
+  await pool.query(
+    "DELETE FROM check_form_items WHERE form_key = 'CHECK_TO_LINE' AND fleet = ANY($1::fleet[]) AND syllabus_id IS NULL",
+    [fleets],
+  );
+  let ctlRows = 0;
+  for (const fleet of fleets) {
+    let order = 0;
+    for (const [section, kind, items] of content.CTL_SECTIONS) {
+      for (const item of items) {
+        const description = item === '__FLEET_SYSTEM__' ? content.CTL_FLEET_SYSTEM_ITEM[fleet] : item;
+        await pool.query(
+          'INSERT INTO check_form_items (form_key, fleet, section, kind, description, sort_order) VALUES ($1, $2::fleet, $3, $4, $5, $6)',
+          ['CHECK_TO_LINE', fleet, section, kind, description, order],
+        );
+        order += 1;
+        ctlRows += 1;
+      }
+    }
+  }
+
+  // Emergency Procedures: retire the escape-slide item, add three that suit a
+  // small charter aeroplane (delete first so a repeat reset never duplicates).
+  await pool.query(
+    "UPDATE check_form_items SET archived = true WHERE form_key = 'EMERGENCY_PROCEDURES' AND description ILIKE $1",
+    [content.EP_ARCHIVE_PATTERN],
+  );
+  await pool.query(
+    "DELETE FROM check_form_items WHERE form_key = 'EMERGENCY_PROCEDURES' AND description = ANY($1::text[])",
+    [content.EP_NEW_ITEMS],
+  );
+  const { rows: maxRows } = await pool.query(
+    "SELECT COALESCE(MAX(sort_order), -1) AS max FROM check_form_items WHERE form_key = 'EMERGENCY_PROCEDURES'",
+  );
+  let epOrder = maxRows[0].max + 1;
+  for (const description of content.EP_NEW_ITEMS) {
+    await pool.query(
+      "INSERT INTO check_form_items (form_key, kind, description, sort_order) VALUES ('EMERGENCY_PROCEDURES', 'tick', $1, $2)",
+      [description, epOrder],
+    );
+    epOrder += 1;
+  }
+
+  // Wording on every other form: Part 135 instead of Part 121, no operator name.
+  await pool.query(
+    `UPDATE check_form_items
+     SET description = replace(replace(description, 'Part 121', 'Part 135'), 'Skippers', 'Company'),
+         section = replace(replace(section, 'Part 121', 'Part 135'), 'Skippers', 'Company')
+     WHERE description LIKE '%Part 121%' OR section LIKE '%Part 121%'
+        OR description LIKE '%Skippers%' OR section LIKE '%Skippers%'`,
+  );
+
+  // The "Check conducted IAW specific Instructor Reference Documents" line.
+  const { FORM_KEYS } = require('../../src/lib/referenceDocs');
+  for (const key of FORM_KEYS) {
+    await pool.query(
+      `INSERT INTO form_reference_docs (form_key, doc_ref) VALUES ($1, $2)
+       ON CONFLICT (form_key) DO UPDATE SET doc_ref = EXCLUDED.doc_ref, updated_at = now()`,
+      [key, content.DEMO_DOC_REF],
+    );
+  }
+  log(`applied Part 135 form content (${ctlRows} Check to Line items, ${content.EP_NEW_ITEMS.length} EP items)`);
+}
+
 function samplePdfDataUri(title) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 60 });
@@ -120,6 +191,12 @@ async function resetDemo({ log = console.log } = {}) {
 
   await wipeData(log);
   await tidyCatalogue(log);
+  try {
+    await applyFormContent(log);
+  } catch (err) {
+    failures.push(`form content: ${err.message}`);
+    log(`FAIL form content: ${err.message}`);
+  }
 
   // ---- staff logins (direct insert: the API needs a signed-in user to exist first)
   const passwordHash = await bcrypt.hash(process.env.DEMO_PASSWORD, 10);

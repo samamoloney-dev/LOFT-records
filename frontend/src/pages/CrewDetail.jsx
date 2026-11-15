@@ -712,6 +712,7 @@ function EmergencyProceduresGroup({ member, showArchived }) {
 // be visible from this person's own profile, not just the general Archive
 // tab - this toggle flips the archived prop the check list already supports.
 function CurrencyFolder({ member, initialSubTab }) {
+  const { user } = useAuth();
   const isPilot = member.type === 'PILOT';
   // Drives this sub-tab's own "⚠" - Emergency Procedures plus the 3
   // safety-equipment checks grouped with it (see EmergencyProceduresGroup/
@@ -729,7 +730,9 @@ function CurrencyFolder({ member, initialSubTab }) {
       // those staff roles (mirrors the "Flight Standards Pilot Recurrent
       // Training" competency_type's own staff_roles restriction, see
       // crew.js's activeCompetencies).
-      ...(['EXAMINER', 'CC', 'TRAINING_CAPTAIN'].includes(member.linkedRole) ? [{ key: 'fsRecurrent', label: 'Flight Standards Recurrent' }] : []),
+      // Admins can issue it to any pilot (e.g. someone not yet linked to
+      // their staff account), so the tab is offered to them on every pilot.
+      ...(['EXAMINER', 'CC', 'TRAINING_CAPTAIN'].includes(member.linkedRole) || ADMIN_ROLES.includes(user.role) ? [{ key: 'fsRecurrent', label: 'Flight Standards Recurrent' }] : []),
     ]
     : [{ key: 'ep', label: epLabel }, { key: 'linecheck', label: 'Line Check' }];
   const [subTab, setSubTab] = useState(subTabs.some((t) => t.key === initialSubTab) ? initialSubTab : 'ep');

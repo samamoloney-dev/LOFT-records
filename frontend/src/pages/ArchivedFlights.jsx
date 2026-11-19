@@ -5,6 +5,7 @@ import { ArchiveButton } from '../components/ArchiveButton';
 import { PrintButton } from '../components/PrintButton';
 import { openPrintWindow } from '../lib/print';
 import { buildLoftFlightHtml } from '../lib/printBuilders';
+import { ensureReferenceDocs } from '../lib/referenceDocs';
 
 // Browses archived LOFT flight records across all trainees of one type
 // (pilot or cabin attendant). Flights archive as one package per trainee
@@ -27,7 +28,8 @@ export function ArchivedFlights({ traineeType }) {
     catch (err) { setError(err.message); }
   }
 
-  function printFlight(f) {
+  async function printFlight(f) {
+    await ensureReferenceDocs();
     openPrintWindow(`LOFT Flight - ${f.firstName} ${f.lastName} - ${formatDate(f.date)}`, buildLoftFlightHtml(f));
   }
 

@@ -119,7 +119,7 @@ function Shell({ children }) {
       <aside className="sidebar">
         <div className="top-bar">
           <span className="brand">Flight Standards System</span>
-          <span className="user-label">{user.name} · {formatUserRole(user.role)}</span>
+          <span className="user-label">{user.name} · {user.roleTitle || formatUserRole(user.role)}</span>
         </div>
 
         <select className="mobile-nav-select" value={activeItem?.to || ''} onChange={(e) => navigate(e.target.value)} aria-label="Navigate">

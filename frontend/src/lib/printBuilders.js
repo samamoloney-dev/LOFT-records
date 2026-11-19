@@ -17,11 +17,13 @@ import { formatDate, formatUserRole } from './format';
 import { competencyStatus } from './dueStatus';
 import { visibleCheckFormItems } from './checkFormItems';
 import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
-import { referenceDocLine } from './referenceDocs';
+import { referenceDocLine, formFooterText } from './referenceDocs';
 
 // The "Check conducted IAW specific Instructor Reference Documents DOC###" line
 // printed under each form's title - see lib/referenceDocs.js.
-const refLine = (formKey) => `<div class="meta">${referenceDocLine(formKey)}</div>`;
+const refLine = (formKey) => `<div class="meta">${formFooterText(formKey)} · ${referenceDocLine(formKey)}</div><span data-form-key="${formKey}" style="display:none"></span>`;
+// Just the form number and revision, for forms with no instructor reference line.
+export const formLine = (formKey) => `<div class="meta">${formFooterText(formKey)}</div><span data-form-key="${formKey}" style="display:none"></span>`;
 
 // ---- Emergency Procedures (EpChecks.jsx) ----
 export function buildEpCheckHtml(check, epItems) {
@@ -595,6 +597,7 @@ export function buildLoftFlightHtml(f) {
   return `
     <h1>LOFT Flight Record</h1>
     <div class="meta">${f.firstName} ${f.lastName} · ${formatDate(f.date)}${!isCa ? ` · ${Number(f.hours)}h` : ''}</div>
+    ${formLine('LOFT_FLIGHT_RECORD')}
     ${section('Flight details', isCa
       ? [['Position', sector.position], ['Aircraft', sector.aircraft], ['Destination', sector.destination]]
       : [['Route', sector.route], ['Approaches flown', (sector.approaches || []).map((a) => a.type).filter(Boolean).join(', ') || '—']])}

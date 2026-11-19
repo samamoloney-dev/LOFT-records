@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
-const { requireAuth, issueToken } = require('../middleware/auth');
+const { requireAuth, issueToken, effectiveRole, ROLE_TITLES } = require('../middleware/auth');
 const { logAction } = require('../lib/audit');
 
 const router = express.Router();
@@ -29,7 +29,8 @@ function serializeUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: effectiveRole(user.role),
+    roleTitle: user.roleTitle || ROLE_TITLES[user.role] || null,
     fleets: user.fleets,
     checkAccess: user.checkAccess,
     traineeId: user.trainee ? user.trainee.id : null,

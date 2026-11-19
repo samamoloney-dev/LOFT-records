@@ -5,6 +5,7 @@
 // layout.
 import { formatDate } from './format';
 import { SKIPPERS_LOGO_DATA_URI } from '../assets/skippersLogo';
+import { formFooterText } from './referenceDocs';
 
 // Colour palette lifted directly from the operator's own SA518 Flight
 // Standards Personnel (Air) Competency Check paper form (the two navy
@@ -103,6 +104,7 @@ const PRINT_STYLES = `
   .fail { background: #fbe1e1; color: #8f1d1d; }
   .page-break { break-before: page; }
 
+  .print-footer span:nth-child(2) { font-weight: 700; color: #333; }
   .print-footer {
     padding: 6px 0 0; border-top: 1px solid #ccc; margin-top: 6mm; display: flex; justify-content: space-between; font-size: 9.5px; color: #777;
   }
@@ -235,7 +237,13 @@ export function openPrintWindow(title, bodyHtml) {
   // actually keeps the letterhead/footer in place (see the .print-shell
   // comment in PRINT_STYLES for why this replaced position:fixed).
   const letterhead = `<div class="letterhead"><b>Flight Standards System</b><div style="text-align:right;"><img src="${SKIPPERS_LOGO_DATA_URI}" alt="Skippers" /><span style="display:block;margin-top:2px;">Printed ${formatDate(new Date())}</span></div></div>`;
-  const footer = `<div class="print-footer"><span>Flight Standards System</span><span>System-generated record</span></div>`;
+  // The form number and revision ("Form SA### Rev 27/01") go in the footer so
+  // they print on every page. The builders mark their form with a hidden
+  // data-form-key; a window that holds several forms (the combined personnel
+  // file) has no single form, so it prints each form's own line instead.
+  const formKeys = [...new Set([...String(bodyHtml).matchAll(/data-form-key="([A-Z0-9_]+)"/g)].map((m) => m[1]))];
+  const formLabel = formKeys.length === 1 ? formFooterText(formKeys[0]) : '';
+  const footer = `<div class="print-footer"><span>Flight Standards System</span><span>${formLabel}</span><span>System-generated record</span></div>`;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body><table class="print-shell"><thead><tr><td>${letterhead}</td></tr></thead><tfoot><tr><td>${footer}</td></tr></tfoot><tbody><tr><td id="print-content">${bodyHtml}</td></tr></tbody></table><div id="page-numbers"></div></body></html>`);
   win.document.close();
   const doPrint = () => {

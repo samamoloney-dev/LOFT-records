@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ensureReferenceDocs, referenceDocLine, subscribeReferenceDocs } from '../lib/referenceDocs';
+import { ensureReferenceDocs, formFooterText, referenceDocLine, subscribeReferenceDocs } from '../lib/referenceDocs';
 
-// "Check conducted IAW specific Instructor Reference Documents DOC###" - shown
-// on each check form. formKey says which form's reference to use.
+// "Form SA### Rev 27/01 - Check conducted IAW specific Instructor Reference
+// Documents DOC###" - shown on each check form. formKey says which form's
+// number, revision and reference to use.
 export function ReferenceDocLine({ formKey }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -10,5 +11,5 @@ export function ReferenceDocLine({ formKey }) {
     ensureReferenceDocs();
     return off;
   }, []);
-  return <div className="ref-doc-line">{referenceDocLine(formKey)}</div>;
+  return <div className="ref-doc-line">{formFooterText(formKey)} · {referenceDocLine(formKey)}</div>;
 }

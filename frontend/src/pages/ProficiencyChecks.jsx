@@ -191,6 +191,9 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState(() => ({ ...emptyForm(variant), name: crewMemberName || '' }));
   const [error, setError] = useState(null);
+  // PASS/FAIL picked in the Overall assessment box, waiting for the assessor to
+  // confirm in the pop-up before it is submitted (which locks the form).
+  const [pendingResult, setPendingResult] = useState(null);
   // Bumped whenever FSTD fields are autofilled, so the (uncontrolled)
   // number/type inputs below remount with the new defaultValue - otherwise
   // React ignores a defaultValue change on an already-mounted input.
@@ -540,13 +543,41 @@ export function ProficiencyChecks({ variant, label, archived = false, crewMember
         <div className="card">
           <div className="field">
             <label>Overall assessment</label>
-            <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => setResult(selected, e.target.value || null)}>
+            <select disabled={!!selected.completedAt || !allItemsAnswered} value={selected.result || ''} onChange={(e) => (e.target.value ? setPendingResult(e.target.value) : setResult(selected, null))}>
               <option value="">—</option>
               <option value="PASS">PASS</option>
               <option value="FAIL">FAIL</option>
             </select>
           </div>
         </div>
+        {pendingResult && (
+          <div
+            role="dialog" aria-modal="true" aria-labelledby="confirm-submit-title"
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
+          >
+            <div className="card" style={{ maxWidth: 440, width: '100%', background: 'var(--surface-1)', margin: 0 }}>
+              <div id="confirm-submit-title" style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Submit this {isIpc ? 'IPC' : 'Proficiency Check'}?</div>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>
+                Please confirm that every item on this form has been ticked and included:
+              </div>
+              <ul style={{ fontSize: 13, margin: '0 0 10px', paddingLeft: 18 }}>
+                <li>Recurrent items</li>
+                {isIpc && <li>Knowledge items</li>}
+                <li>All flight section items</li>
+                <li>Details, seat check, assessor and candidate</li>
+              </ul>
+              <div style={{ fontSize: 13, marginBottom: 14 }}>
+                Submitting as <b>{pendingResult}</b> will lock the form.
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setPendingResult(null)}>Go back</button>
+                <button className="primary" onClick={() => { const r = pendingResult; setPendingResult(null); setResult(selected, r); }}>
+                  Confirm and submit {pendingResult}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {selected.completedAt && showSurvey && <CandidateSurvey checkId={selected.id} />}
         {error && <div className="error-text">{error}</div>}
       </div>

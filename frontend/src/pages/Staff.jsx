@@ -6,7 +6,7 @@ import { TabBar } from '../components/TabBar';
 import { UpgradesPanel } from './FsUpgrades';
 import { UPGRADE_CHECKER_ROLES } from '../lib/roles';
 
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'SAFETY_MANAGER', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
 // Real per-aircraft FSTD facts (which simulator, its number/type) - set
 // once here by an admin, reused by the "Autofill FSTD" button on the

@@ -3,6 +3,10 @@
 // form on Edit Forms, and starts as the placeholder "DOC###" until the
 // operator confirms the real document numbers.
 const PLACEHOLDER = 'DOC###';
+// Form number and revision shown on every form until the real form numbers are
+// confirmed on Edit Forms. Every form starts on revision 27/01.
+const DEFAULT_FORM_NUMBER = 'SA###';
+const DEFAULT_REVISION = '27/01';
 
 const REFERENCE_DOC_FORMS = [
   { key: 'EMERGENCY_PROCEDURES', label: 'Emergency Procedures' },
@@ -25,8 +29,10 @@ const REFERENCE_DOC_FORMS = [
   { key: 'GROUND_INSTRUCTOR_COMPETENCY', label: 'Ground Instructor Competency Check' },
   { key: 'PERSONNEL_AIR_COMPETENCY', label: 'Personnel (Air) Competency Check' },
   { key: 'LANDING_ASSESSMENT', label: 'Initial Take-Off & Landing Assessment' },
+  { key: 'LOFT_FLIGHT_RECORD', label: 'LOFT Flight Record' },
+  { key: 'MEETING_MINUTES', label: 'Flight Standards Meeting Minutes' },
 ];
 
 const FORM_KEYS = REFERENCE_DOC_FORMS.map((f) => f.key);
 
-module.exports = { PLACEHOLDER, REFERENCE_DOC_FORMS, FORM_KEYS };
+module.exports = { PLACEHOLDER, DEFAULT_FORM_NUMBER, DEFAULT_REVISION, REFERENCE_DOC_FORMS, FORM_KEYS };

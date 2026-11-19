@@ -1574,9 +1574,12 @@ function PersonalDevelopmentTopicsSection() {
   );
 }
 
-// The document number printed on each check form in the line "Check
-// conducted IAW specific Instructor Reference Documents <number>". Every form
-// starts on the placeholder DOC### until the real numbers are confirmed here.
+// The form number (SA###), revision and instructor reference document shown on
+// each form - on screen above the form and in the footer of every page of its
+// print ("Form SA### Rev 27/01"), plus the line "Check conducted IAW specific
+// Instructor Reference Documents <number>" on the check forms. Every form starts
+// on the placeholders SA### and DOC###, and on revision 27/01, until the real
+// values are confirmed here.
 function InstructorReferenceDocsSection() {
   const [rows, setRows] = useState([]);
   const [values, setValues] = useState({});
@@ -1585,28 +1588,44 @@ function InstructorReferenceDocsSection() {
 
   useEffect(() => {
     api.get('/api/reference-docs')
-      .then((list) => { setRows(list); setValues(Object.fromEntries(list.map((r) => [r.formKey, r.docRef]))); })
+      .then((list) => { setRows(list); setValues(Object.fromEntries(list.map((r) => [r.formKey, { formNumber: r.formNumber, revision: r.revision, docRef: r.docRef }]))); })
       .catch((e) => setError(e.message));
   }, []);
 
+  const trimmed = (key) => ({
+    formNumber: (values[key]?.formNumber || '').trim(),
+    revision: (values[key]?.revision || '').trim(),
+    docRef: (values[key]?.docRef || '').trim(),
+  });
+  const changed = (row) => {
+    const v = trimmed(row.formKey);
+    return v.formNumber !== row.formNumber || v.revision !== row.revision || v.docRef !== row.docRef;
+  };
+  const valid = (row) => { const v = trimmed(row.formKey); return !!(v.formNumber && v.revision && v.docRef); };
+
+  function edit(key, field, value) {
+    setSavedKey(null);
+    setValues((all) => ({ ...all, [key]: { ...all[key], [field]: value } }));
+  }
+
   async function save(row) {
-    const docRef = (values[row.formKey] || '').trim();
-    if (!docRef) return;
+    const v = trimmed(row.formKey);
+    if (!valid(row)) return;
     setError(null);
     try {
-      await api.put(`/api/reference-docs/${row.formKey}`, { docRef });
-      setReferenceDocLocal(row.formKey, docRef);
-      setValues((v) => ({ ...v, [row.formKey]: docRef }));
-      setRows((list) => list.map((r) => (r.formKey === row.formKey ? { ...r, docRef } : r)));
+      await api.put(`/api/reference-docs/${row.formKey}`, v);
+      setReferenceDocLocal(row.formKey, v);
+      setValues((all) => ({ ...all, [row.formKey]: v }));
+      setRows((list) => list.map((r) => (r.formKey === row.formKey ? { ...r, ...v } : r)));
       setSavedKey(row.formKey);
     } catch (err) { setError(err.message); }
   }
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontWeight: 500, marginBottom: 4 }}>Instructor Reference Documents</div>
+      <div style={{ fontWeight: 500, marginBottom: 4 }}>Form numbers, revisions and Instructor Reference Documents</div>
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Each check form carries the line "Check conducted IAW specific Instructor Reference Documents" followed by the number set here, on screen and on its print. DOC### is shown until you confirm the real number - more than one can be entered, e.g. "DOC123, DOC124".
+        Every form shows "Form [number] Rev [revision]" on screen and in the footer of every page of its print. The check forms also carry the line "Check conducted IAW specific Instructor Reference Documents" followed by the reference set here. SA### and DOC### are shown until you confirm the real numbers; every form starts on revision 27/01. More than one reference can be entered, e.g. "DOC123, DOC124".
       </div>
       {error && <div className="error-text">{error}</div>}
       {rows.map((row) => (
@@ -1614,14 +1633,18 @@ function InstructorReferenceDocsSection() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 220px', fontSize: 13, fontWeight: 500 }}>{row.label}</div>
             <input
-              style={{ flex: '0 1 200px' }} maxLength={60} value={values[row.formKey] ?? ''}
-              onChange={(e) => { setSavedKey(null); setValues((v) => ({ ...v, [row.formKey]: e.target.value })); }}
-              placeholder="DOC###"
+              style={{ flex: '0 1 110px' }} maxLength={30} aria-label={`${row.label} form number`} value={values[row.formKey]?.formNumber ?? ''}
+              onChange={(e) => edit(row.formKey, 'formNumber', e.target.value)} placeholder="SA###"
             />
-            <button
-              className="primary" onClick={() => save(row)}
-              disabled={!(values[row.formKey] || '').trim() || (values[row.formKey] || '').trim() === row.docRef}
-            >Save</button>
+            <input
+              style={{ flex: '0 1 90px' }} maxLength={30} aria-label={`${row.label} revision`} value={values[row.formKey]?.revision ?? ''}
+              onChange={(e) => edit(row.formKey, 'revision', e.target.value)} placeholder="27/01"
+            />
+            <input
+              style={{ flex: '0 1 170px' }} maxLength={60} aria-label={`${row.label} instructor reference`} value={values[row.formKey]?.docRef ?? ''}
+              onChange={(e) => edit(row.formKey, 'docRef', e.target.value)} placeholder="DOC###"
+            />
+            <button className="primary" onClick={() => save(row)} disabled={!valid(row) || !changed(row)}>Save</button>
             {savedKey === row.formKey && <span style={{ fontSize: 12, color: 'var(--text-success)' }}>Saved</span>}
           </div>
         </div>

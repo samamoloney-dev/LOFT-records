@@ -4,6 +4,13 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// The Safety Manager has the same access as HOTC/HOFO everywhere, so for every
+// permission check the app sees them as HOTC (req.user.role); realRole keeps the
+// stored role, and roleTitle is what the screens show next to their name.
+const ROLE_ACCESS_ALIAS = { SAFETY_MANAGER: 'HOTC' };
+const ROLE_TITLES = { SAFETY_MANAGER: 'Safety Manager' };
+function effectiveRole(role) { return ROLE_ACCESS_ALIAS[role] || role; }
+
 function issueToken(user) {
   return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '12h' });
 }
@@ -39,7 +46,9 @@ async function requireAuth(req, res, next) {
       id: row.id,
       name: row.name,
       email: row.email,
-      role: row.role,
+      role: effectiveRole(row.role),
+      realRole: row.role,
+      roleTitle: ROLE_TITLES[row.role] || null,
       fleets: parsePgArray(row.fleets),
       checkAccess: parsePgArray(row.checkAccess),
       trainee: row.traineeId ? { id: row.traineeId } : null,
@@ -50,4 +59,4 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, issueToken };
+module.exports = { requireAuth, issueToken, effectiveRole, ROLE_TITLES };

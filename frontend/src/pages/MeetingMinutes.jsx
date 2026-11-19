@@ -6,6 +6,8 @@ import { formatDate } from '../lib/format';
 import { PrintButton } from '../components/PrintButton';
 import { AutoTextarea } from '../components/AutoTextarea';
 import { openPrintWindow, section } from '../lib/print';
+import { ensureReferenceDocs } from '../lib/referenceDocs';
+import { formLine } from '../lib/printBuilders';
 
 const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 
@@ -187,6 +189,7 @@ function MinutesDetail() {
   // Admin-only (see PrintButton) - includes who has/hasn't acknowledged yet,
   // same completion data the on-screen AcknowledgementTracker shows.
   async function printMinutes() {
+    await ensureReferenceDocs();
     let ackRows = [];
     if (minutes.status !== 'DRAFT') {
       try {
@@ -199,6 +202,7 @@ function MinutesDetail() {
     }
 
     let body = '<h1>Flight Standards Meeting Minutes</h1>';
+    body += formLine('MEETING_MINUTES');
     body += `<div class="meta">${minutes.meetingDate ? formatDate(minutes.meetingDate) : 'No date set'}${minutes.avsafeNumber ? ` · Avsafe ${minutes.avsafeNumber}` : ''}</div>`;
     body += section('Attendance Register', [['Attendance', minutes.attendanceRegister]]);
     body += section('Apologies', [['Apologies', minutes.apologies]]);

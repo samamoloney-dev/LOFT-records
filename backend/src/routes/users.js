@@ -24,7 +24,7 @@ const createSchema = z.object({
   // accounts (see canAcknowledgeFlight) still need to be editable without
   // this enum rejecting their current role.
   role: z.enum([
-    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
+    'HOTC', 'HOFO', 'SAFETY_MANAGER', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]),
   fleets: fleetsSchema,
@@ -193,7 +193,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   // TRAINEE stays valid here too, same reason as createSchema above.
   role: z.enum([
-    'HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
+    'HOTC', 'HOFO', 'SAFETY_MANAGER', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER',
     'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY', 'TRAINEE',
   ]).optional(),
   fleets: fleetsSchema,

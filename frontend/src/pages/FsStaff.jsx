@@ -11,11 +11,11 @@ import { isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES } from 
 // TRAINEE isn't offered here - trainee self-login accounts aren't created
 // through this Staff form (see users.js, which still accepts the role for
 // existing accounts).
-const ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY'];
+const ROLES = ['HOTC', 'HOFO', 'SAFETY_MANAGER', 'FLIGHT_OPS_ADMIN', 'ALTERNATE', 'EXAMINER', 'TRAINING_CAPTAIN', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR', 'CC', 'SIMULATOR_ONLY'];
 const CA_FLEET_VALUES = ['CA_DASH_8', 'CA_FOKKER_100'];
 const PILOT_FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23'];
 const FLEET_VALUES = [...PILOT_FLEET_VALUES, ...CA_FLEET_VALUES];
-const ADMIN_ROLES = ['HOTC', 'HOFO', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
+const ADMIN_ROLES = ['HOTC', 'HOFO', 'SAFETY_MANAGER', 'FLIGHT_OPS_ADMIN', 'ALTERNATE'];
 // ARN (Air Registration Number) is a pilot licence reference - not
 // applicable to the three cabin-attendant-specific staff roles.
 const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
@@ -23,7 +23,7 @@ const CA_ONLY_ROLES = ['CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER'];
 // the Cabin Attendant Manager, and Ground Instructors can cover more than
 // one fleet - only Training Captain is qualified on a single fleet, same as
 // real-world type ratings ("a Dash 8 trainer cannot train Fokker 100 pilots").
-const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'ALTERNATE', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR'];
+const MULTI_FLEET_ROLES = ['EXAMINER', 'CC', 'HOTC', 'HOFO', 'SAFETY_MANAGER', 'ALTERNATE', 'CA_TRAINER', 'CA_CHECKER', 'CA_MANAGER', 'GROUND_INSTRUCTOR'];
 
 const CHECK_ACCESS_OPTIONS = [
   { value: 'PC', label: 'PC' },

@@ -32,6 +32,7 @@ const TRAINEE_ROLE_LABELS = {
 const USER_ROLE_LABELS = {
   HOTC: 'HOTC',
   HOFO: 'HOFO',
+  SAFETY_MANAGER: 'Safety Manager',
   ALTERNATE: 'Alternate',
   FLIGHT_OPS_ADMIN: 'Flight Ops Admin',
   EXAMINER: 'Examiner',

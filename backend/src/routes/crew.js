@@ -5,6 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { saveFile, loadFileData } = require('../lib/fileStore');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays, addMonths } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
@@ -1341,10 +1342,11 @@ router.post('/:id/medical-document', async (req, res) => {
   );
   const current = currentRows[0];
   if (current?.medical_document) {
+    const superseded = await saveFile(`crew-documents/${member.id}`, current.medical_document_file_name || 'medical.pdf', current.medical_document);
     await pool.query(
-      `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name, archived, archived_at)
-       VALUES ($1, 'Medical Certificate (superseded)', $2, $3, $4, true, now())`,
-      [member.id, current.medical_document_file_name || 'medical.pdf', current.medical_document, req.user.name],
+      `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, storage_key, uploaded_by_name, archived, archived_at)
+       VALUES ($1, 'Medical Certificate (superseded)', $2, $3, $4, $5, true, now())`,
+      [member.id, current.medical_document_file_name || 'medical.pdf', superseded.fileData, superseded.storageKey, req.user.name],
     );
   }
 
@@ -1937,7 +1939,9 @@ router.get('/:id/documents/:documentId', async (req, res) => {
     [req.params.documentId, member.id],
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  res.json(rowToCamel(rows[0]));
+  // fileData comes from S3 when the document was stored there, else the database.
+  const { storageKey, ...doc } = rowToCamel(rows[0]);
+  res.json({ ...doc, fileData: await loadFileData(rows[0]) });
 });
 
 const documentSchema = z.object({
@@ -1956,10 +1960,11 @@ router.post('/:id/documents', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
 
+  const stored = await saveFile(`crew-documents/${member.id}`, d.fileName, d.fileData);
   const { rows } = await pool.query(
-    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
-    [member.id, d.name, d.fileName, d.fileData, req.user.name],
+    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, storage_key, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, file_name, archived, archived_at, uploaded_by_name, created_at`,
+    [member.id, d.name, d.fileName, stored.fileData, stored.storageKey, req.user.name],
   );
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,

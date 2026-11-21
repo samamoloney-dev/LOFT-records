@@ -1,6 +1,7 @@
 const pool = require('../../db/pool');
 const { buildCertificatePdfBuffer } = require('./certificate');
 const { logAction } = require('./audit');
+const { saveFile } = require('./fileStore');
 
 // A completed Emergency Procedures check always certifies both the generic
 // course and whichever fleet-specific type(s) were actually ticked on the
@@ -126,10 +127,11 @@ async function fileAutomaticCertificate(check, actingUser) {
     });
   }
 
+  const stored = await saveFile(`crew-documents/${check.crewMemberId}`, fileName, fileData);
   const { rows } = await pool.query(
-    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [check.crewMemberId, rule.documentName, fileName, fileData, actingUser.name],
+    `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, storage_key, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [check.crewMemberId, rule.documentName, fileName, stored.fileData, stored.storageKey, actingUser.name],
   );
   await logAction({
     userId: actingUser.id, action: 'CREATE', targetTable: 'crew_documents', targetId: rows[0].id,

@@ -5,6 +5,7 @@ const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { saveFile, loadFileData } = require('../lib/fileStore');
 
 const router = express.Router();
 
@@ -51,7 +52,9 @@ router.get('/:id', async (req, res) => {
   if (!idSchema.safeParse(req.params.id).success) return res.status(404).json({ error: 'Not found' });
   const { rows } = await pool.query('SELECT * FROM staff_documents WHERE id = $1', [req.params.id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-  res.json(rowToCamel(rows[0]));
+  // fileData comes from S3 when the file was stored there, else the database.
+  const { storageKey, ...doc } = rowToCamel(rows[0]);
+  res.json({ ...doc, fileData: await loadFileData(rows[0]) });
 });
 
 const createSchema = z.object({
@@ -90,10 +93,11 @@ router.post('/', async (req, res) => {
   const { rows: userRows } = await pool.query('SELECT name FROM users WHERE id = $1', [d.userId]);
   if (userRows.length === 0) return res.status(404).json({ error: 'Staff member not found' });
 
+  const stored = await saveFile(`staff-documents/${d.userId}`, d.fileName, d.fileData);
   const { rows } = await pool.query(
-    `INSERT INTO staff_documents (user_id, kind, name, topic, document_date, file_name, mime_type, file_data, uploaded_by_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${LIST_COLUMNS}`,
-    [d.userId, kind, d.name, kind === 'PERSONAL_DEVELOPMENT' ? d.topic : null, d.documentDate || null, d.fileName, mimeType, d.fileData, req.user.name],
+    `INSERT INTO staff_documents (user_id, kind, name, topic, document_date, file_name, mime_type, file_data, storage_key, uploaded_by_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${LIST_COLUMNS}`,
+    [d.userId, kind, d.name, kind === 'PERSONAL_DEVELOPMENT' ? d.topic : null, d.documentDate || null, d.fileName, mimeType, stored.fileData, stored.storageKey, req.user.name],
   );
   await logAction({
     userId: req.user.id, action: 'CREATE', targetTable: 'staff_documents', targetId: rows[0].id,

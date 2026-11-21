@@ -7,8 +7,8 @@ const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } = requ
 // in the database as before, so nothing depends on S3 being switched on.
 //
 // Settings (Render environment variables):
-//   S3_BUCKET   the bucket name - setting this switches S3 on
-//   S3_REGION   defaults to ap-southeast-2 (Sydney)
+//   S3_BUCKET (or AWS_BUCKET_NAME)   the bucket name - setting this switches S3 on
+//   S3_REGION (or AWS_REGION)   defaults to ap-southeast-2 (Sydney)
 //   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY   read by the AWS SDK itself
 //
 // The bucket stays private: files are only ever read here, after the route has
@@ -17,8 +17,8 @@ const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } = requ
 const DATA_URI = /^data:([^;,]+);base64,(.*)$/s;
 
 let client = null;
-function bucket() { return process.env.S3_BUCKET || ''; }
-function region() { return process.env.S3_REGION || 'ap-southeast-2'; }
+function bucket() { return process.env.S3_BUCKET || process.env.AWS_BUCKET_NAME || ''; }
+function region() { return process.env.S3_REGION || process.env.AWS_REGION || 'ap-southeast-2'; }
 function isConfigured() { return !!bucket(); }
 function getClient() {
   if (!client) client = new S3Client({ region: region() });

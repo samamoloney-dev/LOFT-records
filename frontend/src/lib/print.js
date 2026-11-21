@@ -145,6 +145,10 @@ const PRINT_STYLES = `
 
   .check-table { border: 1px solid #000; margin-bottom: 10px; }
   .check-table.two-col { column-count: 2; column-gap: 14px; column-rule: 1px solid #000; }
+  /* Two side-by-side check tables built from whole sections (see balancedChecklist). */
+  .check-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-bottom: 10px; }
+  .check-cols > .check-table { margin-bottom: 0; }
+  .compact .check-cols { gap: 10px; margin-bottom: 5px; }
   .check-row { display: grid; border-bottom: 1px solid #000; break-inside: avoid; -webkit-column-break-inside: avoid; }
   .check-row > div { padding: 3px 6px; border-right: 1px solid #000; overflow-wrap: break-word; }
   .check-row > div:last-child { border-right: none; text-align: center; }
@@ -216,6 +220,15 @@ function paginate(win) {
   // JS can measure (the print engine duplicates it visually per page only
   // during the print itself, invisible to script).
   const pageContentHeightPx = (PAGE_HEIGHT_MM - PAGE_MARGIN_TOP_MM - PAGE_MARGIN_BOTTOM_MM) * pxPerMm - theadPx - tfootPx;
+  balanceChecklists(win);
+  // A block meant to be exactly one printed page (.fit-page) that has come out
+  // taller than a page - long item descriptions, an extra item - is shrunk just
+  // enough to fit, instead of a few lines spilling onto an extra page. Done
+  // before counting pages so the count reflects the fitted layout.
+  win.document.querySelectorAll('.fit-page').forEach((block) => {
+    const height = block.getBoundingClientRect().height;
+    if (height > pageContentHeightPx) block.style.zoom = String(Math.max(0.6, (pageContentHeightPx - 8) / height));
+  });
   const totalPages = Math.max(1, Math.ceil(content.scrollHeight / pageContentHeightPx));
   let html = '';
   for (let i = 0; i < totalPages; i++) {
@@ -406,6 +419,90 @@ export function checklistTable(rows, { withItemNo = true, twoColumn = false } = 
     return `<div class="check-row" style="grid-template-columns:${cols}">${cells.map((c) => `<div>${c ?? ''}</div>`).join('')}</div>`;
   }).join('');
   return `<div class="check-table${twoColumn ? ' two-col' : ''}">${head}${body}</div>`;
+}
+
+// Where to cut a list of rows into a left and right column so the two come out
+// as level as possible: returns how many rows go in the left column. `items` is
+// [{ h: height, header: true for a section heading }]. A section heading is
+// never left alone at the bottom of a column, and when the cut falls inside a
+// section the right column gets a repeated heading ("... (cont.)"), whose height
+// (contH) is counted against it.
+function bestSplit(items, contH) {
+  if (items.length < 2) return items.length;
+  const total = items.reduce((sum, i) => sum + i.h, 0);
+  let left = 0;
+  let best = 1;
+  let bestTallest = Infinity;
+  for (let k = 1; k < items.length; k += 1) {
+    left += items[k - 1].h;
+    if (items[k - 1].header) continue;
+    const tallest = Math.max(left, total - left + (items[k].header ? 0 : contH));
+    if (tallest < bestTallest) { bestTallest = tallest; best = k; }
+  }
+  return best;
+}
+
+// The same Item No/Activities/MOS/Result table, laid out as two side-by-side
+// columns instead of CSS newspaper columns. Newspaper columns cut wherever the
+// height runs out, leaving the second column starting mid-section under no
+// heading and no column header. Here each column is its own table with its own
+// header row, a section that carries over is picked up again under its heading
+// marked "(cont.)", and the cut is placed so the columns are level. The cut is
+// first estimated from the text length (so the page is sound even without
+// scripts) and then re-done from real measured heights when the page is printed
+// (see balanceChecklists). A list with no section headers (the recurrent-
+// training lines) is divided row by row.
+export function balancedChecklist(rows, { withItemNo = true } = {}) {
+  if (!rows || rows.length === 0) return '';
+  const cols = withItemNo ? '26px 1fr 62px 48px' : '1fr 90px 48px';
+  const headCells = withItemNo ? ['No', 'Activities and Manoeuvres', 'MOS', 'Result'] : ['Activities and Manoeuvres', 'MOS', 'Result'];
+  const head = `<div class="check-row check-head" style="grid-template-columns:${cols}">${headCells.map((c) => `<div>${c}</div>`).join('')}</div>`;
+  const renderRow = (r) => {
+    if (r.header) return `<div class="check-subhead">${r.header}</div>`;
+    const cells = withItemNo ? [r.no, r.description, r.mos, r.result] : [r.description, r.mos, r.result];
+    return `<div class="check-row" style="grid-template-columns:${cols}">${cells.map((c) => `<div>${c ?? ''}</div>`).join('')}</div>`;
+  };
+
+  // Rough printed height in text lines, used for the first cut.
+  const lines = (r) => (r.header ? 1.5 : Math.max(1, Math.ceil(String(r.description || '').length / 36), Math.ceil(String(r.mos || '').length / 9)));
+  const split = bestSplit(rows.map((r) => ({ h: lines(r), header: !!r.header })), 1.5);
+  const leftRows = rows.slice(0, split);
+  const rightRows = rows.slice(split);
+  // A section carried into the right column is picked up again under its heading.
+  let continued = '';
+  if (rightRows.length > 0 && !rightRows[0].header) {
+    const heading = [...leftRows].reverse().find((r) => r.header);
+    if (heading) continued = `<div class="check-subhead" data-cont="1">${heading.header} (cont.)</div>`;
+  }
+  const table = (body) => `<div class="check-table">${head}${body}</div>`;
+  const columns = [table(leftRows.map(renderRow).join(''))];
+  if (rightRows.length > 0) columns.push(table(continued + rightRows.map(renderRow).join('')));
+  return `<div class="check-cols" data-balance="1"${columns.length === 1 ? ' style="grid-template-columns:1fr"' : ''}>${columns.join('')}</div>`;
+}
+
+// Re-cuts every balancedChecklist from the real rendered row heights, now that
+// the page is laid out at its true width (the text-length guess above can be a
+// few rows out). Runs just before printing.
+function balanceChecklists(win) {
+  win.document.querySelectorAll('.check-cols[data-balance]').forEach((wrap) => {
+    const tables = [...wrap.children].filter((c) => c.classList.contains('check-table'));
+    if (tables.length < 2) return;
+    tables.forEach((t) => t.querySelectorAll('[data-cont]').forEach((n) => n.remove()));
+    const nodes = tables.flatMap((t) => [...t.children].filter((c) => !c.classList.contains('check-head')));
+    const items = nodes.map((n) => ({ h: n.getBoundingClientRect().height, header: n.classList.contains('check-subhead') }));
+    const firstHeading = nodes.find((n) => n.classList.contains('check-subhead'));
+    const k = bestSplit(items, firstHeading ? firstHeading.getBoundingClientRect().height : 18);
+    nodes.forEach((n, i) => (i < k ? tables[0] : tables[1]).appendChild(n));
+    if (k < nodes.length && !items[k].header) {
+      const heading = nodes.slice(0, k).reverse().find((n) => n.classList.contains('check-subhead'));
+      if (heading) {
+        const cont = heading.cloneNode(false);
+        cont.setAttribute('data-cont', '1');
+        cont.textContent = `${heading.textContent} (cont.)`;
+        tables[1].insertBefore(cont, nodes[k]);
+      }
+    }
+  });
 }
 
 // "Seat check conducted in" box - a tick for whichever seat(s) were

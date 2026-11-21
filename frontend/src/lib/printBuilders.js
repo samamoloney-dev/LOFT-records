@@ -11,7 +11,7 @@
 // (the check/form record itself plus its check-form-items catalogue).
 import {
   section, signatureBlock, resultBadge, formTitleRow, fieldGrid,
-  checklistTable, seatCheckBox, labeledRowGroup, tickTable,
+  checklistTable, balancedChecklist, seatCheckBox, labeledRowGroup, tickTable,
 } from './print';
 import { formatDate, formatUserRole } from './format';
 import { competencyStatus } from './dueStatus';
@@ -192,21 +192,25 @@ export function buildProficiencyCheckHtml(check, pcItems) {
     });
   });
 
+  // Two pages by design. Page 1 is the checklists (fitted to one page whatever
+  // the item text does - see .fit-page in print.js), page 2 starts on its own
+  // page via the break on its wrapper, so a few spilled lines can never push
+  // the second half onto a third page.
   return `
-    <div class="compact">
+    <div class="compact fit-page">
       ${formTitleRow(title, d.applicantArn || d.arn)}
       ${refLine(isIpc ? 'IPC' : 'PC')}
       ${fieldGrid([
         ["Candidate's Name", d.name], ['Date', d.date ? formatDate(d.date) : ''],
         ['Assessor(s)', d.assessor], ['Aircraft Type', d.actype],
       ])}
-      ${checklistTable(recurrentRows, { withItemNo: false })}
-      ${checklistTable(checklistRows, { withItemNo: true, twoColumn: true })}
-      ${seatCheckBox(seatCheck)}
+      ${balancedChecklist(recurrentRows, { withItemNo: false })}
+      ${balancedChecklist(checklistRows, { withItemNo: true })}
     </div>
 
-    <div class="page-break"></div>
+    <div class="page-break fit-page">
     ${formTitleRow(`${title} (continued)`, d.applicantArn || d.arn)}
+    ${seatCheckBox(seatCheck)}
     ${labeledRowGroup([
       {
         label: 'Test Number',
@@ -233,6 +237,7 @@ export function buildProficiencyCheckHtml(check, pcItems) {
     ${section("Examiner's Comments", [['Comments', d.examinerComments || '—']])}
     <div style="margin: 14px 0; font-weight: 700; font-size: 13px;">OVERALL ASSESSMENT: ${resultBadge(check.result)}</div>
     ${signatureBlock([['Applicant signature', d.applicantSig], ['Examiner signature', d.examinerSig]])}
+    </div>
   `;
 }
 

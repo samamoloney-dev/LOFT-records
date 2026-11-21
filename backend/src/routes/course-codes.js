@@ -18,7 +18,7 @@ router.use(requireRole(...ADMIN_ROLES));
 
 // The single label -> code lookup the export uses: this table's codes
 // overlaid with each competency's own course_code, which wins on a clash.
-router.get('/map', async (req, res) => {
+async function courseCodeMap() {
   const [{ rows: codeRows }, { rows: typeRows }] = await Promise.all([
     pool.query('SELECT label, code FROM course_codes WHERE archived = false'),
     pool.query('SELECT name, course_code FROM competency_types WHERE course_code IS NOT NULL AND archived = false'),
@@ -26,7 +26,11 @@ router.get('/map', async (req, res) => {
   const map = {};
   for (const r of codeRows) map[r.label] = r.code;
   for (const r of typeRows) map[r.name] = r.course_code;
-  res.json(map);
+  return map;
+}
+
+router.get('/map', async (req, res) => {
+  res.json(await courseCodeMap());
 });
 
 // Every fixed check name the export can produce with its current code (null
@@ -79,3 +83,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.courseCodeMap = courseCodeMap;

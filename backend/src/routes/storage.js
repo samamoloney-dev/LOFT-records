@@ -41,6 +41,12 @@ async function inlineCounts() {
      FROM specialist_training_items, jsonb_array_elements(photos) AS p`,
   );
   out.specialistTrainingPhotos = { inS3: Number(rows[0].in_s3), inDatabaseOnly: Number(rows[0].in_database_only) };
+  const { rows: checkRows } = await pool.query(
+    `SELECT count(*) FILTER (WHERE details->>'licencePhoto' LIKE 's3:%') AS in_s3,
+            count(*) FILTER (WHERE details->>'licencePhoto' LIKE 'data:%') AS in_database_only
+     FROM checks`,
+  );
+  out.ipcRecordLicencePhotos = { inS3: Number(checkRows[0].in_s3), inDatabaseOnly: Number(checkRows[0].in_database_only) };
   return out;
 }
 
@@ -153,6 +159,30 @@ router.post('/migrate', async (req, res) => {
         if (rowCount) summary.copied += 1;
       } catch (err) {
         summary.failed.push({ table: 'crew_members', id: row.id, name: t.label, error: err.message });
+      }
+    }
+  }
+  // The licence photo copy kept inside each IPC check record. When the same
+  // image is already in S3 on the crew profile it is uploaded again here (small
+  // files, once) rather than trying to match them up.
+  if (left > 0) {
+    const { rows } = await pool.query(
+      `SELECT id, crew_member_id, details->>'licencePhoto' AS value FROM checks
+       WHERE details->>'licencePhoto' LIKE 'data:%' ORDER BY id LIMIT $1`,
+      [left],
+    );
+    for (const row of rows) {
+      left -= 1;
+      try {
+        const key = await uploadVerified('licence-photos', row.crew_member_id || row.id, 'licence.jpg', row.value);
+        const { rowCount } = await pool.query(
+          `UPDATE checks SET details = jsonb_set(details, '{licencePhoto}', to_jsonb($1::text))
+           WHERE id = $2 AND details->>'licencePhoto' = $3`,
+          [store.POINTER + key, row.id, row.value],
+        );
+        if (rowCount) summary.copied += 1;
+      } catch (err) {
+        summary.failed.push({ table: 'checks', id: row.id, name: 'ipcRecordLicencePhoto', error: err.message });
       }
     }
   }

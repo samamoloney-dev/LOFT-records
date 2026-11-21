@@ -116,6 +116,12 @@ router.get('/roster', async (req, res) => {
 // withGroundInstructorCheck/withPersonnelAirCompetency above), under the
 // exact names the rostering system expects.
 router.get('/competency-export', requireRole(...ADMIN_ROLES), async (req, res) => {
+  res.json(await competencyExportItems());
+});
+
+// FS Staff's own competency rows for the export (also read by the rostering
+// API, which is why it is a function rather than living inside the route).
+async function competencyExportItems() {
   const { rows } = await pool.query('SELECT * FROM users ORDER BY name ASC');
   const users = await Promise.all(
     rows.map(serialize).map(withGroundInstructorCheck).map((p) => p.then(withPersonnelAirCompetency)),
@@ -156,8 +162,8 @@ router.get('/competency-export', requireRole(...ADMIN_ROLES), async (req, res) =
       });
     }
   }
-  res.json(items);
-});
+  return items;
+}
 
 router.get('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM users ORDER BY name ASC');
@@ -280,3 +286,4 @@ router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
 });
 
 module.exports = router;
+module.exports.competencyExportItems = competencyExportItems;

@@ -51,6 +51,7 @@ const staffDocumentRoutes = require('./routes/staff-documents');
 const storageRoutes = require('./routes/storage');
 const personalDevelopmentTopicRoutes = require('./routes/personal-development-topics');
 const referenceDocRoutes = require('./routes/reference-docs');
+const rosteringRoutes = require('./routes/rostering');
 
 const app = express();
 
@@ -97,6 +98,9 @@ app.use('/api/staff-documents', staffDocumentRoutes);
 app.use('/api/storage', storageRoutes);
 app.use('/api/personal-development-topics', personalDevelopmentTopicRoutes);
 app.use('/api/reference-docs', referenceDocRoutes);
+// Read-only feed for the rostering software, protected by its own API key
+// rather than a user login (see routes/rostering.js).
+app.use('/api/rostering', rosteringRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

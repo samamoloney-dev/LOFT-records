@@ -5,7 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessChecks, isAdmin, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
 const { baseFleet } = require('../lib/fleetOrder');
-const { storeInline } = require('../lib/fileStore');
+const { storeInline, resolveInline, isPointer } = require('../lib/fileStore');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
@@ -17,6 +17,22 @@ const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCert
 const router = express.Router();
 
 router.use(requireAuth);
+
+// The IPC licence photo kept on a check (details.licencePhoto) may be held in
+// S3, in which case the stored value is a pointer. Every reply from this router
+// that carries a check (one, or a list) has it turned back into the image the
+// screen expects, here in one place rather than in each route.
+router.use((req, res, next) => {
+  const send = res.json.bind(res);
+  res.json = (body) => {
+    const checks = (Array.isArray(body) ? body : [body]).filter((c) => c && isPointer(c.details?.licencePhoto));
+    if (checks.length === 0) return send(body);
+    Promise.all(checks.map(async (c) => { c.details = { ...c.details, licencePhoto: await resolveInline(c.details.licencePhoto) }; }))
+      .then(() => send(body), next);
+    return res;
+  };
+  next();
+});
 
 // Recurrent Sim and Emergency Procedures: HOTC / HOFO / Flight Ops Admin / Examiner.
 // Cabin Attendant Line Check: HOTC / CA Checker / CA Manager (mirrors the
@@ -639,7 +655,15 @@ router.patch('/:id', async (req, res) => {
   const ASSESSOR_CANDIDATE_SIGN_TYPES = new Set([
     ...Object.keys(CERTIFICATE_RULES), 'PILOT_LINE_CHECK', 'CABIN_ATTENDANT_LINE_CHECK', 'FLIGHT_STANDARDS_RECURRENT_TRAINING',
   ]);
-  let detailsToSave = d.details ? { ...existing.details, ...d.details } : null;
+  // The licence photo only ever changes through PATCH /:id/licence-photo. The
+  // screen sends its whole details object back on every edit (carrying the
+  // photo it was shown), which must not overwrite the stored copy - least of
+  // all with the full image when the stored copy is a pointer to S3.
+  let detailsToSave = null;
+  if (d.details) {
+    const { licencePhoto: ignoredPhoto, ...incoming } = d.details;
+    detailsToSave = { ...existing.details, ...incoming };
+  }
   // SA 538 (FLIGHT_STANDARDS_RECURRENT_TRAINING) has no Pass/Fail - it's
   // "completed" purely by setting completedAt directly (see
   // FlightStandardsRecurrentTraining.jsx), so d.result is never the
@@ -830,16 +854,15 @@ router.patch('/:id/licence-photo', async (req, res) => {
   const parsed = licencePhotoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const details = { ...existing.details, licencePhoto: parsed.data.photo };
+  // One stored copy serves both the check record and the crew profile.
+  const stored = await storeInline('licence-photos', 'licence.jpg', parsed.data.photo);
+  const details = { ...existing.details, licencePhoto: stored };
   const { rows } = await pool.query(
     'UPDATE checks SET details = $1 WHERE id = $2 RETURNING *',
     [JSON.stringify(details), req.params.id],
   );
   if (existing.crewMemberId) {
-    await pool.query(
-      'UPDATE crew_members SET licence_photo = $1 WHERE id = $2',
-      [await storeInline('licence-photos', 'licence.jpg', parsed.data.photo), existing.crewMemberId],
-    );
+    await pool.query('UPDATE crew_members SET licence_photo = $1 WHERE id = $2', [stored, existing.crewMemberId]);
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
   res.json(rowToCamel(rows[0]));

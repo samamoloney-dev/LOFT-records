@@ -17,6 +17,44 @@ const TABLES = [
   { table: 'staff_documents', prefix: 'staff-documents', ownerColumn: 'user_id' },
 ];
 
+// Files held inside another column instead of their own table row (see
+// fileStore's pointer notes). Once copied, the column holds "s3:<key>" in
+// place of the data URI - so these are replaced, not kept alongside.
+const INLINE_COLUMNS = [
+  { label: 'licencePhotos', column: 'licence_photo', prefix: 'licence-photos', fileName: () => 'licence.jpg' },
+  { label: 'medicalCertificates', column: 'medical_document', prefix: 'medical-certificates', fileName: (row) => row.file_name || 'medical.pdf', nameSql: 'medical_document_file_name' },
+];
+
+async function inlineCounts() {
+  const out = {};
+  for (const t of INLINE_COLUMNS) {
+    const { rows } = await pool.query(
+      `SELECT count(*) FILTER (WHERE ${t.column} LIKE 's3:%') AS in_s3,
+              count(*) FILTER (WHERE ${t.column} LIKE 'data:%') AS in_database_only
+       FROM crew_members`,
+    );
+    out[t.label] = { inS3: Number(rows[0].in_s3), inDatabaseOnly: Number(rows[0].in_database_only) };
+  }
+  const { rows } = await pool.query(
+    `SELECT count(*) FILTER (WHERE p->>'data' LIKE 's3:%') AS in_s3,
+            count(*) FILTER (WHERE p->>'data' LIKE 'data:%') AS in_database_only
+     FROM specialist_training_items, jsonb_array_elements(photos) AS p`,
+  );
+  out.specialistTrainingPhotos = { inS3: Number(rows[0].in_s3), inDatabaseOnly: Number(rows[0].in_database_only) };
+  return out;
+}
+
+// Uploads one data URI and confirms the stored object is the right size.
+async function uploadVerified(prefix, ownerId, fileName, dataUri) {
+  const parsedFile = store.parseDataUri(dataUri);
+  if (!parsedFile) throw new Error('not a base64 data URI');
+  const key = `${prefix}/${ownerId}/${crypto.randomUUID()}/${store.safeName(fileName)}`;
+  await store.putBuffer(key, parsedFile.buffer, parsedFile.contentType);
+  const size = await store.objectSize(key);
+  if (size !== parsedFile.buffer.length) throw new Error(`size mismatch (${size} vs ${parsedFile.buffer.length})`);
+  return key;
+}
+
 async function counts() {
   const out = {};
   for (const t of TABLES) {
@@ -35,7 +73,7 @@ async function counts() {
 // bucket and reads it back - the check to run after the bucket and keys are set
 // in Render. Shows no keys, only the bucket name and region.
 router.get('/status', async (req, res) => {
-  const result = { configured: store.isConfigured(), bucket: store.bucket() || null, region: store.region(), roundTrip: null, documents: await counts() };
+  const result = { configured: store.isConfigured(), bucket: store.bucket() || null, region: store.region(), roundTrip: null, documents: await counts(), otherFiles: await inlineCounts() };
   if (result.configured) {
     const key = `healthcheck/${Date.now()}-${crypto.randomUUID()}.txt`;
     const text = 'Flight Standards System storage check';
@@ -95,6 +133,64 @@ router.post('/migrate', async (req, res) => {
     }
   }
 
+  // Licence photos, medical certificates and specialist-training photos: copied,
+  // size-checked, then the column is switched to the S3 pointer straight away.
+  for (const t of INLINE_COLUMNS) {
+    if (left <= 0) break;
+    const nameSelect = t.nameSql ? `${t.nameSql} AS file_name` : `NULL AS file_name`;
+    const { rows } = await pool.query(
+      `SELECT id, ${t.column} AS value, ${nameSelect} FROM crew_members WHERE ${t.column} LIKE 'data:%' ORDER BY id LIMIT $1`,
+      [left],
+    );
+    for (const row of rows) {
+      left -= 1;
+      try {
+        const key = await uploadVerified(t.prefix, row.id, t.fileName(row), row.value);
+        const { rowCount } = await pool.query(
+          `UPDATE crew_members SET ${t.column} = $1 WHERE id = $2 AND ${t.column} = $3`,
+          [store.POINTER + key, row.id, row.value],
+        );
+        if (rowCount) summary.copied += 1;
+      } catch (err) {
+        summary.failed.push({ table: 'crew_members', id: row.id, name: t.label, error: err.message });
+      }
+    }
+  }
+  if (left > 0) {
+    const { rows } = await pool.query(
+      `SELECT id, crew_member_id, photos FROM specialist_training_items
+       WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(photos) p WHERE p->>'data' LIKE 'data:%')
+       ORDER BY id LIMIT $1`,
+      [left],
+    );
+    for (const row of rows) {
+      left -= 1;
+      const before = JSON.stringify(row.photos);
+      const photos = [];
+      let changed = 0;
+      for (const photo of row.photos) {
+        if (typeof photo.data === 'string' && photo.data.startsWith('data:')) {
+          try {
+            const key = await uploadVerified('specialist-training', row.crew_member_id, photo.name || 'photo.jpg', photo.data);
+            photos.push({ ...photo, data: store.POINTER + key });
+            changed += 1;
+            continue;
+          } catch (err) {
+            summary.failed.push({ table: 'specialist_training_items', id: row.id, name: photo.name, error: err.message });
+          }
+        }
+        photos.push(photo);
+      }
+      if (changed > 0) {
+        const { rowCount } = await pool.query(
+          'UPDATE specialist_training_items SET photos = $2::jsonb WHERE id = $1 AND photos = $3::jsonb',
+          [row.id, JSON.stringify(photos), before],
+        );
+        if (rowCount) summary.copied += changed;
+      }
+    }
+  }
+
   if (parsed.data.clearDatabaseCopies) {
     for (const t of TABLES) {
       const { rows } = await pool.query(
@@ -117,7 +213,7 @@ router.post('/migrate', async (req, res) => {
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_documents',
     description: `Copied ${summary.copied} document(s) to S3${summary.cleared ? `, cleared ${summary.cleared} database copies` : ''}${summary.failed.length ? `, ${summary.failed.length} failed` : ''}`,
   });
-  res.json({ ...summary, documents: await counts() });
+  res.json({ ...summary, documents: await counts(), otherFiles: await inlineCounts() });
 });
 
 module.exports = router;

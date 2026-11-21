@@ -6,8 +6,18 @@ const { rowToCamel } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
+const { storeInline, resolveInline } = require('../lib/fileStore');
 
 const router = express.Router();
+
+// Evidence photos may be held in S3 (the stored value is then a pointer) -
+// turn each back into an image the screen can show before replying.
+async function withPhotoData(row) {
+  const item = rowToCamel(row);
+  if (!Array.isArray(item.photos) || item.photos.length === 0) return item;
+  item.photos = await Promise.all(item.photos.map(async (p) => ({ ...p, data: await resolveInline(p.data) })));
+  return item;
+}
 
 // Same access as crew.js (which this hangs off of, on the Specialist
 // Training tab) - HOTC/HOFO/Flight Ops Admin/Alternate, plus Cabin
@@ -52,7 +62,7 @@ router.get('/', async (req, res) => {
     `SELECT * FROM specialist_training_items WHERE crew_member_id = $1 AND archived = false ORDER BY created_at DESC`,
     [crewMemberId],
   );
-  res.json(rows.map(rowToCamel));
+  res.json(await Promise.all(rows.map(withPhotoData)));
 });
 
 const createSchema = z.object({
@@ -93,7 +103,10 @@ router.patch('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const entries = Object.entries(parsed.data);
-  if (entries.length === 0) return res.json(existing);
+  if (entries.length === 0) {
+    const { rows: current } = await pool.query('SELECT * FROM specialist_training_items WHERE id = $1', [req.params.id]);
+    return res.json(await withPhotoData(current[0]));
+  }
 
   const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}`);
   const values = entries.map(([, value]) => value);
@@ -103,7 +116,7 @@ router.patch('/:id', async (req, res) => {
     `UPDATE specialist_training_items SET ${setClauses.join(', ')}, updated_at = now() WHERE id = $${values.length} RETURNING *`,
     values,
   );
-  res.json(rowToCamel(rows[0]));
+  res.json(await withPhotoData(rows[0]));
 });
 
 router.post('/:id/archive', async (req, res) => {
@@ -131,14 +144,14 @@ router.post('/:id/photos', async (req, res) => {
 
   const parsed = addPhotoSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const photo = { id: crypto.randomUUID(), name: parsed.data.name, data: parsed.data.data };
+  const photo = { id: crypto.randomUUID(), name: parsed.data.name, data: await storeInline('specialist-training', parsed.data.name, parsed.data.data) };
   const photos = [...(existing.photos || []), photo];
 
   const { rows } = await pool.query(
     'UPDATE specialist_training_items SET photos = $2, updated_at = now() WHERE id = $1 RETURNING *',
     [req.params.id, JSON.stringify(photos)],
   );
-  res.status(201).json(rowToCamel(rows[0]));
+  res.status(201).json(await withPhotoData(rows[0]));
 });
 
 router.delete('/:id/photos/:photoId', async (req, res) => {
@@ -151,7 +164,7 @@ router.delete('/:id/photos/:photoId', async (req, res) => {
     'UPDATE specialist_training_items SET photos = $2, updated_at = now() WHERE id = $1 RETURNING *',
     [req.params.id, JSON.stringify(photos)],
   );
-  res.json(rowToCamel(rows[0]));
+  res.json(await withPhotoData(rows[0]));
 });
 
 router.delete('/:id', async (req, res) => {

@@ -75,4 +75,37 @@ async function objectSize(key) {
   return Number(head.ContentLength);
 }
 
-module.exports = { isConfigured, bucket, region, saveFile, loadFileData, parseDataUri, putBuffer, objectSize, safeName, getClient };
+// Files that live inside another column rather than in their own table row -
+// a crew member's licence photo and current medical certificate, and each
+// specialist-training evidence photo. The column holds "s3:<key>" instead of
+// the data URI once the file is in S3; the routes turn it back into a data URI
+// (resolveInline) before replying, so the screens still receive a ready-to-show
+// image or PDF exactly as before.
+const POINTER = 's3:';
+function isPointer(value) { return typeof value === 'string' && value.startsWith(POINTER); }
+function pointerKey(value) { return value.slice(POINTER.length); }
+
+// What to put in the column for a newly uploaded file: the pointer when S3
+// took it, otherwise the data URI unchanged (S3 off or briefly unavailable).
+// Null/empty and non-data values pass straight through.
+async function storeInline(prefix, fileName, dataUri) {
+  if (typeof dataUri !== 'string' || !dataUri.startsWith('data:')) return dataUri;
+  const stored = await saveFile(prefix, fileName, dataUri);
+  return stored.storageKey ? POINTER + stored.storageKey : dataUri;
+}
+
+// The data URI for a column value, fetching from S3 when it is a pointer.
+async function resolveInline(value) {
+  if (!isPointer(value)) return value;
+  try {
+    return await loadFileData({ storage_key: pointerKey(value) });
+  } catch (err) {
+    console.error('Could not read a file from S3:', err.name, err.message);
+    return null;
+  }
+}
+
+module.exports = {
+  isConfigured, bucket, region, saveFile, loadFileData, parseDataUri, putBuffer, objectSize, safeName, getClient,
+  POINTER, isPointer, pointerKey, storeInline, resolveInline,
+};

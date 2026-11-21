@@ -5,7 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { ADMIN_ROLES, requireRole, isCaOnlyRole } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
-const { saveFile, loadFileData } = require('../lib/fileStore');
+const { saveFile, loadFileData, storeInline, resolveInline, isPointer, pointerKey } = require('../lib/fileStore');
 const { resolveAssignee } = require('../lib/assignee');
 const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays, addMonths } = require('../lib/currency');
 const { createCheckRecord } = require('./checks');
@@ -829,6 +829,18 @@ async function safetyEquipmentCurrency(member, planned, traineeIds) {
   return { lifeJacket, smokeFireTraining, f100SlideTraining };
 }
 
+// A single crew member's reply: the licence photo and current medical
+// certificate may be held in S3 (the column then holds a pointer), so turn them
+// back into the image/PDF the screens expect. Not used for the roster list,
+// which leaves both out.
+async function withCurrencyAndFiles(member) {
+  const out = await withCurrency(member);
+  const [licencePhoto, medicalDocument] = await Promise.all([
+    resolveInline(out.licencePhoto), resolveInline(out.medicalDocument),
+  ]);
+  return { ...out, licencePhoto, medicalDocument };
+}
+
 async function withCurrency(member) {
   const [planned, upgradeTraineeId, loftTraineeIds] = await Promise.all([
     plannedDatesFor(member.id), activeUpgradeTraineeId(member.id), allLinkedTraineeIds(member.id, member.traineeId),
@@ -1024,7 +1036,7 @@ router.get('/:id', async (req, res) => {
   const member = await findCrewMember(req.params.id);
   if (!member) return res.status(404).json({ error: 'Not found' });
   if (forbiddenForCaManager(req, member)) return res.status(403).json({ error: 'Forbidden' });
-  res.json(await withCurrency(member));
+  res.json(await withCurrencyAndFiles(member));
 });
 
 const quickAddSchema = z.object({
@@ -1102,7 +1114,7 @@ async function createCrewMemberRecord(rawData, req) {
         d.type === 'CABIN_ATTENDANT' ? (d.lastLineCheckDate || null) : null,
         d.userId || null,
         d.type === 'PILOT' ? d.arn : null,
-        d.type === 'PILOT' ? (d.licencePhoto || null) : null,
+        d.type === 'PILOT' && d.licencePhoto ? await storeInline('licence-photos', 'licence.jpg', d.licencePhoto) : null,
         d.syllabusId || null,
         d.type === 'PILOT' ? !!d.newHire : false,
       ],
@@ -1146,7 +1158,7 @@ async function createCrewMemberRecord(rawData, req) {
     userId: req.user.id, action: 'CREATE', targetTable: 'crew_members', targetId: member.id,
     description: `Added crew member ${member.name}`,
   });
-  return { member: await withCurrency(member) };
+  return { member: await withCurrencyAndFiles(member) };
 }
 
 router.post('/', blockCaManager, async (req, res) => {
@@ -1292,8 +1304,9 @@ router.patch('/:id', async (req, res) => {
   const fleetError = fleetOrderError(member.type, parsed.data.fleets ?? member.fleets);
   if (fleetError) return res.status(400).json({ error: fleetError });
 
+  if (parsed.data.licencePhoto) parsed.data.licencePhoto = await storeInline('licence-photos', 'licence.jpg', parsed.data.licencePhoto);
   const entries = Object.entries(parsed.data);
-  if (entries.length === 0) return res.json(await withCurrency(member));
+  if (entries.length === 0) return res.json(await withCurrencyAndFiles(member));
 
   const setClauses = entries.map(([key], i) => `${COLUMN_MAP[key]} = $${i + 1}${CAST_MAP[key] || ''}`);
   const values = entries.map(([, value]) => value);
@@ -1312,7 +1325,7 @@ router.patch('/:id', async (req, res) => {
   // Re-fetch through the same join CREW_SELECT uses, rather than trusting
   // the UPDATE's own RETURNING row - a linked member's name/fleets only
   // come back correctly once joined against the newly-linked user.
-  res.json(await withCurrency(await findCrewMember(req.params.id)));
+  res.json(await withCurrencyAndFiles(await findCrewMember(req.params.id)));
 });
 
 const medicalDocumentSchema = z.object({
@@ -1342,7 +1355,11 @@ router.post('/:id/medical-document', async (req, res) => {
   );
   const current = currentRows[0];
   if (current?.medical_document) {
-    const superseded = await saveFile(`crew-documents/${member.id}`, current.medical_document_file_name || 'medical.pdf', current.medical_document);
+    // When the old certificate is already in S3 the archived copy simply points
+    // at the same object; otherwise it is stored now, as before.
+    const superseded = isPointer(current.medical_document)
+      ? { storageKey: pointerKey(current.medical_document), fileData: null }
+      : await saveFile(`crew-documents/${member.id}`, current.medical_document_file_name || 'medical.pdf', current.medical_document);
     await pool.query(
       `INSERT INTO crew_documents (crew_member_id, name, file_name, file_data, storage_key, uploaded_by_name, archived, archived_at)
        VALUES ($1, 'Medical Certificate (superseded)', $2, $3, $4, $5, true, now())`,
@@ -1352,13 +1369,13 @@ router.post('/:id/medical-document', async (req, res) => {
 
   await pool.query(
     'UPDATE crew_members SET medical_document = $1, medical_document_file_name = $2 WHERE id = $3',
-    [parsed.data.fileData, parsed.data.fileName, member.id],
+    [await storeInline('medical-certificates', parsed.data.fileName, parsed.data.fileData), parsed.data.fileName, member.id],
   );
   await logAction({
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: member.id,
     description: `Uploaded medical certificate for ${member.name}`,
   });
-  res.json(await withCurrency(await findCrewMember(req.params.id)));
+  res.json(await withCurrencyAndFiles(await findCrewMember(req.params.id)));
 });
 
 // Mirrors frontend/src/pages/CrewDetail.jsx's OVERDUE_REASONS - a fixed
@@ -1441,7 +1458,7 @@ router.put('/:id/planned-checks/:checkKey', async (req, res) => {
     );
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_planned_checks', targetId: member.id });
-  res.json(await withCurrency(member));
+  res.json(await withCurrencyAndFiles(member));
 });
 
 // Turns a planned check into the real thing, once both a planned date and
@@ -1531,7 +1548,7 @@ router.post('/:id/archive', blockCaManager, async (req, res) => {
   // CrewDetail.jsx reads member.urgentItems/.allItems unconditionally - has
   // to go through withCurrency like GET /:id does, or the page blanks with
   // an uncaught render error the moment this response lands.
-  res.json(await withCurrency(await findCrewMember(req.params.id)));
+  res.json(await withCurrencyAndFiles(await findCrewMember(req.params.id)));
 });
 
 router.post('/:id/unarchive', blockCaManager, async (req, res) => {
@@ -1541,7 +1558,7 @@ router.post('/:id/unarchive', blockCaManager, async (req, res) => {
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
   await logAction({ userId: req.user.id, action: 'UNARCHIVE', targetTable: 'crew_members', targetId: req.params.id });
-  res.json(await withCurrency(await findCrewMember(req.params.id)));
+  res.json(await withCurrencyAndFiles(await findCrewMember(req.params.id)));
 });
 
 const RETENTION_YEARS = 4;

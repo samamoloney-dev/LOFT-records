@@ -5,6 +5,7 @@ const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
 const { canAccessChecks, isAdmin, UPGRADE_CHECKER_ROLES, UPGRADE_VARIANTS, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
 const { baseFleet } = require('../lib/fleetOrder');
+const { storeInline } = require('../lib/fileStore');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
@@ -835,7 +836,10 @@ router.patch('/:id/licence-photo', async (req, res) => {
     [JSON.stringify(details), req.params.id],
   );
   if (existing.crewMemberId) {
-    await pool.query('UPDATE crew_members SET licence_photo = $1 WHERE id = $2', [parsed.data.photo, existing.crewMemberId]);
+    await pool.query(
+      'UPDATE crew_members SET licence_photo = $1 WHERE id = $2',
+      [await storeInline('licence-photos', 'licence.jpg', parsed.data.photo), existing.crewMemberId],
+    );
   }
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'checks', targetId: existing.id });
   res.json(rowToCamel(rows[0]));

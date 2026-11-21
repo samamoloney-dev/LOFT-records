@@ -1371,6 +1371,14 @@ router.post('/:id/medical-document', async (req, res) => {
     'UPDATE crew_members SET medical_document = $1, medical_document_file_name = $2 WHERE id = $3',
     [await storeInline('medical-certificates', parsed.data.fileName, parsed.data.fileData), parsed.data.fileName, member.id],
   );
+  // A new certificate means the medical has been dealt with, so any planned
+  // date for it no longer applies.
+  await pool.query(
+    `UPDATE crew_competencies SET planned_date = NULL
+     WHERE crew_member_id = $1 AND planned_date IS NOT NULL
+       AND competency_type_id IN (SELECT id FROM competency_types WHERE name = 'Medical')`,
+    [member.id],
+  );
   await logAction({
     userId: req.user.id, action: 'UPDATE', targetTable: 'crew_members', targetId: member.id,
     description: `Uploaded medical certificate for ${member.name}`,
@@ -1683,7 +1691,10 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   // that course's completions (see PilotLineCheck.jsx's Refresher Training
   // row), so they get the same unlock for this competency only.
   const { rows: existingRows } = await pool.query(
-    `SELECT cc.completed_date, cc.due_date, cc.planned_date, ct.name
+    `SELECT cc.completed_date, cc.due_date, cc.planned_date, ct.name,
+            to_char(cc.completed_date, 'YYYY-MM-DD') AS completed_date_key,
+            to_char(cc.due_date, 'YYYY-MM-DD') AS due_date_key,
+            to_char(cc.planned_date, 'YYYY-MM-DD') AS planned_date_key
      FROM competency_types ct
      LEFT JOIN crew_competencies cc ON cc.competency_type_id = ct.id AND cc.crew_member_id = $1
      WHERE ct.id = $2`,
@@ -1699,13 +1710,28 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
     return res.status(403).json({ error: `Only ${allowedRoles.map((r) => (r === 'FLIGHT_OPS_ADMIN' ? 'Flight Ops Admin' : r)).join(', ')} can change a competency date once it has been saved` });
   }
 
+  // A renewed medical makes its planned date redundant (the plan was to get
+  // the medical done), so once the completed or expiry date changes the
+  // planned date is cleared - unless this same save deliberately sets a new
+  // planned date. The screen sends the whole row back each time, so "changed"
+  // is judged against what is stored. (Uploading a new certificate clears it
+  // too - see POST /:id/medical-document.)
+  const dayOf = (v) => (v ? String(v).slice(0, 10) : null);
+  const stored = existing || {};
+  let plannedToSave = plannedDate || null;
+  if (existing?.name === 'Medical') {
+    const medicalRenewed = dayOf(completedDate) !== dayOf(stored.completed_date_key) || dayOf(dueDate) !== dayOf(stored.due_date_key);
+    const plannedDeliberatelyChanged = dayOf(plannedDate) !== dayOf(stored.planned_date_key);
+    if (medicalRenewed && !plannedDeliberatelyChanged) plannedToSave = null;
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date, planned_date, na, course_sent, reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (crew_member_id, competency_type_id)
      DO UPDATE SET completed_date = $3, due_date = $4, planned_date = $5, na = $6, course_sent = $7, reason = $8
      RETURNING *`,
-    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedDate || null, na || false, courseSent || false, reason || null],
+    [member.id, req.params.competencyTypeId, completedDate || null, dueDate || null, plannedToSave, na || false, courseSent || false, reason || null],
   );
   await logAction({ userId: req.user.id, action: 'UPDATE', targetTable: 'crew_competencies', targetId: rows[0].id });
   res.json(rowToCamel(rows[0]));
@@ -1810,8 +1836,12 @@ router.post('/competencies/bulk-import', requireRole(...ADMIN_ROLES), async (req
         `INSERT INTO crew_competencies (crew_member_id, competency_type_id, completed_date, due_date)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (crew_member_id, competency_type_id)
-         DO UPDATE SET completed_date = $3, due_date = $4`,
-        [member.id, type.id, r.completedDate || null, r.dueDate || null],
+         DO UPDATE SET completed_date = $3, due_date = $4,
+           planned_date = CASE
+             WHEN $5::boolean AND (crew_competencies.completed_date IS DISTINCT FROM $3::date OR crew_competencies.due_date IS DISTINCT FROM $4::date)
+             THEN NULL ELSE crew_competencies.planned_date END`,
+        // A renewed medical clears its planned date, as on the Medical tab.
+        [member.id, type.id, r.completedDate || null, r.dueDate || null, type.name === 'Medical'],
       );
       results.push({ row: rowNumber, name: member.name, competency: type.name, status: 'imported' });
     } else {

@@ -1308,7 +1308,7 @@ export function CrewDetail() {
         />
       )}
       {topTab === 'medical' && medical && (
-        <MedicalTab member={member} medical={medical} onUpdate={updateCompetency} onSaved={setMember} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
+        <MedicalTab member={member} medical={medical} onUpdate={updateCompetency} onSaved={(updated) => { setMember(updated); loadCompetencies(); }} unlocked={unlocked} setUnlocked={setUnlocked} error={competencyError} archived={member.archived} />
       )}
       {topTab === 'competencies' && (
         <CompetenciesTab

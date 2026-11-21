@@ -2,8 +2,12 @@
 // newline) - keeps the common case readable if this file is ever opened
 // and eyeballed rather than fed straight into another system.
 function csvCell(value) {
-  const s = value === null || value === undefined ? '' : String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = value === null || value === undefined ? '' : String(value);
+  // Typed text that starts with = + - @ (or a tab/return) is run as a formula
+  // when the file is opened in Excel. A leading apostrophe makes it plain text;
+  // genuine negative numbers are left alone.
+  if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 // Triggers a browser download of a CSV built from headers + rows - no

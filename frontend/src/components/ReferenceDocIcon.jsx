@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { safeViewType } from '../lib/pdf';
 
 // Small reference-document icon next to a check-form item, opening an
 // attached SOP excerpt/diagram in a new tab - same interaction pattern as
@@ -19,7 +20,9 @@ export function ReferenceDocIcon({ document: doc, name }) {
     setFailed(false);
     try {
       const res = await fetch(doc);
-      const blob = await res.blob();
+      const fetched = await res.blob();
+      // Never display a type an uploader could use to run script (see lib/pdf.js).
+      const blob = new Blob([fetched], { type: safeViewType(fetched.type) });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener');
       // The new tab has already started loading it by the time this fires -

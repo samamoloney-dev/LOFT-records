@@ -65,6 +65,16 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // client-side the way photos are.
 app.use(express.json({ limit: '20mb' }));
 
+// Every reply from this server is personal data or a document: tell browsers and
+// proxies not to keep copies, not to guess a different content type, and stop
+// advertising the framework in use.
+app.disable('x-powered-by');
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  next();
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRoutes);
@@ -104,6 +114,22 @@ app.use('/api/rostering', rosteringRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  // A request the client got wrong is not a server fault: an oversized body
+  // (a document over the upload limit) or malformed JSON, both raised by the
+  // body parser with their own 4xx status, used to come back as a blank 500.
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({ error: 'That upload is too large - the limit is about 15 MB per file' });
+  }
+  if (err.expose && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({ error: err.type === 'entity.parse.failed' ? 'The request was not valid JSON' : 'Bad request' });
+  }
+  // PostgreSQL rejecting the value itself (not a server fault): a malformed id
+  // (not a UUID), an unknown enum value such as ?type=BOGUS, an impossible date,
+  // a number out of range or text too long. Reported as a 400, not a 500.
+  if (['22P02', '22007', '22008', '22003', '22001', '22023'].includes(err.code)) {
+    console.warn(`Rejected invalid input (${err.code}) on ${req.method} ${req.path}: ${err.message}`);
+    return res.status(400).json({ error: 'Invalid request - check the id, date or value sent' });
+  }
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 });

@@ -64,7 +64,13 @@ router.post('/login', async (req, res) => {
   const row = rows[0] ? rowToCamel(rows[0]) : null;
   const valid = row && await bcrypt.compare(password, row.passwordHash);
   if (!valid) {
-    const attempts = (state?.attempts || 0) + 1;
+    // Once a lockout has run out, start counting again from zero - otherwise
+    // the stale count of 5 re-locks the account on the very next typo.
+    const lockExpired = state?.lockedUntil && state.lockedUntil <= Date.now();
+    const attempts = (lockExpired ? 0 : (state?.attempts || 0)) + 1;
+    if (LOGIN_ATTEMPTS.size > 5000) {
+      for (const [k, v] of LOGIN_ATTEMPTS) if (v.lockedUntil && v.lockedUntil <= Date.now()) LOGIN_ATTEMPTS.delete(k);
+    }
     LOGIN_ATTEMPTS.set(key, {
       attempts,
       lockedUntil: attempts >= MAX_LOGIN_ATTEMPTS ? Date.now() + LOGIN_LOCKOUT_MS : null,

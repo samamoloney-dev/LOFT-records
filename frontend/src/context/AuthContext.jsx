@@ -17,6 +17,13 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // The login ran out (see api/client.js) - drop to the sign-in page.
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener('loft:session-expired', onExpired);
+    return () => window.removeEventListener('loft:session-expired', onExpired);
+  }, []);
+
   async function login(email, password) {
     const data = await api.post('/api/auth/login', { email, password });
     api.setToken(data.token);

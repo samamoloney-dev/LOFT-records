@@ -122,7 +122,9 @@ router.post('/verify', async (req, res) => {
 
   const valid = await bcrypt.compare(pin, person.pin_hash);
   if (!valid) {
-    const attempts = (state?.attempts || 0) + 1;
+    // A lockout that has run out starts the count again (see auth.js login).
+    const lockExpired = state?.lockedUntil && state.lockedUntil <= Date.now();
+    const attempts = (lockExpired ? 0 : (state?.attempts || 0)) + 1;
     ATTEMPTS.set(key, {
       attempts,
       lockedUntil: attempts >= MAX_ATTEMPTS ? Date.now() + LOCKOUT_MS : null,

@@ -8,3 +8,7 @@ build/
 backend/prisma/dev.db
 coverage/
 package-lock.json
+
+# Local working files - the compliance reports hold crew names and dates, never commit them
+reports/
+.claude/

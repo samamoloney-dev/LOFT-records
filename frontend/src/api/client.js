@@ -31,6 +31,14 @@ async function request(path, { method = 'GET', body } = {}) {
   if (res.status === 204) return null;
 
   const data = await res.json().catch(() => null);
+  // The login lasts 12 hours. Once it has run out every call answers "Not
+  // authenticated" - rather than leaving each screen showing that as an error,
+  // forget the dead token and tell the app, which returns to the sign-in page.
+  // (Other 401s, like a wrong current password, are not this and are left alone.)
+  if (res.status === 401 && token && data?.error === 'Not authenticated') {
+    clearToken();
+    window.dispatchEvent(new Event('loft:session-expired'));
+  }
   if (!res.ok) {
     const message = data?.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : res.statusText;
     throw new Error(message);

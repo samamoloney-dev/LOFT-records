@@ -228,7 +228,38 @@ function paginate(win) {
   container.innerHTML = html;
 }
 
-export function openPrintWindow(title, bodyHtml) {
+// The print builders put typed text (comments, names, notes) straight into an
+// HTML string that is written into a new window of this same site. Anything a
+// staff member typed that looks like markup would therefore run with the
+// signed-in user's access - so every printed body is cleaned here first,
+// whatever the builder: scripts, frames, event handlers (onerror=...) and
+// script-carrying links are removed, everything else (tables, styles, images,
+// layout) is left exactly as built. The parse happens in an inert <template>,
+// so nothing runs while it is being cleaned.
+const BLOCKED_TAGS = new Set(['SCRIPT', 'IFRAME', 'FRAME', 'FRAMESET', 'OBJECT', 'EMBED', 'APPLET', 'BASE', 'META', 'LINK', 'NOSCRIPT']);
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'data']);
+export function sanitizePrintHtml(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html ?? '');
+  tpl.content.querySelectorAll('*').forEach((el) => {
+    if (BLOCKED_TAGS.has(el.tagName)) { el.remove(); return; }
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.replace(/[\u0000- ]/g, '').toLowerCase();
+      const scriptUrl = /^(javascript:|vbscript:|data:text\/html)/.test(value);
+      if (name.startsWith('on') || name === 'srcdoc' || (URL_ATTRS.has(name) && scriptUrl)) el.removeAttribute(attr.name);
+    }
+  });
+  return tpl.innerHTML;
+}
+
+function escapeText(text) {
+  return String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function openPrintWindow(rawTitle, rawBodyHtml) {
+  const title = escapeText(rawTitle);
+  const bodyHtml = sanitizePrintHtml(rawBodyHtml);
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return;
   // Skippers logo top-right on every printed page, per the operator's
@@ -242,7 +273,7 @@ export function openPrintWindow(title, bodyHtml) {
   // data-form-key; a window that holds several forms (the combined personnel
   // file) has no single form, so it prints each form's own line instead.
   const formKeys = [...new Set([...String(bodyHtml).matchAll(/data-form-key="([A-Z0-9_]+)"/g)].map((m) => m[1]))];
-  const formLabel = formKeys.length === 1 ? formFooterText(formKeys[0]) : '';
+  const formLabel = formKeys.length === 1 ? escapeText(formFooterText(formKeys[0])) : '';
   const footer = `<div class="print-footer"><span>Flight Standards System</span><span>${formLabel}</span><span>System-generated record</span></div>`;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body><table class="print-shell"><thead><tr><td>${letterhead}</td></tr></thead><tfoot><tr><td>${footer}</td></tr></tfoot><tbody><tr><td id="print-content">${bodyHtml}</td></tr></tbody></table><div id="page-numbers"></div></body></html>`);
   win.document.close();
@@ -288,7 +319,9 @@ const CERTIFICATE_STYLES = `
   .cert-sig .sig-role { border-top: 1px solid #333; margin-top: 4px; padding-top: 4px; }
 `;
 
-export function openCertificateWindow(title, bodyHtml) {
+export function openCertificateWindow(rawTitle, rawBodyHtml) {
+  const title = escapeText(rawTitle);
+  const bodyHtml = sanitizePrintHtml(rawBodyHtml);
   const win = window.open('', '_blank', 'width=1100,height=800');
   if (!win) return;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${CERTIFICATE_STYLES}</style></head><body><div class="cert-border"><div class="cert-inner">${bodyHtml}</div></div></body></html>`);

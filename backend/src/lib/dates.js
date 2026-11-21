@@ -21,7 +21,9 @@ function isFutureDate(value) {
   const s = String(value ?? '');
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s > localDateString();
   const ms = Date.parse(s);
-  return Number.isNaN(ms) || ms > Date.now();
+  // A few minutes of slack: a timestamp taken from the user's own clock can run
+  // slightly ahead of the server's.
+  return Number.isNaN(ms) || ms > Date.now() + 10 * 60 * 1000;
 }
 
 module.exports = { isPlausibleDate, isFutureDate };

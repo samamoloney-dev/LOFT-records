@@ -95,6 +95,11 @@ router.get('/', async (req, res) => {
     conditions.push(`type = $${params.length + 1}`);
     params.push('CABIN_ATTENDANT');
   }
+  // A trainee's own login only ever sees their own record.
+  if (req.user.role === 'TRAINEE') {
+    conditions.push(`id = $${params.length + 1}`);
+    params.push(req.user.trainee?.id || '00000000-0000-0000-0000-000000000000');
+  }
 
   const { rows } = await pool.query(
     `SELECT * FROM trainees WHERE ${conditions.join(' AND ')} ORDER BY last_name ASC`,
@@ -233,7 +238,9 @@ const COLUMN_MAP = {
 // phase 3" bug the operator flagged.
 const updateSchema = baseTraineeSchema.omit({ phase: true }).partial();
 
-router.patch('/:id', async (req, res) => {
+// Editing a trainee's details (name, fleet, role) is an admin job - the screens
+// never offer it to anyone else, and it used to be open to every signed-in role.
+router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
   const trainee = await findTrainee(req.params.id);
   if (!trainee) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTraineeRecord(req.user, trainee)) return res.status(403).json({ error: 'Forbidden' });

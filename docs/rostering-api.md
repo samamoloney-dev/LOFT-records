@@ -61,7 +61,8 @@ One row per person per competency. Dates are `YYYY-MM-DD` (never `dd/mm/yyyy`).
 | `competency` | Exact competency name |
 | `code` | The 7-character rostering code. If `codeIsSet` is `false` it is a stand-in, not a real code |
 | `completedDate` | Last completion, or `null` |
-| `dueDate` | When it expires, or `null` |
+| `dueDate` | When it expires, or `null` (also `null` for a once-off item that never expires) |
+| `noExpiry` | `true` for a once-off item that is never required again (e.g. Life Jacket Training), otherwise `false` |
 | `status` | `ok` (in date), `approaching`, `due_soon`, `important`, `overdue` (past due), `not_completed` (never done), `in_training` |
 | `plannedDate` / `reason` | Planned re-check date and the note explaining an overdue item, if any |
 

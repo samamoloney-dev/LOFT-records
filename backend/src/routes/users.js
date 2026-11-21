@@ -4,7 +4,7 @@ const { z } = require('zod');
 const pool = require('../../db/pool');
 const { rowToCamel, parsePgArray } = require('../../db/serialize');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION } = require('../middleware/roles');
+const { requireRole, ADMIN_ROLES, CHECK_ACCESS_TYPES, isGroundInstructorCheckEligible, PERSONNEL_AIR_COMPETENCY_ROLES, PERSONNEL_AIR_COMPETENCY_SECTION, TOP_ROLES_STORED, isTopRoleHolder } = require('../middleware/roles');
 const { GROUND_INSTRUCTOR, FS_PERSONNEL_PILOT, FS_PERSONNEL_CABIN } = require('../lib/exportNames');
 const { logAction } = require('../lib/audit');
 const { nextDueRolling, statusFor, addMonths } = require('../lib/currency');
@@ -178,6 +178,10 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { name, email, password, role, fleets, arn, checkAccess } = parsed.data;
+  // Only HOTC/HOFO can create another HOTC, HOFO or Safety Manager account.
+  if (TOP_ROLES_STORED.includes(role) && !isTopRoleHolder(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC or HOFO can create a HOTC, HOFO or Safety Manager account' });
+  }
   // Flight Ops Admin is administrative only and can never actually check
   // anyone (per the operator's explicit rule, enforced elsewhere via
   // checks.js's canAccessCheckType/CHECK_ROLES) - the Staff form's own
@@ -225,6 +229,16 @@ router.patch('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
     if (effectiveRole === 'FLIGHT_OPS_ADMIN') parsed.data.checkAccess = [];
   }
 
+  // Changing a role to, or away from, HOTC/HOFO/Safety Manager is for HOTC/HOFO
+  // only - an Alternate or Flight Ops Admin cannot promote anyone (themselves
+  // included) or demote the people above them.
+  if (parsed.data.role !== undefined && !isTopRoleHolder(req.user)) {
+    const { rows: current } = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+    if (TOP_ROLES_STORED.includes(parsed.data.role) || TOP_ROLES_STORED.includes(current[0]?.role)) {
+      return res.status(403).json({ error: 'Only HOTC or HOFO can give, change or remove the HOTC, HOFO and Safety Manager roles' });
+    }
+  }
+
   const entries = Object.entries(parsed.data);
   if (entries.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
@@ -254,6 +268,12 @@ router.post('/:id/reset-password', requireRole(...PASSWORD_RESET_ROLES), async (
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  // Resetting a HOTC/HOFO/Safety Manager password would be taking over that
+  // account, so only HOTC/HOFO may do it (Flight Ops Admin can reset everyone else).
+  const { rows: target } = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+  if (target[0] && TOP_ROLES_STORED.includes(target[0].role) && !isTopRoleHolder(req.user)) {
+    return res.status(403).json({ error: 'Only HOTC or HOFO can reset the password of a HOTC, HOFO or Safety Manager account' });
+  }
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
   const { rows } = await pool.query(
     'UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id, name',
@@ -269,6 +289,20 @@ router.post('/:id/reset-password', requireRole(...PASSWORD_RESET_ROLES), async (
 });
 
 router.delete('/:id', requireRole(...ADMIN_ROLES), async (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+  const { rows: target } = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+  if (target[0] && TOP_ROLES_STORED.includes(target[0].role)) {
+    if (!isTopRoleHolder(req.user)) {
+      return res.status(403).json({ error: 'Only HOTC or HOFO can delete a HOTC, HOFO or Safety Manager account' });
+    }
+    // Never leave the system with no HOTC.
+    if (target[0].role === 'HOTC') {
+      const { rows: others } = await pool.query(`SELECT 1 FROM users WHERE role = 'HOTC' AND id <> $1 LIMIT 1`, [req.params.id]);
+      if (others.length === 0) return res.status(400).json({ error: 'This is the only HOTC account - make someone else HOTC before deleting it' });
+    }
+  }
   try {
     const { rowCount } = await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Not found' });

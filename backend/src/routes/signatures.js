@@ -58,6 +58,13 @@ router.post('/set', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { personType, personId, pin, confirmPin } = parsed.data;
   if (pin !== confirmPin) return res.status(400).json({ error: 'PINs do not match' });
+  // A staff member's signing PIN is theirs to create. Without this, anyone signed
+  // in could set a PIN for a colleague who had none (every PIN right after a
+  // reset) and then sign as them. Candidates (crew/trainee) have no login of
+  // their own, so the examiner sets those with the candidate present.
+  if (personType === 'user' && personId !== req.user.id) {
+    return res.status(403).json({ error: 'A staff PIN can only be created by that staff member, signed in as themselves' });
+  }
 
   const person = await findPerson(personType, personId);
   if (!person) return res.status(404).json({ error: 'Not found' });

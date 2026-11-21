@@ -1328,6 +1328,19 @@ router.patch('/:id', async (req, res) => {
   res.json(await withCurrencyAndFiles(await findCrewMember(req.params.id)));
 });
 
+// Files filed on a crew profile are PDFs or photos only, and within the size the
+// upload limit allows (the same rule staff documents already follow) - the file
+// type is read from the upload itself, so anything labelled otherwise is refused.
+const DOCUMENT_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+const MAX_DOCUMENT_DATA_CHARS = 14000000; // roughly a 10 MB file once base64-encoded
+function documentFileError(fileData) {
+  const match = /^data:([a-z0-9/+.-]+);base64,/i.exec(fileData || '');
+  const type = match ? match[1].toLowerCase() : null;
+  if (!type || !DOCUMENT_FILE_TYPES.includes(type)) return 'Only PDF, JPEG or PNG files can be filed here';
+  if (fileData.length > MAX_DOCUMENT_DATA_CHARS) return 'That file is too large - the limit is about 10 MB';
+  return null;
+}
+
 const medicalDocumentSchema = z.object({
   fileName: z.string().min(1),
   fileData: z.string().min(1),
@@ -1348,6 +1361,8 @@ router.post('/:id/medical-document', async (req, res) => {
 
   const parsed = medicalDocumentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const medicalFileError = documentFileError(parsed.data.fileData);
+  if (medicalFileError) return res.status(400).json({ error: medicalFileError });
 
   const { rows: currentRows } = await pool.query(
     'SELECT medical_document, medical_document_file_name FROM crew_members WHERE id = $1',
@@ -1718,6 +1733,12 @@ router.put('/:id/competencies/:competencyTypeId', async (req, res) => {
   // too - see POST /:id/medical-document.)
   const dayOf = (v) => (v ? String(v).slice(0, 10) : null);
   const stored = existing || {};
+  // A completed date in the future would make the item read as current. Only a
+  // date being changed is refused, so an old future-dated entry can still have
+  // its other fields (planned date, reason) edited until someone corrects it.
+  if (completedDate && dayOf(completedDate) !== dayOf(stored.completed_date_key) && isFutureDate(dayOf(completedDate))) {
+    return res.status(400).json({ error: 'The completed date is in the future - check the date (and year) entered' });
+  }
   let plannedToSave = plannedDate || null;
   if (existing?.name === 'Medical') {
     const medicalRenewed = dayOf(completedDate) !== dayOf(stored.completed_date_key) || dayOf(dueDate) !== dayOf(stored.due_date_key);
@@ -1894,6 +1915,9 @@ router.post('/:id/competencies/ad-hoc', requireRole(...ADMIN_ROLES), async (req,
   const parsed = adHocCompetencySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
+  if (d.completedDate && isFutureDate(String(d.completedDate).slice(0, 10))) {
+    return res.status(400).json({ error: 'The completed date is in the future - check the date (and year) entered' });
+  }
 
   const { rows } = await pool.query(
     `INSERT INTO crew_competencies (crew_member_id, name, completed_date, due_date, planned_date, reason)
@@ -1915,6 +1939,16 @@ router.put('/:id/competencies/ad-hoc/:competencyId', requireRole(...ADMIN_ROLES)
   const parsed = adHocCompetencySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
+  if (d.completedDate) {
+    const { rows: stored } = await pool.query(
+      `SELECT to_char(completed_date, 'YYYY-MM-DD') AS completed_key FROM crew_competencies WHERE id = $1 AND crew_member_id = $2`,
+      [req.params.competencyId, member.id],
+    );
+    const day = String(d.completedDate).slice(0, 10);
+    if (day !== stored[0]?.completed_key && isFutureDate(day)) {
+      return res.status(400).json({ error: 'The completed date is in the future - check the date (and year) entered' });
+    }
+  }
 
   const { rows } = await pool.query(
     `UPDATE crew_competencies SET name = $1, completed_date = $2, due_date = $3, planned_date = $4, reason = $5
@@ -2006,6 +2040,9 @@ router.post('/:id/documents', async (req, res) => {
   const parsed = documentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
+
+  const fileError = documentFileError(d.fileData);
+  if (fileError) return res.status(400).json({ error: fileError });
 
   const stored = await saveFile(`crew-documents/${member.id}`, d.fileName, d.fileData);
   const { rows } = await pool.query(

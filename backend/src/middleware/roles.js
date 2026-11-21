@@ -169,7 +169,23 @@ function canAccessTraineeRecord(user, trainee) {
   if (isCaOnlyRole(user)) {
     return trainee.type === 'CABIN_ATTENDANT';
   }
+  // A trainee's own login sees their own record only - not the rest of the
+  // trainee roster (the screens already send them to their own page; this makes
+  // the server hold the same line).
+  if (user.role === 'TRAINEE') {
+    return !!user.trainee && user.trainee.id === trainee.id;
+  }
   return true;
+}
+
+// The roles that run the department. Only these may hand out, change or remove
+// these roles, delete such an account or reset its password - otherwise any
+// admin-level role (Alternate, Flight Ops Admin) could promote itself.
+// SAFETY_MANAGER counts as HOTC for access (see middleware/auth.js), so it is
+// listed by its stored role here.
+const TOP_ROLES_STORED = ['HOTC', 'HOFO', 'SAFETY_MANAGER'];
+function isTopRoleHolder(user) {
+  return ['HOTC', 'HOFO'].includes(user.role);
 }
 
 // Archived records are visible only to HOTC, HOFO, Flight Ops Admin.
@@ -217,6 +233,8 @@ module.exports = {
   canAccessCompetencyChecks,
   isCaOnlyRole,
   canAccessTraineeRecord,
+  TOP_ROLES_STORED,
+  isTopRoleHolder,
   canAccessArchived,
   canEditFlight,
   canAcknowledgeFlight,

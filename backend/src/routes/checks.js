@@ -9,7 +9,7 @@ const { storeInline, resolveInline, isPointer } = require('../lib/fileStore');
 const { resolveAssignee } = require('../lib/assignee');
 const { resolveCrewMember } = require('../lib/crew-member');
 const { logAction } = require('../lib/audit');
-const { isPlausibleDate } = require('../lib/dates');
+const { isPlausibleDate, isFutureDate } = require('../lib/dates');
 const { EP_FAMILY_CHECK_TYPES, hasEpApproval, epAssigneeError } = require('../lib/epApproval');
 const { localDateString } = require('../lib/currency');
 const { fileAutomaticCertificate, CERTIFICATE_RULES } = require('../lib/autoCertificate');
@@ -610,9 +610,21 @@ router.patch('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Only the assigned examiner can complete and sign this check' });
   }
 
+  // A completed check is a signed record: once it is completed only an admin
+  // can change it (to correct a mistake). The screens already grey the form out;
+  // this makes the server hold the same line.
+  if (existing.completedAt && !isAdmin(req.user)) {
+    return res.status(403).json({ error: 'This check has been completed and is locked - only an admin can change it' });
+  }
+
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const d = parsed.data;
+  // A check cannot have been completed in the future (a mistyped year on the
+  // form's date is the usual cause, and it would make the item read as current).
+  if (d.completedAt && isFutureDate(d.completedAt)) {
+    return res.status(400).json({ error: 'The check date is in the future - correct the date on the form before completing it' });
+  }
 
   // Distinguish "assignedTo not sent, leave as-is" from "assignedTo: null,
   // unassign" - zod would otherwise turn both into undefined.

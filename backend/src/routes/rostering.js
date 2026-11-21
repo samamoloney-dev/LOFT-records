@@ -59,6 +59,16 @@ function isoDate(value) {
   return value ? new Date(value).toISOString().slice(0, 10) : null;
 }
 
+// A once-off item (Life Jacket Training: "once completed it is not required to
+// be done again") is held internally with a due date 100 years out as a stand-in
+// for "never expires". The rostering software gets a blank due date and
+// noExpiry: true rather than a date in the 2120s.
+function dueFields(value) {
+  const iso = isoDate(value);
+  if (iso && Number(iso.slice(0, 4)) > 2060) return { dueDate: null, noExpiry: true };
+  return { dueDate: iso, noExpiry: false };
+}
+
 function csvCell(value) {
   const s = value == null ? '' : String(value);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -93,7 +103,7 @@ router.get('/competencies', async (req, res) => {
         competency: item.name,
         ...codeFor(item.name, codeMap),
         completedDate: isoDate(item.completedDate),
-        dueDate: isoDate(item.dueDate),
+        ...dueFields(item.dueDate),
         status: item.status,
         plannedDate: isoDate(item.plannedDate),
         reason: item.overdueReason || null,
@@ -112,7 +122,7 @@ router.get('/competencies', async (req, res) => {
       competency: s.item,
       ...codeFor(s.item, codeMap),
       completedDate: isoDate(s.completedDate),
-      dueDate: isoDate(s.dueDate),
+      ...dueFields(s.dueDate),
       status: s.status,
       plannedDate: null,
       reason: null,
@@ -126,10 +136,10 @@ router.get('/competencies', async (req, res) => {
   console.log(`Rostering API: served ${filtered.length} rows`);
 
   if (format === 'csv') {
-    const headers = ['crewMemberId', 'name', 'arn', 'type', 'fleets', 'competency', 'code', 'codeIsSet', 'completedDate', 'dueDate', 'status', 'plannedDate', 'reason'];
+    const headers = ['crewMemberId', 'name', 'arn', 'type', 'fleets', 'competency', 'code', 'codeIsSet', 'completedDate', 'dueDate', 'noExpiry', 'status', 'plannedDate', 'reason'];
     const lines = [headers.join(',')];
     for (const i of filtered) {
-      lines.push([i.crewMemberId, i.name, i.arn, i.type, i.fleets.join(' '), i.competency, i.code, i.codeIsSet, i.completedDate, i.dueDate, i.status, i.plannedDate, i.reason].map(csvCell).join(','));
+      lines.push([i.crewMemberId, i.name, i.arn, i.type, i.fleets.join(' '), i.competency, i.code, i.codeIsSet, i.completedDate, i.dueDate, i.noExpiry, i.status, i.plannedDate, i.reason].map(csvCell).join(','));
     }
     res.set('Content-Type', 'text/csv; charset=utf-8');
     return res.send(lines.join('\r\n'));

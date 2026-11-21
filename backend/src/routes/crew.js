@@ -1068,7 +1068,7 @@ const quickAddSchema = z.object({
   syllabusId: z.string().uuid().nullable().optional(),
 }).superRefine((d, ctx) => {
   if (d.type === 'PILOT' && !d.arn?.trim()) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required for pilots' });
+    ctx.addIssue({ code: 'custom', path: ['arn'], message: 'ARN is required for pilots' });
   }
 });
 
@@ -2133,7 +2133,7 @@ router.get('/:id/clearances', blockCaManager, async (req, res) => {
 
 const clearanceSchema = z.object({
   stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
-  details: z.record(z.any()).optional(),
+  details: z.record(z.string(), z.any()).optional(),
   // Lets an already-completed real-world sign-off be backdated when this
   // crew member's history is first entered into the system, instead of
   // every entry reading as signed "today" - optional, defaults to now().

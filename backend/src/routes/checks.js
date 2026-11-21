@@ -462,7 +462,7 @@ const createSchema = z.object({
   dueDate: z.string().optional(),
   assessorName: z.string().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
-  details: z.record(z.any()).optional(),
+  details: z.record(z.string(), z.any()).optional(),
 });
 
 // Shared by the POST route below and by the Planning tab's auto-create (see
@@ -568,7 +568,7 @@ router.post('/', async (req, res) => {
 });
 
 const updateSchema = z.object({
-  details: z.record(z.any()).optional(),
+  details: z.record(z.string(), z.any()).optional(),
   result: z.enum(['PASS', 'FAIL']).nullable().optional(),
   score: z.number().int().min(1).max(5).nullable().optional(),
   completedAt: z.string().refine(isPlausibleDate, 'Invalid date - check the year').nullable().optional(),

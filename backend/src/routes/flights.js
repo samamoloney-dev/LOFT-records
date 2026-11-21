@@ -81,7 +81,7 @@ router.get('/:id', async (req, res) => {
 const createSchema = z.object({
   traineeId: z.string().uuid(),
   date: z.string(),
-  sectorDetails: z.record(z.any()).optional(),
+  sectorDetails: z.record(z.string(), z.any()).optional(),
   hours: z.number().nonnegative().optional(),
 });
 
@@ -127,7 +127,7 @@ router.post('/', requireRole(...FLIGHT_CREATOR_ROLES), async (req, res) => {
 // overwrote the whole record on every save, which wiped the debrief when a
 // trainee just ticked "acknowledged" or a TC only changed the rating.
 const updateSchema = z.object({
-  sectorDetails: z.record(z.any()).optional(),
+  sectorDetails: z.record(z.string(), z.any()).optional(),
   loftPerformanceRating: z.string().nullable().optional(),
   debriefComments: z.string().nullable().optional(),
   nextSortieNotes: z.string().nullable().optional(),

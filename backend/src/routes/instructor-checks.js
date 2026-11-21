@@ -93,7 +93,7 @@ const updateSchema = z.object({
   courseTitle: z.string().nullable().optional(),
   dateOfObservation: z.string().nullable().optional(),
   assessorId: z.string().uuid().nullable().optional(),
-  items: z.record(z.any()).optional(),
+  items: z.record(z.string(), z.any()).optional(),
   assessorSignature: z.string().nullable().optional(),
   assessorPrintedName: z.string().nullable().optional(),
   assessorSignedDate: z.string().nullable().optional(),

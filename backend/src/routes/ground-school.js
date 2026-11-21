@@ -223,7 +223,7 @@ router.put('/trainee/:traineeId/category-notes', async (req, res) => {
 // categories need beyond the tick/name/date sign-off - independent of
 // whether the item has actually been signed off yet.
 const detailsSchema = z.object({
-  details: z.record(z.any()),
+  details: z.record(z.string(), z.any()),
 });
 
 router.put('/trainee/:traineeId/items/:itemId/details', async (req, res) => {

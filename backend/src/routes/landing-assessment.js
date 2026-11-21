@@ -42,8 +42,8 @@ router.get('/:traineeId', async (req, res) => {
 });
 
 const upsertSchema = z.object({
-  observationSectors: z.array(z.record(z.any())).optional(),
-  demonstrationSectors: z.array(z.record(z.any())).optional(),
+  observationSectors: z.array(z.record(z.string(), z.any())).optional(),
+  demonstrationSectors: z.array(z.record(z.string(), z.any())).optional(),
   comments: z.string().nullable().optional(),
   releaseSignature: z.string().nullable().optional(),
   releaseDate: z.string().nullable().optional(),

@@ -46,10 +46,10 @@ router.get('/:traineeId', async (req, res) => {
 });
 
 const upsertSchema = z.object({
-  sectorDetails: z.record(z.any()).optional(),
-  itemResults: z.record(z.any()).optional(),
-  categoryRemarks: z.record(z.any()).optional(),
-  ntsScores: z.record(z.any()).optional(),
+  sectorDetails: z.record(z.string(), z.any()).optional(),
+  itemResults: z.record(z.string(), z.any()).optional(),
+  categoryRemarks: z.record(z.string(), z.any()).optional(),
+  ntsScores: z.record(z.string(), z.any()).optional(),
   comments: z.string().nullable().optional(),
   trainingCaptainSignature: z.string().nullable().optional(),
   trainingCaptainSignatureAt: z.string().nullable().optional(),

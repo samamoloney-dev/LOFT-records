@@ -57,13 +57,13 @@ const baseTraineeSchema = z.object({
 // this same refinement for unrelated field edits.
 const createSchema = baseTraineeSchema.superRefine((d, ctx) => {
   if (d.newHire && d.type !== 'PILOT') {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newHire'], message: 'New hire is only for pilot trainees' });
+    ctx.addIssue({ code: 'custom', path: ['newHire'], message: 'New hire is only for pilot trainees' });
   }
   // Every brand-new trainee also gets a crew profile now (see POST /), and a
   // pilot's crew profile needs an ARN. A crew member sent back to LOFT already
   // has one, so only brand-new pilots are asked.
   if (d.type === 'PILOT' && !d.sourceCrewMemberId && !d.arn?.trim()) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['arn'], message: 'ARN is required - the pilot is also added to the Crew tab' });
+    ctx.addIssue({ code: 'custom', path: ['arn'], message: 'ARN is required - the pilot is also added to the Crew tab' });
   }
 });
 
@@ -478,7 +478,7 @@ router.get('/:id/clearances', async (req, res) => {
 
 const clearanceSchema = z.object({
   stage: z.enum([...new Set([...PILOT_CLEARANCE_STAGES, ...CA_CLEARANCE_STAGES])]),
-  details: z.record(z.any()).optional(),
+  details: z.record(z.string(), z.any()).optional(),
   // Lets an already-completed real-world sign-off be backdated when this
   // trainee's history is first entered into the system, instead of every
   // entry reading as signed "today" - optional, defaults to now().

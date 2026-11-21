@@ -93,9 +93,9 @@ router.get('/:traineeId', async (req, res) => {
 });
 
 const upsertSchema = z.object({
-  sectorDetails: z.record(z.any()).optional(),
-  assessmentItems: z.record(z.any()).optional(),
-  ntsScores: z.record(z.any()).optional(),
+  sectorDetails: z.record(z.string(), z.any()).optional(),
+  assessmentItems: z.record(z.string(), z.any()).optional(),
+  ntsScores: z.record(z.string(), z.any()).optional(),
   comments: z.string().nullable().optional(),
   overallResult: z.enum(['PASS', 'FAIL']).nullable().optional(),
   overallScore: z.number().int().min(1).max(5).nullable().optional(),

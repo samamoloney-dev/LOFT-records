@@ -88,7 +88,7 @@ const updateSchema = z.object({
   checkDate: z.string().nullable().optional(),
   aircraftType: z.string().nullable().optional(),
   assessorId: z.string().uuid().nullable().optional(),
-  items: z.record(z.any()).optional(),
+  items: z.record(z.string(), z.any()).optional(),
   comments: z.string().nullable().optional(),
   recommendations: z.string().nullable().optional(),
   certifiedSignature: z.string().nullable().optional(),

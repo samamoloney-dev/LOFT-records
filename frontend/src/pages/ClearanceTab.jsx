@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { formatDate } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import { PinSignature } from '../components/PinSignature';
+import { perthToday } from '../lib/localDate';
 
 // Signing off a clearance stage mirrors an actual FSM/HOFO signature on the
 // paper form, so it's restricted tighter than the rest of this admin-only
@@ -251,7 +252,7 @@ export function ClearanceTab({ member, apiBase }) {
   // genuinely already happened (before this crew member's history was
   // entered into the system) can be backdated to when it actually occurred
   // rather than every entry reading as signed "today".
-  const [signedAtDate, setSignedAtDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [signedAtDate, setSignedAtDate] = useState(() => perthToday());
 
   function load() {
     api.get(`${base}/clearances`).then(setEntries).catch((e) => setError(e.message));
@@ -261,7 +262,7 @@ export function ClearanceTab({ member, apiBase }) {
   function startAdding() {
     setStage(stages[0]);
     setDetails(emptyDetailsFor(stages[0]));
-    setSignedAtDate(new Date().toISOString().slice(0, 10));
+    setSignedAtDate(perthToday());
     setAdding(true);
   }
 
@@ -314,7 +315,7 @@ export function ClearanceTab({ member, apiBase }) {
           <StageFields isPilot={isPilot} stage={stage} details={details} onChange={setDetails} />
           <div className="field">
             <label>Signed date</label>
-            <input type="date" value={signedAtDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setSignedAtDate(e.target.value)} />
+            <input type="date" value={signedAtDate} max={perthToday()} onChange={(e) => setSignedAtDate(e.target.value)} />
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
               Defaults to today - backdate this if this stage already happened and you're entering it for initial setup.
             </div>

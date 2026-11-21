@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatDate } from '../lib/format';
 import { viewFile } from '../lib/pdf';
+import { perthToday } from '../lib/localDate';
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -18,7 +19,7 @@ function nameFromFileName(fileName) {
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const PERSONAL_DEVELOPMENT = 'PERSONAL_DEVELOPMENT';
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => perthToday();
 
 // A place to file scans/photos (JPEG or PDF) against a staff member's profile.
 // Used for a Simulator Only Examiner's Examiner Proficiency Check paperwork

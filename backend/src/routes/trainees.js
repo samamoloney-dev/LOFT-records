@@ -8,6 +8,7 @@ const { logAction } = require('../lib/audit');
 const { fleetOrderError, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
 const { localDateString } = require('../lib/currency');
+const { isFutureDate } = require('../lib/dates');
 const { createCrewMemberRecord, FLEET_TO_AIRCRAFT_TYPE } = require('./crew');
 
 const router = express.Router();
@@ -497,7 +498,7 @@ router.post('/:id/clearances', async (req, res) => {
   const allowedStages = trainee.type === 'PILOT' ? PILOT_CLEARANCE_STAGES : CA_CLEARANCE_STAGES;
   if (!allowedStages.includes(parsed.data.stage)) return res.status(400).json({ error: 'Invalid stage for this trainee type' });
   const signedAt = parsed.data.signedAt ? new Date(parsed.data.signedAt) : new Date();
-  if (Number.isNaN(signedAt.getTime()) || signedAt > new Date()) {
+  if (Number.isNaN(signedAt.getTime()) || (parsed.data.signedAt && isFutureDate(parsed.data.signedAt))) {
     return res.status(400).json({ error: 'Signed date cannot be in the future' });
   }
 

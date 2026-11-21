@@ -6,6 +6,10 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole, ADMIN_ROLES } = require('../middleware/roles');
 const { logAction } = require('../lib/audit');
 const { saveFile, loadFileData } = require('../lib/fileStore');
+// "Today" for the operator is the Perth calendar day, not the UTC one - between
+// midnight and 8am in Perth the two differ, and a document dated today was being
+// refused as "in the future".
+const { localDateString } = require('../lib/currency');
 
 const router = express.Router();
 
@@ -86,7 +90,7 @@ router.post('/', async (req, res) => {
   if (kind === 'PERSONAL_DEVELOPMENT' && !d.topic) {
     return res.status(400).json({ error: 'Choose the Personal Development topic this file belongs to' });
   }
-  if (d.documentDate && (Number.isNaN(Date.parse(d.documentDate)) || d.documentDate > new Date().toISOString().slice(0, 10))) {
+  if (d.documentDate && (Number.isNaN(Date.parse(d.documentDate)) || d.documentDate > localDateString())) {
     return res.status(400).json({ error: 'The date must be a real date that is not in the future' });
   }
 

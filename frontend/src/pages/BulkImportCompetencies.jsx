@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
+import { normalizeImportedDate } from '../lib/localDate';
 
 function normalizeHeader(h) {
   return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -154,13 +155,7 @@ function findHeaderRowIndex(sheet, maxScan = 5) {
 // typed string, or blank - all three need to end up as a plain YYYY-MM-DD
 // string, same as BulkImportCrew.jsx's own normalizeDate.
 function normalizeDate(v) {
-  if (v === undefined || v === null || v === '') return undefined;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v).trim();
-  if (!s) return undefined;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
+  return normalizeImportedDate(v);
 }
 
 function mapRow(rawRow) {

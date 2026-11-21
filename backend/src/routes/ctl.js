@@ -210,7 +210,9 @@ router.post('/:traineeId/complete', async (req, res) => {
     if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only HOTC, HOFO and Flight Ops Admin can set the Check to Line date' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(req.body.completedDate))) return res.status(400).json({ error: 'completedDate must be YYYY-MM-DD' });
     completedAt = new Date(`${req.body.completedDate}T04:00:00Z`);
-    if (Number.isNaN(completedAt.getTime()) || completedAt > new Date()) return res.status(400).json({ error: 'completedDate must be a valid date that is not in the future' });
+    // Compared as Perth calendar days: the stored noon-Perth instant is still ahead
+    // of "now" for the first hours of the same Perth day.
+    if (Number.isNaN(completedAt.getTime()) || String(req.body.completedDate) > localDateString()) return res.status(400).json({ error: 'completedDate must be a valid date that is not in the future' });
   }
   const { rows: updatedRows } = await pool.query(
     'UPDATE check_to_line_forms SET completed_at = $2 WHERE id = $1 RETURNING *',

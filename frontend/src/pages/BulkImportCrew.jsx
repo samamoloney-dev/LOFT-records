@@ -2,6 +2,7 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
 import { formatFleet } from '../lib/format';
+import { normalizeImportedDate } from '../lib/localDate';
 
 const FLEET_VALUES = ['DASH_8', 'FOKKER_100', 'METRO_23', 'CA_DASH_8', 'CA_FOKKER_100'];
 
@@ -81,13 +82,7 @@ function normalizeRole(v) {
 // typed string, or blank - all three need to end up as a plain YYYY-MM-DD
 // string, which is what the API's seed-date fields expect.
 function normalizeDate(v) {
-  if (v === undefined || v === null || v === '') return undefined;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v).trim();
-  if (!s) return undefined;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
+  return normalizeImportedDate(v);
 }
 
 // Maps one raw spreadsheet row onto the same shape the "Quick add crew

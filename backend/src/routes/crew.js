@@ -11,7 +11,7 @@ const { nextDueRolling, pilotLineCheckDue, statusFor, competencyStatus, addDays,
 const { createCheckRecord } = require('./checks');
 const { fleetOrderError, baseFleet, normaliseCrewFleets } = require('../lib/fleetOrder');
 const { exportNamesFor, CA_LINE_CHECK_DASH_8, CA_LINE_CHECK_FOKKER_100 } = require('../lib/exportNames');
-const { isPlausibleDate } = require('../lib/dates');
+const { isPlausibleDate, isFutureDate } = require('../lib/dates');
 const { batchLoader } = require('../lib/batch');
 const { epAssigneeError } = require('../lib/epApproval');
 const { PILOT_CLEARANCE_STAGES, CA_CLEARANCE_STAGES, isClearanceSigner } = require('../lib/clearance');
@@ -2199,7 +2199,7 @@ router.post('/:id/clearances', async (req, res) => {
   const allowedStages = member.type === 'PILOT' ? PILOT_CLEARANCE_STAGES : CA_CLEARANCE_STAGES;
   if (!allowedStages.includes(parsed.data.stage)) return res.status(400).json({ error: 'Invalid stage for this crew member type' });
   const signedAt = parsed.data.signedAt ? new Date(parsed.data.signedAt) : new Date();
-  if (Number.isNaN(signedAt.getTime()) || signedAt > new Date()) {
+  if (Number.isNaN(signedAt.getTime()) || (parsed.data.signedAt && isFutureDate(parsed.data.signedAt))) {
     return res.status(400).json({ error: 'Signed date cannot be in the future' });
   }
 

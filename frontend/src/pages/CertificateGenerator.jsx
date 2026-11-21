@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { openCertificateWindow } from '../lib/print';
 import { buildCertificateHtml } from '../lib/printBuilders';
+import { perthToday } from '../lib/localDate';
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => perthToday();
 
 // Standalone certificate tool, matching the operator's Skippers paper
 // certificate template - name, tick whichever course(s) were completed,
